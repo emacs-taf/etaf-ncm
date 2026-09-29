@@ -103,6 +103,21 @@ hold snapshots without keeping the player alive or accidentally mutating it.
 Costs are therefore bounded by the poll the session selected, and zero when no
 player is mounted.
 
+## Measuring repaint cost
+
+An update is only as cheap as the nodes it invalidates, and two numbers decide
+whether a change to the player is affordable:
+
+- Count layout passes per write: advise `ebox--render-layout-in-context` with a
+  counter, perform one ref write, and read the count.  A `:status` write used to
+  cause 19 to 40 passes; a `:clock` write still causes about 19.
+- Sample the process CPU while the demo plays.  Paused playback is the baseline
+  (0 %) and every playing second is the whole cost, so a change that halves the
+  write rate halves the load.
+
+The remaining per-second cost is Ebox's per-node layout work, which is where a
+framework change would have to happen.
+
 ## Backend contract
 
 `etaf-ncm-client-call` accepts a request plist and a callback; a client is either
