@@ -1,0 +1,283 @@
+;;; etaf-ncm.el --- NetEase Cloud Music player for ETAF -*- lexical-binding: t; -*-
+
+;; SPDX-License-Identifier: GPL-3.0-or-later
+;; Author: ETAF contributors
+;; Version: 0.1.0
+;; Package-Requires: ((emacs "29.1") (etaf "0.2.1") (etaf-ui "0.1.0") (ebox "3.0.0"))
+;; Keywords: multimedia, ui
+;; URL: https://gitea.vhkd.top/geekinney/etaf-ncm
+
+;;; Commentary:
+
+;; Public API
+;;
+;; Load this package with (require 'etaf-ncm) after adding this repository and
+;; the ETAF, ETAF UI and Ebox roots to `load-path'.  The player is a complete
+;; NetEase Cloud Music client for Emacs: it browses the signed-in account's
+;; daily recommendation, liked songs, playlists, albums, artists, charts,
+;; podcasts and recent plays, searches the catalog, drives playback through mpv,
+;; shows the synchronized lyric with its translation, and edits the queue.
+;;
+;; A session is the unit of state.  `etaf-ncm-create' builds one, the actions
+;; below drive it asynchronously, `etaf-ncm-state' reports it as plain data, and
+;; `etaf-ncm-app' or `etaf-ncm-open' display it.  Every displayed value is an
+;; ETAF reactive source, so a backend reply repaints the mounted player without
+;; a refresh call.
+;;
+;; Only the interfaces listed below are supported for use by other packages.
+;; All unlisted symbols and implementation features are internal, including
+;; names without a double hyphen.  Do not require files below lisp/ from
+;; consumers.  This Commentary is the authoritative export list; implementations
+;; and precise docstrings remain beside their definitions, and the manual
+;; contains workflows.
+;;
+;; Function: etaf-ncm-open (&optional model)
+;;;###autoload (autoload 'etaf-ncm-open "etaf-ncm" nil t)
+;; Mount the player in `etaf-ncm-buffer-name' and return its buffer.
+;; MODEL defaults to a session from `etaf-ncm-create', so the player opens on the
+;; daily recommendation with the account, playback status and queue of the
+;; backend.  A caller-provided MODEL keeps its library, selection and queue, and
+;; is revived when it was displayed before.  The buffer gets `etaf-ncm-mode-map'
+;; and hides its mode line; closing the buffer releases the session's polling and
+;; pending requests, so a later `etaf-ncm-open' with the same MODEL works again.
+;;
+;; Function: etaf-ncm-close ()
+;;;###autoload (autoload 'etaf-ncm-close "etaf-ncm" nil t)
+;; Unmount the player and kill its buffer.
+;; Unmounting releases the session's reactive subscriptions, polling timer and
+;; in-flight backend requests; the session itself stays usable for a later mount.
+;;
+;; Function: etaf-ncm-view (&optional model)
+;;;###autoload (autoload 'etaf-ncm-view "etaf-ncm" nil t)
+;; Return the player View for MODEL, defaulting to a new session.
+;; Use it to embed the player in your own `etaf-mount' call, for example inside a
+;; tab or a larger layout; `etaf-ncm-open' is the shortcut that also owns the
+;; buffer.
+;;
+;; Component: etaf-ncm-app (&key model)
+;; Render the mounted player for MODEL and own its session lifecycle.
+;; MODEL must come from `etaf-ncm-create'.  Mounting provides the palette for its
+;; subtree, starts playback polling and loads the current library; unmounting
+;; disposes the session.  The Component reads every displayed value from the
+;; model, so any action or backend reply repaints it; prefer `etaf-ncm-open' or
+;; `etaf-ncm-view' over mounting the Component directly.
+;;
+;; Function: etaf-ncm-create (&key client)
+;; Return a new player session that talks to CLIENT.
+;; CLIENT defaults to `etaf-ncm-client-factory' when that is bound and otherwise
+;; to `etaf-ncm-make-client'.  The session owns no buffer and no timer before it
+;; is mounted, so it is a complete headless player for scripts and tests.  Pass a
+;; CLIENT function to drive the same player from another backend.
+;;
+;; Function: etaf-ncm-state (app)
+;; Return APP's session state as a detached plist snapshot.
+;; Keys are `:section', `:title', `:subtitle', `:mode', `:query', `:items',
+;; `:visible', `:window-start', `:selection', `:page-size', `:rows-total',
+;; `:status', `:queue', `:lyric', `:lyric-line', `:aside', `:theme', `:account',
+;; `:layout', `:pane', `:loading', `:error' and `:message'.  The snapshot copies
+;; every value, so mutating it never changes the player; use it to render
+;; outside ETAF or to assert behavior in tests.
+;;
+;; Function: etaf-ncm-refresh (app)
+;; Reload APP's library, playback status, queue and account.
+;; It re-resolves the window layout and re-fits the visible row count, so call it
+;; after a resize.  Every request is asynchronous and a reply belonging to a
+;; superseded load is dropped, which makes repeated refreshes safe.
+;;
+;; Function: etaf-ncm-locate (app section)
+;; Show SECTION of APP's library.
+;; SECTION is one of the keys in `etaf-ncm-sections': `:daily', `:fm',
+;; `:liked', `:playlists', `:albums', `:artists', `:charts', `:podcasts' or
+;; `:recent'.  An unknown SECTION signals `etaf-ncm-error' and leaves APP
+;; unchanged.
+;;
+;; Function: etaf-ncm-search (app keyword &optional scope)
+;; Search KEYWORD and show the results as APP's library.
+;; SCOPE is `song' (the default) or `album'/`artist'/`playlist' as accepted by
+;; the backend.  A blank KEYWORD signals `etaf-ncm-error'.
+;;
+;; Function: etaf-ncm-play (app &optional item)
+;; Play ITEM, or APP's selected row when ITEM is nil.
+;; ITEM is a library row as reported in `etaf-ncm-state' `:items'; a row carries
+;; at least `:kind' and `:id'.  A song plays directly, while a playlist, album,
+;; artist, chart or podcast is resolved by the backend into its playable songs.
+;; A row without a playable target signals `etaf-ncm-error'.
+;;
+;; Function: etaf-ncm-add-to-queue (app item)
+;; Append the song ITEM to the queue.
+;; The queue is the backend's queue file, so the running mpv session keeps
+;; playing; a non-song ITEM signals `etaf-ncm-error'.
+;;
+;; Function: etaf-ncm-jump-queue (app index)
+;; Play the queue entry at 1-based INDEX.
+;; INDEX outside the queue signals `etaf-ncm-error'.
+;;
+;; Function: etaf-ncm-toggle-playback (app)
+;; Pause APP's playback when it is playing and resume it otherwise.
+;;
+;; Function: etaf-ncm-next-track (app)
+;; Play the next track of the queue.
+;;
+;; Function: etaf-ncm-previous-track (app)
+;; Play the previous track of the queue.
+;;
+;; Function: etaf-ncm-stop (app)
+;; Stop playback and leave the queue.
+;;
+;; Function: etaf-ncm-set-volume (app volume)
+;; Set the backend volume to VOLUME, an integer from 0 to 130.
+;; The backend clamps out-of-range values; the player reports the volume the
+;; backend accepted after its next status poll.
+;;
+;; Function: etaf-ncm-seek (app seconds)
+;; Seek SECONDS from the current position, positive forward and negative back.
+;;
+;; Function: etaf-ncm-set-shuffle (app on)
+;; Turn shuffle mode on when ON is non-nil and off otherwise.
+;;
+;; Function: etaf-ncm-set-repeat (app on)
+;; Turn repeat mode on when ON is non-nil and off otherwise.
+;;
+;; Function: etaf-ncm-like (app &optional unlike)
+;; Add the current song to the liked songs, or remove it when UNLIKE is non-nil.
+;;
+;; Function: etaf-ncm-move-selection (app delta)
+;; Move APP's library selection by DELTA rows and keep it inside the visible page.
+;; Selection stops at the first and last row; moving past a page boundary scrolls
+;; the page so the new selection stays visible.
+;;
+;; Function: etaf-ncm-activate-selection (app)
+;; Play the row APP's selection points at, doing nothing on an empty library.
+;;
+;; Function: etaf-ncm-toggle-aside (app)
+;; Switch APP's side panel between the lyric and the queue.
+;;
+;; Function: etaf-ncm-show-pane (app pane)
+;; Show PANE in APP and return it.
+;; PANE is `list' for the library list or `aside' for the lyric and queue panel;
+;; any other PANE signals `etaf-ncm-error'.  A `wide' layout keeps every column
+;; visible, so there PANE is remembered without removing anything; medium and
+;; narrow layouts show that single pane.
+;;
+;; Variable: etaf-ncm-sections
+;; Sidebar groups and their libraries, as (GROUP-NAME (SECTION LABEL GLYPH) ...).
+;; Rebind it before mounting a session to show a different catalog of libraries;
+;; each SECTION must also be accepted by `etaf-ncm-locate'.
+;;
+;; Variable: etaf-ncm-buffer-name
+;; Buffer `etaf-ncm-open' mounts the player into.
+;;
+;; Variable: etaf-ncm-mode-map
+;; Keymap installed by `etaf-ncm-open'.  It keeps Ebox's TAB focus cycling and
+;; replaces the scrolling keys with player commands.
+;;
+;; Variable: etaf-ncm-page-size
+;; Library rows shown at once.  `etaf-ncm-open' replaces it with the count that
+;; fits the window, so the default only applies to a headless session.
+;;
+;; Variable: etaf-ncm-wide-columns
+;; Frame width, in columns, that fits the library sidebar, the song list and the
+;; side panel at the same time.  At or above this width the player uses the
+;; `wide' layout: one selection in the list and the panel always visible.
+;;
+;; Variable: etaf-ncm-medium-columns
+;; Frame width, in columns, that still fits a narrow library rail.  At or above
+;; this width, but below `etaf-ncm-wide-columns', the player keeps the glyph-only
+;; rail and shows a single pane; below it the libraries move into a header strip
+;; and every pane uses the full width.
+;;
+;; Variable: etaf-ncm-fetch-limit
+;; Maximum number of rows requested from the backend for one library load.
+;;
+;; Variable: etaf-ncm-status-interval
+;; Seconds between playback ticks while a song is playing.
+;; Each tick advances the local clock for a smooth progress bar and asks the
+;; backend for playback truth; requests never overlap.
+;;
+;; Variable: etaf-ncm-idle-poll-interval
+;; Seconds between playback checks while nothing is playing.
+;;
+;; Variable: etaf-ncm-theme-mode
+;; Palette used by `etaf-ncm-color' and `etaf-ncm-theme-defaults': `dark' or `light'.
+;; A mounted player repaints when a session's `:theme' value changes, which is
+;; what the player's T key does.
+;;
+;; Function: etaf-ncm-color (key &optional mode)
+;; Return the palette color for KEY, optionally reading MODE instead of
+;; `etaf-ncm-theme-mode'.
+;; KEY is one of `:bg', `:panel', `:panel2', `:panel3', `:line', `:ink',
+;; `:muted', `:dim', `:accent', `:accent-soft', `:gold', `:ok', `:danger',
+;; `:danger-bg', `:playing', `:selected', `:meter' or `:cover'; an unknown KEY
+;; signals `etaf-ncm-error'.  Views use it to stay readable in both palettes.
+;;
+;; Function: etaf-ncm-theme-defaults (&optional mode)
+;; Return the `:ui-*' theme defaults of MODE as a property plist.
+;; The list is what the mounted player provides to the ETAF UI controls in its
+;; subtree, so buttons, inputs and badges follow the same palette.
+;;
+;; Function: etaf-ncm-make-client (&key skill-directory state-directory node-program timeout)
+;; Return a client that calls the `netease-music' backend of SKILL-DIRECTORY.
+;; STATE-DIRECTORY is where the backend keeps its queue and login state,
+;; NODE-PROGRAM runs the backend scripts, and TIMEOUT is the seconds a request
+;; may take before it fails.  Every argument defaults to the matching
+;; `etaf-ncm-' variable, and the returned client is usable with
+;; `etaf-ncm-client-call'.
+;;
+;; Variable: etaf-ncm-client-factory
+;; Function of no arguments returning the client of new sessions.
+;; Bind it to drive `etaf-ncm-create' with another backend, which is how the
+;; acceptance scenarios play a scripted session without network or mpv.
+;;
+;; Function: etaf-ncm-client-call (client request callback)
+;; Send REQUEST to CLIENT and call CALLBACK once with its reply.
+;; REQUEST is a plist starting with `:op' (`:browse', `:search', `:lyric',
+;; `:session', `:status', `:queue', `:play', `:add', `:jump', `:volume',
+;; `:seek', `:pause', `:resume', `:toggle', `:next', `:previous', `:stop',
+;; `:like', `:unlike', `:shuffle', `:repeat', `:queue-save' or `:queue-load').
+;; CALLBACK receives `(:ok DATA)' on success and `(:error MESSAGE :hint HINT)' on
+;; failure, at most once.  A client that cannot answer calls it neither; a
+;; session that is disposed by `etaf-ncm-cancel' drops late replies.
+;;
+;; Function: etaf-ncm-cancel (client)
+;; Cancel CLIENT's pending requests and drop their late replies.
+;;
+;; Function: etaf-ncm-parse-lyric (text)
+;; Parse LRC TEXT into a list of (SECONDS . LINE) pairs, earliest first.
+;; Metadata tags and timestamp-only lines are skipped, so the result is directly
+;; usable as the `:lines' of a lyric; an empty result means an instrumental
+;; track.
+;;
+;; Variable: etaf-ncm-skill-directory
+;; Directory of the `netease-music' backend scripts used by the default client.
+;;
+;; Variable: etaf-ncm-state-directory
+;; Directory holding the backend's queue and login state.
+;;
+;; Variable: etaf-ncm-node-program
+;; Program used to run the backend's Node.js scripts.
+;;
+;; Variable: etaf-ncm-request-timeout
+;; Seconds a backend request may take before it fails with a timeout error.
+;;
+;; Error: etaf-ncm-error
+;; Invalid player operation, for example an unknown library, an empty search
+;; keyword or a row without a playable target.  Backend failures are reported in
+;; the session's `:error' and `:message' instead of being signaled, because they
+;; happen asynchronously while the player stays usable.
+
+;;; Code:
+
+(eval-and-compile
+  (let ((directory (file-name-directory (or load-file-name
+                                            (bound-and-true-p byte-compile-current-file)
+                                            buffer-file-name))))
+    (add-to-list 'load-path (expand-file-name "lisp" directory))))
+
+(require 'etaf-ncm-theme)
+(require 'etaf-ncm-service)
+(require 'etaf-ncm-model)
+(require 'etaf-ncm-views)
+(require 'etaf-ncm-app)
+
+(provide 'etaf-ncm)
+;;; etaf-ncm.el ends here

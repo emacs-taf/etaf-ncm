@@ -1,0 +1,119 @@
+{
+  "schema": 1,
+  "load_path": [
+    ".",
+    "tests",
+    "../../etaf",
+    "../../etaf-ui",
+    "../../ebox",
+    "../../ecss"
+  ],
+  "support": [],
+  "cases": [
+    {
+      "name": "etaf-ncm-tests-new-session-is-headless",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "A session built without a buffer starts on the daily library, shows the lyric panel and sends no request."
+    },
+    {
+      "name": "etaf-ncm-tests-refresh-loads-library-and-playback",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "Refreshing loads the library rows, the account name, the playback truth with queue position and the visible page."
+    },
+    {
+      "name": "etaf-ncm-tests-refresh-keeps-selection-inside-the-page",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "Switching libraries replaces the rows, resets the selection and the page, and keeps each row's kind."
+    },
+    {
+      "name": "etaf-ncm-tests-locate-rejects-unknown-library",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "An unknown library raises the package error and leaves the current library untouched."
+    },
+    {
+      "name": "etaf-ncm-tests-sections-inventory-is-navigable",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "Every section published in the sidebar inventory can be opened and titles itself."
+    },
+    {
+      "name": "etaf-ncm-tests-search-records-keyword-and-scope",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "Searching trims the keyword, shows the results, sends the scope, and rejects a blank keyword."
+    },
+    {
+      "name": "etaf-ncm-tests-play-uses-the-selected-row",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "Playing the selection sends that row's kind and id and reports the song it started."
+    },
+    {
+      "name": "etaf-ncm-tests-play-accepts-rows-ids-and-keywords",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "Play resolves song rows, bare ids and search keywords, sends a playlist row as a playlist, and rejects an unplayable row."
+    },
+    {
+      "name": "etaf-ncm-tests-add-to-queue-takes-songs-only",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "Queueing appends a song row to the backend queue and rejects a playlist row."
+    },
+    {
+      "name": "etaf-ncm-tests-transport-commands-reach-the-backend",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "Transport, volume, seek, shuffle, repeat, like and queue-jump commands each send their own request and message."
+    },
+    {
+      "name": "etaf-ncm-tests-selection-keeps-its-page",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "Selection clamps at both ends, scrolls the page to stay visible, and an empty library plays nothing."
+    },
+    {
+      "name": "etaf-ncm-tests-toggle-aside-switches-panels",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "The side panel alternates between the lyric and the queue."
+    },
+    {
+      "name": "etaf-ncm-tests-show-pane-selects-the-visible-pane",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "Showing a pane records it in the snapshot and an unknown pane signals while keeping the previous pane."
+    },
+    {
+      "name": "etaf-ncm-tests-queue-and-lyric-follow-playback",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "The snapshot reports the queue around the playing entry and the lyric line of the elapsed position."
+    },
+    {
+      "name": "etaf-ncm-tests-parse-lyric-reads-lrc",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "LRC parsing keeps tagged lines in time order, splits repeated timestamps and ignores metadata and untagged lines."
+    },
+    {
+      "name": "etaf-ncm-tests-backend-failure-is-reported-not-signaled",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "A failing backend reply lands in the session error and message while the player stays usable."
+    },
+    {
+      "name": "etaf-ncm-tests-missing-backend-is-reported-not-signaled",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "A backend whose scripts are missing lands in the session error and message instead of signaling."
+    },
+    {
+      "name": "etaf-ncm-tests-client-call-reaches-a-function-client",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "The documented client protocol drives a plain function client and cancels without error."
+    },
+    {
+      "name": "etaf-ncm-tests-theme-tokens-cover-both-palettes",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "Colours resolve per palette, an unknown colour raises the package error, and the UI tokens follow the mode."
+    },
+    {
+      "name": "etaf-ncm-tests-mount-renders-and-revives",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "Mounting paints the library into a buffer, and killing that buffer lets the same session mount again."
+    },
+    {
+      "name": "etaf-ncm-tests-open-and-close-own-a-buffer",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "Opening installs the player keymap and hides the mode line, and closing kills the buffer."
+    }
+  ]
+}
