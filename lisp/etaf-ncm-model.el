@@ -125,6 +125,7 @@ complete headless player for tests and other Lisp callers."
           :selection (etaf-ref 0 :name 'etaf-ncm-selection)
           :window-start (etaf-ref 0 :name 'etaf-ncm-window-start)
           :status (etaf-ref nil :name 'etaf-ncm-status)
+          :clock (etaf-ref 0 :name 'etaf-ncm-clock)
           :queue (etaf-ref nil :name 'etaf-ncm-queue)
           :lyric (etaf-ref nil :name 'etaf-ncm-lyric)
           :aside (etaf-ref 'lyrics :name 'etaf-ncm-aside)
@@ -564,11 +565,17 @@ The library reload also re-fits the layout and row count to APP's window."
                      (plist-get app :polled-at) (float-time)))))
 
 (defun etaf-ncm--apply-status (app status)
-  "Publish STATUS and fetch the lyric when the song changed."
+  "Publish STATUS and fetch the lyric when the song changed.
+The elapsed position goes to `:clock', which changes every tick; the rest stays
+in `:status', so a playing second repaints the player bar instead of every view
+that reads the playback facts."
   (let* ((previous (etaf-ncm--read app :status))
          (song-id (plist-get status :song-id))
          (lyric (etaf-ncm--read app :lyric)))
-    (etaf-ncm--write app :status status)
+    (etaf-ncm--write app :clock (or (plist-get status :elapsed) 0))
+    (etaf-ncm--write app :status
+                     (plist-put (copy-sequence status) :elapsed
+                                (or (plist-get (etaf-ncm--read app :status) :elapsed) 0)))
     (when (and song-id (not (equal song-id (plist-get lyric :id))))
       (etaf-ncm--request-lyric app song-id))
     (when (and previous (plist-get previous :song-id)
@@ -625,18 +632,20 @@ The library reload also re-fits the layout and row count to APP's window."
   (eq (plist-get (etaf-ncm--read app :status) :state) 'playing))
 
 (defun etaf-ncm--tick (app)
-  "Advance APP's local clock and poll the backend when due."
+  "Advance APP's local clock and poll the backend when due.
+While a status request is on its way the clock is left alone: the reply is the
+truth and writing a local guess first would repaint the whole view twice a
+second for the same second."
   (unless (plist-get app :disposed)
     (let ((now (float-time))
           (last (or (plist-get app :last-tick) 0)))
       (setf (plist-get app :last-tick) now)
-      (when (etaf-ncm--playing-p app)
-        (let* ((status (etaf-ncm--read app :status))
-               (elapsed (+ (or (plist-get status :elapsed) 0) (- now last)))
-               (duration (or (plist-get status :duration) 0)))
-          (etaf-ncm--write app :status
-                           (plist-put (copy-sequence status) :elapsed
-                                      (if (> duration 0) (min elapsed duration) elapsed)))))
+      (when (and (etaf-ncm--playing-p app)
+                 (not (etaf-ncm--poll-due-p app now)))
+        (let* ((elapsed (+ (or (etaf-ncm--read app :clock) 0) (- now last)))
+               (duration (or (plist-get (etaf-ncm--read app :status) :duration) 0)))
+          (etaf-ncm--write app :clock
+                           (if (> duration 0) (min elapsed duration) elapsed))))
       (when (etaf-ncm--poll-due-p app now)
         (etaf-ncm--request-status app)))))
 
@@ -825,10 +834,11 @@ rows), `:visible' (the rows on the current page), `:selection', `:window-start',
 `:layout', `:pane', `:theme', `:account', `:loading', `:error' and `:message'."
   (let* ((rows (etaf-ncm--read app :rows))
          (page (etaf-ncm--page-rows app))
-         (status (etaf-ncm--read app :status))
+         (status (plist-put (copy-sequence (or (etaf-ncm--read app :status) nil))
+                            :elapsed (etaf-ncm--read app :clock)))
          (lyric (etaf-ncm--read app :lyric))
          (lines (plist-get lyric :lines))
-         (index (and lines (etaf-ncm--lyric-index lines (or (plist-get status :elapsed) 0)))))
+         (index (and lines (etaf-ncm--lyric-index lines (or (etaf-ncm--read app :clock) 0)))))
     (list :section (etaf-ncm--read app :section)
           :title (etaf-ncm--read app :title)
           :subtitle (etaf-ncm--read app :subtitle)

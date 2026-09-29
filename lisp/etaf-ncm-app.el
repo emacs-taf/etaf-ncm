@@ -104,16 +104,17 @@ j/k move the library selection.")
 
 (defun etaf-ncm--view-status (model)
   "Return MODEL's playback status, or an empty status plist."
-  (or (etaf-ncm--read model :status)
-      (list :state 'idle :elapsed 0 :duration 0 :volume 0
-            :queue-pos 0 :queue-count 0 :shuffle nil :repeat nil)))
+  (let ((status (or (etaf-ncm--read model :status)
+                    (list :state 'idle :duration 0 :volume 0
+                          :queue-pos 0 :queue-count 0 :shuffle nil :repeat nil))))
+    (plist-put (copy-sequence status) :elapsed (or (etaf-ncm--read model :clock) 0))))
 
 (defun etaf-ncm--lyric-panel (model)
   "Return MODEL's lyric window as props for the lyrics View."
   (let* ((lyric (etaf-ncm--read model :lyric))
          (lines (plist-get lyric :lines))
          (trans (plist-get lyric :trans))
-         (elapsed (or (plist-get (etaf-ncm--read model :status) :elapsed) 0))
+         (elapsed (or (etaf-ncm--read model :clock) 0))
          (index (and lines (etaf-ncm--lyric-index lines elapsed)))
          (window (and lines
                       (etaf-ncm--lyric-window lines index etaf-ncm--lyric-window-size)))

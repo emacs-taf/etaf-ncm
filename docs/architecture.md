@@ -88,7 +88,14 @@ hold snapshots without keeping the player alive or accidentally mutating it.
 
 - Playing: one tick per `etaf-ncm-status-interval` (1 s). The tick advances the
   local clock for a smooth progress bar, asks the backend for playback truth and
-  never overlaps the previous request (`:status-in-flight`).
+  never overlaps the previous request (`:status-in-flight`).  While a request is
+  on its way the tick leaves the clock alone: the reply is the truth and a local
+  guess would repaint the view for the same second.
+- The moving position lives in its own `:clock` ref while `:status` keeps the
+  playback facts, so a playing second invalidates the player bar and the lyric
+  line instead of every view that reads the status.  `etaf-ncm-state` merges the
+  clock back into the reported `:status`, which keeps the public snapshot shape
+  unchanged.
 - Idle: one check per `etaf-ncm-idle-poll-interval` (15 s).
 - A lyric is fetched only when the playing song id changes.
 - The queue list is read from the backend's queue file, not re-downloaded.
