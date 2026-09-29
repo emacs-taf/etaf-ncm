@@ -177,7 +177,9 @@
     (etaf-ncm-activate-selection app)
     (let ((request (etaf-ncm-tests--request :play)))
       (should (equal (plist-get request :target) (list :kind :song :id 3)))
-      (should (equal (plist-get (etaf-ncm-state app) :message) "正在播放：曲目 3")))))
+      (should (equal (plist-get (etaf-ncm-state app) :message) "正在播放：曲目 3")))
+    (etaf-ncm-play app)
+    (should (equal (plist-get (etaf-ncm-state app) :message) "正在播放：每日推荐"))))
 
 (ert-deftest etaf-ncm-tests-play-accepts-rows-ids-and-keywords ()
   "Play resolves library rows, song ids and search keywords."

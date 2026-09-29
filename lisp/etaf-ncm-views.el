@@ -421,10 +421,15 @@ Each entry is (:index :name :right :current) from the player model."
 
 (etaf-define-component etaf-ncm--view-aside
     (&key aside title artist album lines trans current position total loading
-          entries pos count on-switch on-jump)
-  "Render the ASIDE panel with either the lyrics or the queue."
+          entries pos count layout on-switch on-jump)
+  "Render the ASIDE panel with either the lyrics or the queue.
+LAYOUT decides the width: a wide layout keeps the panel at its sidebar width,
+a compact one makes it the only visible pane so it fills the window."
   :view
-  (flex :flex-direction 'column :width etaf-ncm--aside-width :height 'stretch
+  (flex :flex-direction 'column
+        :width (if (eq layout 'wide) etaf-ncm--aside-width 'stretch)
+        :flex-grow (if (eq layout 'wide) 0 1)
+        :min-width '(ch 0) :height 'stretch
         :padding '((lh 1) (ch 2)) :gap '((lh 0) (px 0))
         :background-color (etaf-ncm-color :panel)
           :border-left (etaf-ncm--view-border 'left (etaf-ncm-color :line))

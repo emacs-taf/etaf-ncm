@@ -501,8 +501,8 @@ A value outside that range signals `etaf-ncm-error'."
   "Return a human label for ITEM in APP, used in the status line."
   (cond
    ((null item)
-    (let ((origin (etaf-ncm--read app :origin)))
-      (or (etaf-ncm--section-label (car origin)) (format "%s" origin))))
+    (or (etaf-ncm--section-label (etaf-ncm--read app :section))
+        (format "%s" (etaf-ncm--read app :origin))))
    ((listp item) (or (plist-get item :name) "选中项"))
    (t (format "%s" item))))
 
@@ -689,6 +689,14 @@ on chips and pane tabs, while `wide' and an unknown LAYOUT subtract less chrome.
   (if (and window (window-live-p window))
       (window-body-width window)
     (frame-width)))
+
+(defun etaf-ncm--viewport-options (&optional window)
+  "Return mount viewport options sized for WINDOW, or nil when it is dead.
+A mount without them paints at Ebox's default size, which clips the player bar
+until the first resize."
+  (when (and window (window-live-p window))
+    (list :viewport-width (window-body-width window 'pixel)
+          :viewport-height (window-body-height window))))
 
 (defun etaf-ncm--layout-for (columns)
   "Return the layout COLUMNS columns of text can hold.

@@ -385,6 +385,7 @@ releases the polling timer and the session's pending backend requests."
        :entries (plist-get (etaf-ncm--queue-panel session) :entries)
        :pos (plist-get (etaf-ncm--queue-panel session) :pos)
        :count (plist-get (etaf-ncm--queue-panel session) :count)
+       :layout (etaf-ncm--read session :layout)
        :on-switch (lambda (panel) (etaf-ncm--write session :aside panel))
        :on-jump (lambda (index) (etaf-ncm-jump-queue session index))))
     (etaf-ncm--view-pane-tabs
@@ -450,11 +451,12 @@ the backend.  A caller-provided MODEL keeps its library, queue and selection."
       (setq-local truncate-lines t)
       (setq-local mode-line-format nil)
       (use-local-map etaf-ncm-mode-map))
-    ;; The layout and page size come from the window that will show the player,
-    ;; so the first paint already fits it; mounting re-checks them.  The
-    ;; player adapts to later resizes as well (see `etaf-ncm--sync-layout').
+    ;; The layout, page size and viewport come from the window that will show
+    ;; the player, so the first paint already fits it.  The player adapts to
+    ;; later resizes as well (see `etaf-ncm--sync-layout').
     (etaf-ncm--sync-layout model (selected-window))
-    (etaf-mount buffer (etaf-ncm-view model))
+    (etaf-mount buffer (etaf-ncm-view model)
+                 (etaf-ncm--viewport-options (selected-window)))
     (pop-to-buffer buffer)
     buffer))
 
