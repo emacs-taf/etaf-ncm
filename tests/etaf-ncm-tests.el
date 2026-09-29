@@ -349,6 +349,14 @@
         (should (string-match-p "\\`#[0-9A-Fa-f]\\{6\\}\\'" (etaf-ncm-color :bg)))
         (should (string-match-p "\\`#[0-9A-Fa-f]\\{6\\}\\'" (etaf-ncm-color :ink)))
         (should-error (etaf-ncm-color :nonsense) :type 'etaf-ncm-error)
+        ;; Every documented key must resolve in both palettes: the error banner
+        ;; once used `:danger-bg' while the palette could not answer it.
+        (dolist (key '(:bg :panel :panel2 :panel3 :line :ink :muted :dim
+                           :accent :accent-soft :gold :ok :danger :danger-bg
+                           :playing :selected :meter :cover))
+          (dolist (mode '(dark light))
+            (should (string-match-p "\\`#[0-9A-Fa-f]\\{6\\}\\\'"
+                                    (etaf-ncm-color key mode)))))
         (let ((dark (etaf-ncm-color :bg))
               (dark-defaults (etaf-ncm-theme-defaults 'dark)))
           (should (plist-member dark-defaults :ui-accent))

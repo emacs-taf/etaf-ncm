@@ -269,7 +269,7 @@ the rest are the arguments.  Signal `etaf-ncm-error' for an unknown request."
     (:queue (list "queue" "--limit" (number-to-string (etaf-ncm--limit request 200))))
     (:play
      (let* ((target (plist-get request :target))
-            (kind (car target))
+            (kind (plist-get target :kind))
             (command (cdr (assq kind etaf-ncm--play-commands))))
        (unless command
          (signal 'etaf-ncm-error (list (format "Cannot play: %S" target))))
