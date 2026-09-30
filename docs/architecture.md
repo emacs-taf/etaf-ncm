@@ -115,8 +115,16 @@ whether a change to the player is affordable:
   (0 %) and every playing second is the whole cost, so a change that halves the
   write rate halves the load.
 
-The remaining per-second cost is Ebox's per-node layout work, which is where a
-framework change would have to happen.
+- Run `emacs -Q --batch -L . -L lisp -L tests -L ../../etaf -L ../../etaf-ui
+  -L ../../ebox -L ../../ecss -l benchmarks/update-cost.el` for the same numbers
+  as a benchmark: a selection write costs about 250 ms and a clock write about
+  100 ms with a byte-compiled framework, independent of the viewport.
+
+The cost is the whole tree being laid out again on every update, and it is
+where the remaining work sits: ETAF hands Ebox a complete tree per update and
+Ebox lays all of it out instead of reusing the subtrees that did not change.
+Byte compilation removes roughly half of it (an interpreted framework doubles
+every number here), which is why the benchmark must run compiled.
 
 ## Backend contract
 
