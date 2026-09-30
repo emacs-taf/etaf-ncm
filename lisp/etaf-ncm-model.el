@@ -167,15 +167,6 @@ view for nothing."
   "Publish (FUNCTION OLD-READING ARGUMENTS ...) as MODEL's value for KEY."
   (apply #'etaf-update-value (etaf-ncm--ref model key) function arguments))
 
-(defconst etaf-ncm--clock-host 'ncm-elapsed
-  "Retained Host that shows the played position on the player bar.")
-
-(defconst etaf-ncm--meter-host 'ncm-meter
-  "Retained Host that fills the player bar's progress meter.")
-
-(defconst etaf-ncm--reply-volatile-keys '(:elapsed :as-of)
-  "Status fields that move with every backend reply, not with the track.")
-
 (defun etaf-ncm--clock (app)
   "Return APP's displayed playback position in seconds."
   (or (plist-get app :clock) 0))
@@ -190,43 +181,6 @@ Display goes through `etaf-ncm--publish-clock'."
   (let ((total (if (and (numberp total) (> total 0)) total 1)))
     (max 0.001 (min 1.0 (/ (float (or value 0)) total)))))
 
-(defun etaf-ncm--runtime (app)
-  "Return APP's mounted runtime, or nil when nothing displays APP."
-  (let ((buffer (plist-get app :buffer)))
-    (and (buffer-live-p buffer) (etaf-runtime-for-buffer buffer))))
-
-(defun etaf-ncm--meter-percent (app seconds)
-  "Return the progress meter fill for SECONDS in APP, as a percentage."
-  (let ((duration (or (plist-get (etaf-ncm--read app :status) :duration) 0)))
-    (* 100.0 (etaf-ncm--ratio seconds duration))))
-
-(defun etaf-ncm--clock-line (app)
-  "Return the lyric line index APP shows for its displayed position, or nil."
-  (let* ((lyric (etaf-ncm--read app :lyric))
-         (lines (plist-get lyric :lines)))
-    (and lines (etaf-ncm--lyric-index lines (etaf-ncm--clock app)))))
-
-(defun etaf-ncm--update-clock-hosts (app seconds)
-  "Replace APP's retained clock label and meter with SECONDS.
-Both replacements commit as one Ebox publication: a playing second then costs
-one retained update instead of a whole-view render plus a second update.
-Return non-nil when the update committed, and nil when the session has no
-mounted view or Ebox declined the update, so the caller republishes instead."
-  (let ((runtime (etaf-ncm--runtime app)))
-    (when runtime
-      (condition-case nil
-          (progn
-            (ebox-call-with-update-batch
-             (lambda ()
-               (etaf-runtime-update-host-content
-                runtime etaf-ncm--clock-host (etaf-ncm--format-seconds seconds))
-               (etaf-runtime-update-host-geometry
-                runtime etaf-ncm--meter-host
-                :width (list '% (etaf-ncm--meter-percent app seconds))))
-             (etaf-runtime-buffer runtime))
-            t)
-        (error nil)))))
-
 (defun etaf-ncm--republish-clock (app seconds)
   "Publish APP's whole view with SECONDS as the displayed position.
 Writing the status is what republishes: the view renders the playback facts
@@ -238,30 +192,12 @@ and the position together, so the bar, the lyric panel and every reader of
 
 (defun etaf-ncm--publish-clock (app seconds)
   "Show SECONDS as APP's displayed playback position.
-A playing second changes only the position, so the elapsed label and the
-progress meter are replaced through their retained Hosts and the view is left
-for the moments that really change it: a new lyric line, a seek, or a reply
-that carries more than a new position."
-  (let ((line (etaf-ncm--clock-line app)))
-    (etaf-ncm--set-clock app seconds)
-    (if (or (not (eql line (etaf-ncm--clock-line app)))
-            (not (etaf-ncm--update-clock-hosts app seconds)))
-        (etaf-ncm--republish-clock app seconds))))
-
-(defun etaf-ncm--status-steady-p (previous status)
-  "Return non-nil when STATUS only moves PREVIOUS's volatile fields.
-A steady reply reports a new position and measurement time for the same track,
-so the player bar updates in place instead of republishing the whole view."
-  (and previous
-       (equal (etaf-ncm--status-steady previous)
-              (etaf-ncm--status-steady status))))
-
-(defun etaf-ncm--status-steady (status)
-  "Return STATUS without the fields that move with every backend reply."
-  (let ((copy (copy-sequence status)))
-    (dolist (key etaf-ncm--reply-volatile-keys)
-      (setq copy (plist-put copy key nil)))
-    copy))
+Writing the position publishes the player bar with the new time.  A retained
+Host update replaced only the clock label and the meter, but it made clicks and
+menu switches feel late while a song played, so the player keeps the ordinary
+publication."
+  (etaf-ncm--set-clock app seconds)
+  (etaf-ncm--republish-clock app seconds))
 
 (defun etaf-ncm--client (model)
   "Return MODEL's backend client."
@@ -731,10 +667,8 @@ reply that carries new playback facts publishes `:status'."
          (song-id (plist-get status :song-id))
          (lyric (etaf-ncm--read app :lyric))
          (elapsed (or (plist-get status :elapsed) 0)))
-    (if (etaf-ncm--status-steady-p previous status)
-        (etaf-ncm--publish-clock app elapsed)
-      (etaf-ncm--set-clock app elapsed)
-      (etaf-ncm--write app :status status))
+    (etaf-ncm--set-clock app elapsed)
+    (etaf-ncm--write app :status status)
     (when (and song-id (not (equal song-id (plist-get lyric :id))))
       (etaf-ncm--request-lyric app song-id))
     (when (and previous (plist-get previous :song-id)

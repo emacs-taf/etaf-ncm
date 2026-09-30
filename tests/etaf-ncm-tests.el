@@ -422,44 +422,6 @@ silently doing nothing against the real backend."
       (when (get-buffer " *etaf-ncm-tests-mount*")
         (kill-buffer " *etaf-ncm-tests-mount*")))))
 
-(ert-deftest etaf-ncm-tests-steady-reply-advances-the-bar-in-place ()
-  "A steady reply advances the mounted bar without republishing the view.
-The player shows its position through retained Hosts, so a reference client's
-reply that only moves the position leaves the runtime generation alone while
-the visible time moves and keeps matching the session's own position."
-  (let* ((ticks 0)
-         (client (lambda (request callback)
-                   (if (eq (plist-get request :op) :status)
-                       (progn
-                         (setq ticks (1+ ticks))
-                         (etaf-ncm-tests--reply
-                          callback
-                          (plist-put (copy-sequence (etaf-ncm-tests--fixture "status"))
-                                     :elapsed (format "%.1f" (+ 42.0 (* 0.4 ticks))))))
-                     (etaf-ncm-tests--client request callback))))
-         (app (etaf-ncm-tests--session client))
-         (etaf-ncm-buffer-name " *etaf-ncm-tests-steady*")
-         (etaf-ncm-status-interval 1000))
-    (unwind-protect
-        (let ((buffer (etaf-ncm-open app)))
-          (etaf-ncm-refresh app)
-          ;; The first command notes its message; the second repeats it, so only
-          ;; the steady reply is left to change anything.
-          (etaf-ncm-set-shuffle app nil)
-          (let* ((runtime (etaf-runtime-for-buffer buffer))
-                 (generation (etaf-runtime-generation runtime))
-                 (position (plist-get (plist-get (etaf-ncm-state app) :status) :elapsed)))
-            (etaf-ncm-set-shuffle app nil)
-            (let ((now (plist-get (plist-get (etaf-ncm-state app) :status) :elapsed)))
-              (should (> now position))
-              (should (= generation (etaf-runtime-generation runtime)))
-              (with-current-buffer buffer
-                (should (string-match-p
-                         (regexp-quote (format "%d:%02d" (/ (round now) 60)
-                                               (% (round now) 60)))
-                         (buffer-string)))))))
-      (etaf-ncm-close))))
-
 (ert-deftest etaf-ncm-tests-open-and-close-own-a-buffer ()
   "Opening installs the player map and closing kills the buffer."
   (let ((etaf-ncm-buffer-name " *etaf-ncm-tests-open*")

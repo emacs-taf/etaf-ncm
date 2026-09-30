@@ -119,11 +119,6 @@
       "name": "etaf-ncm-tests-default-client-runs-the-skill-command",
       "file": "tests/etaf-ncm-tests.el",
       "purpose": "The default client runs the skill script with the request translated into the right command line: a play request reaches the script as \"play <song id>\"."
-    },
-    {
-      "name": "etaf-ncm-tests-steady-reply-advances-the-bar-in-place",
-      "file": "tests/etaf-ncm-tests.el",
-      "purpose": "A reply that only moves the playback position advances the mounted player bar through its retained Hosts without an ordinary runtime publication, and the visible time keeps matching the session."
     }
   ]
 }
