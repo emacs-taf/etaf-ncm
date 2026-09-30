@@ -14,15 +14,16 @@
 ;; independent of the viewport, on a twelve-row fixture.  The cost is the whole
 ;; tree being laid out again on every update; see `docs/architecture.md'.
 ;;
-;; Measured caveat (2026-09-30): in headless batch the mount viewport width does
-;; not widen the rendered layout.  The player bar stays 42 columns and the page
-;; max stays 68 columns at viewport widths 1386, 2400, 3600 and 4800; a minimal
-;; `ebox-render' of `:width (vw 100)' with `ebox-viewport-width' 200 likewise
-;; renders content width.  These numbers therefore describe the app's
-;; natural-width layout (about 68 columns), where the wide three-column design
-;; is cramped (labels truncate, rows wrap, extra scroll regions appear), not a
-;; real GUI window.  Read them as a worst-case narrow layout until the headless
-;; viewport is honored or the benchmark runs on a real frame.
+;; Measured caveat (2026-09-30): the mount viewport is honored here -- the root
+;; layout footprint is 1387 px and the player bar 1383 px at
+;; :viewport-width 1386 -- but batch font metrics still squeeze the wide player
+;; bar: its six-pixel clock label is shrunk to two pixels, so the label wraps
+;; across two partial slots ("0:" then "42") and a one-second tick can leave the
+;; visible text unchanged.  Character line lengths are not column counts
+;; (trailing filler is trimmed), so do not read them as width.  Treat these
+;; numbers as the app's cramped player-bar shape until the batch metric mismatch
+;; (pixel font sizes against a one-pixel frame char width) is resolved or the
+;; benchmark runs on a real frame.
 
 ;;; Code:
 (load "tests/etaf-ncm-tests.el")
