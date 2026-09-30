@@ -446,115 +446,72 @@ a compact one makes it the only visible pane so it fills the window."
           on-toggle on-next on-previous on-stop on-like on-volume on-seek
           on-shuffle on-repeat)
   "Render the player bar for the current track and its controls.
-COMPACT stacks the track and the progress line, the shape a phone uses and a
-narrow frame has room for."
+The transport keys are the bar's main controls, so they get a larger font and a
+padding-wide hit area of their own.  COMPACT stacks track, progress and
+controls into three lines, which is the shape a narrow frame can hold."
   :view
-  (flex :flex-direction (if compact 'column 'row)
-        :width 'stretch :height '(lh 2) :gap '((lh 0) (ch 2))
-        :align-items 'center :padding '((lh 0) (ch 2))
+  (flex :flex-direction 'column :width 'stretch
+        :height (if compact '(lh 3) '(lh 3))
+        :gap '((lh 0) (ch 2)) :padding '((lh 0) (ch 2))
         :background-color (etaf-ncm-color :panel)
         :border-top (etaf-ncm--view-border 'top (etaf-ncm-color :line))
-    (flex :if compact :width 'stretch :height '(lh 1)
-          :gap '((lh 0) (ch 1)) :align-items 'center
+    ;; Track line: state glyph, title and the secondary line.
+    (flex :width 'stretch :height '(lh 1) :gap '((lh 0) (ch 1)) :align-items 'center
       (box :width '(ch 3) :height '(lh 1) :text-align 'center
+           :background-color (etaf-ncm-color :accent-soft)
            :color (etaf-ncm-color :accent)
-        (text (expr (if (eq state 'playing) " ▶" " ⏸"))))
-      (box :flex-grow 1 :flex-basis '(px 0) :min-width '(ch 0) :height '(lh 1)
-           :overflow 'hidden :font-weight 'bold
+        (text (expr (if (eq state 'playing) "● " "○ "))))
+      (box :height '(lh 1) :overflow 'hidden :font-weight 'bold :flex-grow 1
+           :flex-basis '(px 0) :min-width '(ch 0)
         (text (expr (or title "未在播放"))))
-      (box :flex-grow 1 :flex-basis '(px 0) :min-width '(ch 0) :height '(lh 1)
-           :overflow 'hidden :color (etaf-ncm-color :muted) :text-align 'right
-        (text (expr (if (and message (not (string-empty-p message)))
-                         message
-                       (or artist "")))))
-      (box :height '(lh 1) :role 'button :tab-index 0 :color (etaf-ncm-color :muted)
-           :on-press on-like
-        (text "♡"))
-      (box :height '(lh 1) :role 'button :tab-index 0 :color (etaf-ncm-color :muted)
-           :on-press on-previous
-        (text "⏮"))
-      (box :height '(lh 1) :role 'button :tab-index 0 :font-weight 'bold
-           :color (etaf-ncm-color :accent)
-           :on-press on-toggle
-        (text (expr (if (eq state 'playing) "⏸" "▶"))))
-      (box :height '(lh 1) :role 'button :tab-index 0 :color (etaf-ncm-color :muted)
-           :on-press on-next
-        (text "⏭")))
-    (flex :if compact :width 'stretch :height '(lh 1)
-          :gap '((lh 0) (ch 1)) :align-items 'center
-      (box :width '(ch 5) :height '(lh 1) :text-align 'right
-           :color (etaf-ncm-color :dim)
-        (text (expr (etaf-ncm--format-seconds elapsed))))
-      (box :flex-grow 1 :flex-basis '(px 0) :min-width '(ch 0) :height '(lh 1)
-           :role 'button :tab-index 0
-           :on-press (lambda () (funcall on-seek 15))
-        (etaf-ncm--view-meter :ratio (etaf-ncm--view-ratio elapsed duration)))
-      (box :width '(ch 5) :height '(lh 1) :color (etaf-ncm-color :dim)
-        (text (expr (etaf-ncm--format-seconds duration))))
-      (box :width '(ch 16) :height '(lh 1) :text-align 'right
+      (box :height '(lh 1) :overflow 'hidden :color (etaf-ncm-color :muted)
+           :flex-grow 1 :flex-basis '(px 0) :min-width '(ch 0)
+        (text (expr (cond ((and message (not (string-empty-p message))) message)
+                          ((and artist (not (string-empty-p artist))) artist)
+                          (t "")))))
+      (box :width '(ch 14) :height '(lh 1) :text-align 'right
            :color (etaf-ncm-color :dim) :font-size 12 :overflow 'hidden
         (text (expr (format "%s/%s · 音量 %s" (or queue-pos 0) (or queue-count 0)
                             (or volume 0))))))
-    (flex :if (not compact) :width '(ch 30) :gap '((lh 0) (ch 1)) :align-items 'center
-      (box :width '(ch 3) :height '(lh 2) :text-align 'center
-           :background-color (etaf-ncm-color :accent-soft)
-           :color (etaf-ncm-color :accent)
-        (text (expr (if (eq state 'playing) " ▶" " ⏸"))))
-      (column :min-width '(ch 0) :flex-grow 1 :flex-basis '(px 0) :item-gap '(lh 0)
-        (box :height '(lh 1) :overflow 'hidden :font-weight 'bold
-          (text (expr (or title "未在播放"))))
-        (box :height '(lh 1) :overflow 'hidden :color (etaf-ncm-color :muted)
-          (text (expr (if (and message (not (string-empty-p message)))
-                           message
-                         (or artist "")))))))
-    (flex :if (not compact) :flex-grow 1 :flex-basis '(px 0) :min-width '(ch 0)
-          :gap '((lh 0) (ch 1)) :align-items 'center
-      (box :width '(ch 5) :height '(lh 1) :text-align 'right
+    ;; Progress line: elapsed, seekable meter, duration, then the transport keys.
+    (flex :width 'stretch :height '(lh 2) :gap '((lh 0) (ch 1)) :align-items 'center
+      (box :width '(ch 6) :height '(lh 1) :text-align 'right
            :color (etaf-ncm-color :dim)
         (text (expr (etaf-ncm--format-seconds elapsed))))
-      (box :flex-grow 1 :flex-basis '(px 0) :min-width '(ch 0) :height '(lh 1)
-           :role 'button :tab-index 0
+      (box :flex-grow 1 :flex-basis '(px 0) :min-width '(ch 0) :height '(lh 2)
+           :role 'button :tab-index 0 :padding '((lh 0) (ch 1))
            :on-press (lambda () (funcall on-seek 15))
         (etaf-ncm--view-meter :ratio (etaf-ncm--view-ratio elapsed duration)))
-      (box :width '(ch 5) :height '(lh 1) :color (etaf-ncm-color :dim)
+      (box :width '(ch 6) :height '(lh 1) :color (etaf-ncm-color :dim)
         (text (expr (etaf-ncm--format-seconds duration))))
-      (box :width '(ch 8) :height '(lh 1) :color (etaf-ncm-color :dim)
-           :font-size 12
-        (text (expr (format "%s/%s" (or queue-pos 0) (or queue-count 0))))))
-    (flex :if (not compact) :gap '((lh 0) (ch 1)) :align-items 'center
-      (box :height '(lh 1) :role 'button :tab-index 0 :color (etaf-ncm-color :muted)
-           :on-press on-like
-        (text "♡"))
-      (box :height '(lh 1) :role 'button :tab-index 0
-           :color (if repeat (etaf-ncm-color :accent) (etaf-ncm-color :muted))
-           :on-press on-repeat
-        (text "↻"))
-      (box :height '(lh 1) :role 'button :tab-index 0
-           :color (if shuffle (etaf-ncm-color :accent) (etaf-ncm-color :muted))
-           :on-press on-shuffle
-        (text "⇄"))
-      (box :height '(lh 1) :role 'button :tab-index 0 :color (etaf-ncm-color :muted)
-           :on-press on-previous
-        (text "⏮"))
-      (box :height '(lh 1) :role 'button :tab-index 0 :font-weight 'bold
-           :color (etaf-ncm-color :accent)
-           :on-press on-toggle
-        (text (expr (if (eq state 'playing) "⏸" "▶"))))
-      (box :height '(lh 1) :role 'button :tab-index 0 :color (etaf-ncm-color :muted)
-           :on-press on-next
-        (text "⏭"))
-      (box :height '(lh 1) :role 'button :tab-index 0 :color (etaf-ncm-color :muted)
-           :on-press on-stop
-        (text "■"))
-      (flex :width '(ch 8) :gap '((lh 0) (ch 1)) :align-items 'center
-        (box :flex-grow 1 :flex-basis '(px 0) :min-width '(ch 0) :height '(lh 1)
-             :role 'button :tab-index 0
-             :on-press (lambda () (funcall on-volume 5))
-          (etaf-ncm--view-meter :ratio (etaf-ncm--view-ratio volume 130)
-                                :color (etaf-ncm-color :muted)))
-        (box :width '(ch 3) :height '(lh 1) :text-align 'right
-             :color (etaf-ncm-color :dim) :font-size 12
-          (text (expr (format "%s" (or volume 0)))))))))
+      (flex :gap '((lh 0) (ch 1)) :align-items 'center
+        (box :height '(lh 2) :role 'button :tab-index 0 :padding '((lh 0) (ch 1))
+             :font-size 16 :color (etaf-ncm-color :muted) :on-press on-like
+          (text "♡"))
+        (box :height '(lh 2) :role 'button :tab-index 0 :padding '((lh 0) (ch 1))
+             :font-size 17
+             :color (if shuffle (etaf-ncm-color :accent) (etaf-ncm-color :muted))
+             :on-press on-shuffle
+          (text "⇄"))
+        (box :height '(lh 2) :role 'button :tab-index 0 :padding '((lh 0) (ch 1))
+             :font-size 17
+             :color (if repeat (etaf-ncm-color :accent) (etaf-ncm-color :muted))
+             :on-press on-repeat
+          (text "↻")))
+      (flex :gap '((lh 0) (ch 1)) :align-items 'center
+        (box :height '(lh 2) :role 'button :tab-index 0 :padding '((lh 0) (ch 1))
+             :font-size 22 :color (etaf-ncm-color :ink) :on-press on-previous
+          (text "⏮"))
+        (box :height '(lh 2) :role 'button :tab-index 0 :padding '((lh 0) (ch 2))
+             :font-size 26 :font-weight 'bold :color (etaf-ncm-color :accent)
+             :on-press on-toggle
+          (text (expr (if (eq state 'playing) "⏸" "▶"))))
+        (box :height '(lh 2) :role 'button :tab-index 0 :padding '((lh 0) (ch 1))
+             :font-size 22 :color (etaf-ncm-color :ink) :on-press on-next
+          (text "⏭"))
+        (box :height '(lh 2) :role 'button :tab-index 0 :padding '((lh 0) (ch 1))
+             :font-size 18 :color (etaf-ncm-color :muted) :on-press on-stop
+          (text "■"))))))
 
 (provide 'etaf-ncm-views)
 ;;; etaf-ncm-views.el ends here

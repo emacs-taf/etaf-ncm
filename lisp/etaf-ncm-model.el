@@ -551,15 +551,24 @@ The library reload also re-fits the layout and row count to APP's window."
                                                   :logged-in (eq t (plist-get data :loggedIn)))))))
 
 (defun etaf-ncm--request-status (app)
-  "Ask the backend for APP's playback truth."
-  (setf (plist-get app :status-in-flight) t)
+  "Ask the backend for APP's playback truth.
+The reply carries the position measured when the backend answered, so the
+round trip is added back before publishing it: without that the lyric line and
+the progress bar run one backend latency behind the song."
+  (setf (plist-get app :status-in-flight) t
+        (plist-get app :requested-at) (float-time))
   (etaf-ncm--call
    app (list :op :status)
    :on-ok (lambda (data)
-            (setf (plist-get app :status-in-flight) nil
-                  (plist-get app :polled-at) (float-time)
-                  (plist-get app :last-tick) (float-time))
-            (etaf-ncm--apply-status app (etaf-ncm--normalize-status data)))
+            (let* ((now (float-time))
+                   (trip (- now (or (plist-get app :requested-at) now)))
+                   (status (etaf-ncm--normalize-status data))
+                   (elapsed (or (plist-get status :elapsed) 0)))
+              (setf (plist-get app :status-in-flight) nil
+                    (plist-get app :polled-at) now
+                    (plist-get app :last-tick) now)
+              (etaf-ncm--apply-status
+               app (plist-put status :elapsed (+ elapsed trip)))))
    :on-error (lambda (_message _hint)
                (setf (plist-get app :status-in-flight) nil
                      (plist-get app :polled-at) (float-time)))))
@@ -688,9 +697,9 @@ on chips and pane tabs, while `wide' and an unknown LAYOUT subtract less chrome.
                      (window-body-height window)
                    (frame-height)))
          (chrome (pcase layout
-                   ('narrow 18)
-                   ('medium 16)
-                   (_ 12))))
+                   ('narrow 19)
+                   ('medium 17)
+                   (_ 13))))
     (max 4 (- height chrome))))
 
 (defun etaf-ncm--window-columns (&optional window)
