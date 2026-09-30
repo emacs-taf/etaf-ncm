@@ -51,6 +51,11 @@
     ;; scrolling the buffer out from under the layout.
     (define-key map (kbd "<wheel-up>") #'etaf-ncm--previous-item)
     (define-key map (kbd "<wheel-down>") #'etaf-ncm--next-item)
+    ;; Jumping around a long library: first, last and by whole pages.
+    (define-key map (kbd "<home>") #'etaf-ncm--first-item)
+    (define-key map (kbd "<end>") #'etaf-ncm--last-item)
+    (define-key map (kbd "<next>") #'etaf-ncm--next-page)
+    (define-key map (kbd "<prior>") #'etaf-ncm--previous-page)
     (define-key map (kbd "RET") #'etaf-ncm--activate)
     (define-key map (kbd "SPC") #'etaf-ncm--toggle-playback)
     (define-key map (kbd "n") #'etaf-ncm--next-track)
@@ -170,6 +175,34 @@ j/k move the library selection.")
   "Move the library selection up."
   (interactive)
   (etaf-ncm-move-selection (etaf-ncm--current-model) -1))
+
+(defun etaf-ncm--first-item ()
+  "Select the first row of the library."
+  (interactive)
+  (etaf-ncm-move-selection (etaf-ncm--current-model)
+                           (- (plist-get (etaf-ncm-state (etaf-ncm--current-model)) :selection))))
+
+(defun etaf-ncm--last-item ()
+  "Select the last row of the library."
+  (interactive)
+  (let* ((app (etaf-ncm--current-model))
+         (state (etaf-ncm-state app)))
+    (etaf-ncm-move-selection app (- (1- (or (plist-get state :rows-total) 1))
+                                    (plist-get state :selection)))))
+
+(defun etaf-ncm--next-page ()
+  "Select one page further down the library."
+  (interactive)
+  (let* ((app (etaf-ncm--current-model))
+         (state (etaf-ncm-state app)))
+    (etaf-ncm-move-selection app (or (plist-get state :page-size) 10))))
+
+(defun etaf-ncm--previous-page ()
+  "Select one page further up the library."
+  (interactive)
+  (let* ((app (etaf-ncm--current-model))
+         (state (etaf-ncm-state app)))
+    (etaf-ncm-move-selection app (- (or (plist-get state :page-size) 10)))))
 
 (defun etaf-ncm--activate ()
   "Play the selected library row."
