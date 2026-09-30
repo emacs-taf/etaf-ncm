@@ -120,6 +120,13 @@ whether a change to the player is affordable:
   as a benchmark: a selection write costs about 250 ms and a clock write about
   100 ms with a byte-compiled framework, independent of the viewport.
 
+`benchmarks/update-phases.el` splits one update into its phases.  Its reading is
+that the tree walks are cheap (about 5 ms for 5587 child enumerations) while
+`ebox-commit`'s own candidate work costs about 73 ms, the surface projection
+around the layout about 34 ms and the layout itself about 42 ms: the candidate
+rebuilds the tree per update instead of reusing the published one, and that is
+where the smoothness work starts.
+
 The cost is the whole tree being laid out again on every update, and it is
 where the remaining work sits: ETAF hands Ebox a complete tree per update and
 Ebox lays all of it out instead of reusing the subtrees that did not change.
