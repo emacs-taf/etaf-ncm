@@ -27,7 +27,7 @@
 ;;; Shared geometry
 ;;; ---------------------------------------------------------------------------
 
-(defconst etaf-ncm--sidebar-width '(ch 24)
+(defconst etaf-ncm--sidebar-width '(ch 26)
   "Width of the library sidebar.")
 
 (defconst etaf-ncm--rail-width '(ch 6)
@@ -87,19 +87,17 @@ over, one step above the panel it sits on."
   "Render one library entry with GLYPH, LABEL, BADGE and press callback."
   :view
   (flex :width 'stretch :height '(lh 1) :gap '((lh 0) (ch 1))
-        :align-items 'center :padding '((lh 0) (ch 1))
+        :align-items 'center :padding '((lh 0) (ch 2))
         :role 'button :tab-index 0
         :background-color (and active (etaf-ncm-color :accent-soft))
         :color (if active (etaf-ncm-color :ink) (etaf-ncm-color :muted))
         :font-weight (if active 'bold 'normal)
+        :border-left (and active
+                          (etaf-ncm--view-border 'left (etaf-ncm-color :accent)))
         :pointer (etaf-ncm--item-pointer)
         :help-echo (or label "音乐库")
         :hover-style (etaf-ncm--hover-surface)
         :on-press on-press
-    (box :width '(ch 1) :height '(lh 1)
-         :background-color (if active (etaf-ncm-color :accent)
-                              (etaf-ncm-color :panel))
-      (text " "))
     (box :width '(ch 2) :height '(lh 1) :text-align 'center
          :color (if active (etaf-ncm-color :accent) (etaf-ncm-color :dim))
       (text (expr (or glyph ""))))
@@ -205,7 +203,7 @@ COMPACT renders the glyph-only rail a medium layout has room for."
       ;; its own: smaller, dim, aligned with the entry glyphs below.
       (box :if (and (not compact) (not (eq group (car groups)))) :height '(lh 1))
       (box :if (and (not compact) (not (eq group (car groups)))) :height '(lh 1)
-           :padding '((lh 0) (ch 3)) :font-size 11 :color (etaf-ncm-color :dim)
+           :padding '((lh 0) (ch 2)) :color (etaf-ncm-color :dim)
         (text (expr (format "%s" (car group)))))
       (etaf-ncm--view-nav-item :for (entry (cdr group)) :key (car entry)
         :glyph (nth 2 entry)
@@ -490,7 +488,7 @@ padding-wide hit area of their own.  COMPACT stacks track, progress and
 controls into three lines, which is the shape a narrow frame can hold."
   :view
   (flex :flex-direction 'column :width 'stretch
-        :height (if compact '(lh 3) '(lh 3))
+        :height '(lh 3)
         :gap '((lh 0) (ch 2)) :padding '((lh 0) (ch 2))
         :background-color (etaf-ncm-color :panel)
         :border-top (etaf-ncm--view-border 'top (etaf-ncm-color :line))
@@ -515,7 +513,7 @@ controls into three lines, which is the shape a narrow frame can hold."
     ;; Progress line: elapsed, seekable meter, duration, then the transport keys.
     (flex :width 'stretch :height '(lh 2) :gap '((lh 0) (ch 1)) :align-items 'center
       (box :width '(ch 6) :height '(lh 1) :text-align 'right
-           :color (etaf-ncm-color :dim)
+           :color (etaf-ncm-color :dim) :flex-shrink 0
         (text (expr (etaf-ncm--format-seconds elapsed))))
       (box :flex-grow 1 :flex-basis '(px 0) :min-width '(ch 0) :height '(lh 2)
            :role 'button :tab-index 0 :padding '((lh 0) (ch 1))
@@ -525,43 +523,43 @@ controls into three lines, which is the shape a narrow frame can hold."
            :on-drag on-seek-drag
         (etaf-ncm--view-meter :ratio (etaf-ncm--view-ratio elapsed duration)))
       (box :width '(ch 6) :height '(lh 1) :color (etaf-ncm-color :dim)
+           :flex-shrink 0
         (text (expr (etaf-ncm--format-seconds duration))))
       (flex :gap '((lh 0) (ch 1)) :align-items 'center
         (box :height '(lh 2) :role 'button :tab-index 0 :padding '((lh 0) (ch 1))
-             :font-size 16 :color (etaf-ncm-color :muted)
+             :color (etaf-ncm-color :muted)
              :pointer (etaf-ncm--item-pointer) :hover-style (etaf-ncm--hover-surface)
              :help-echo "喜欢这首歌" :on-press on-like
           (text "♡"))
         (box :height '(lh 2) :role 'button :tab-index 0 :padding '((lh 0) (ch 1))
-             :font-size 17
              :color (if shuffle (etaf-ncm-color :accent) (etaf-ncm-color :muted))
              :pointer (etaf-ncm--item-pointer) :hover-style (etaf-ncm--hover-surface)
              :help-echo "随机播放" :on-press on-shuffle
           (text "⇄"))
         (box :height '(lh 2) :role 'button :tab-index 0 :padding '((lh 0) (ch 1))
-             :font-size 17
              :color (if repeat (etaf-ncm-color :accent) (etaf-ncm-color :muted))
              :pointer (etaf-ncm--item-pointer) :hover-style (etaf-ncm--hover-surface)
              :help-echo "单曲循环" :on-press on-repeat
           (text "↻")))
       (flex :gap '((lh 0) (ch 1)) :align-items 'center
         (box :height '(lh 2) :role 'button :tab-index 0 :padding '((lh 0) (ch 1))
-             :font-size 22 :color (etaf-ncm-color :ink)
+             :color (etaf-ncm-color :ink)
              :pointer (etaf-ncm--item-pointer) :hover-style (etaf-ncm--hover-surface)
              :help-echo "上一首" :on-press on-previous
           (text "⏮"))
         (box :height '(lh 2) :role 'button :tab-index 0 :padding '((lh 0) (ch 2))
-             :font-size 26 :font-weight 'bold :color (etaf-ncm-color :accent)
+             :font-weight 'bold :color (etaf-ncm-color :accent)
+             :background-color (etaf-ncm-color :accent-soft)
              :pointer (etaf-ncm--item-pointer) :hover-style (etaf-ncm--hover-surface)
              :help-echo "播放 / 暂停" :on-press on-toggle
           (text (expr (if (eq state 'playing) "⏸" "▶"))))
         (box :height '(lh 2) :role 'button :tab-index 0 :padding '((lh 0) (ch 1))
-             :font-size 22 :color (etaf-ncm-color :ink)
+             :color (etaf-ncm-color :ink)
              :pointer (etaf-ncm--item-pointer) :hover-style (etaf-ncm--hover-surface)
              :help-echo "下一首" :on-press on-next
           (text "⏭"))
         (box :height '(lh 2) :role 'button :tab-index 0 :padding '((lh 0) (ch 1))
-             :font-size 18 :color (etaf-ncm-color :muted)
+             :color (etaf-ncm-color :muted)
              :pointer (etaf-ncm--item-pointer) :hover-style (etaf-ncm--hover-surface)
              :help-echo "停止" :on-press on-stop
           (text "■"))))))

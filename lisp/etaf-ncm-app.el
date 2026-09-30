@@ -489,6 +489,14 @@ the backend.  A caller-provided MODEL keeps its library, queue and selection."
       (setq-local etaf-ncm--model model)
       (setq-local truncate-lines t)
       (setq-local mode-line-format nil)
+      ;; The player owns every column it paints.  A sub-cell rounding
+      ;; remainder must not surface as Emacs's truncation glyph, so keep the
+      ;; truncation slot blank instead of advertising a cut line.
+      (setq-local buffer-display-table
+                  (let ((table (copy-sequence (or standard-display-table
+                                                  (make-display-table)))))
+                    (set-display-table-slot table 'truncation ?\s)
+                    table))
       (use-local-map etaf-ncm-mode-map))
     ;; The layout, page size and viewport come from the window that will show
     ;; the player, so the first paint already fits it.  The player adapts to

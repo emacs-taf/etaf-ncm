@@ -762,7 +762,11 @@ on chips and pane tabs, while `wide' and an unknown LAYOUT subtract less chrome.
 A mount without them paints at Ebox's default size, which clips the player bar
 until the first resize."
   (when (and window (window-live-p window))
-    (list :viewport-width (window-body-width window 'pixel)
+    ;; Size to a whole number of character cells: a raw pixel body width can
+    ;; leave a sub-cell remainder that makes the last rendered column overflow
+    ;; the window and draw Emacs's line-truncation glyph.
+    (list :viewport-width (* (window-body-width window)
+                             (window-font-width window))
           :viewport-height (window-body-height window))))
 
 (defun etaf-ncm--layout-for (columns)
