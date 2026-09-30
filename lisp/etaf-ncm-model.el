@@ -121,7 +121,7 @@ complete headless player for tests and other Lisp callers."
           :section (etaf-ref :daily :name 'etaf-ncm-section)
           :title (etaf-ref "每日推荐" :name 'etaf-ncm-title)
           :subtitle (etaf-ref "根据你的口味生成，每天更新" :name 'etaf-ncm-subtitle)
-          :origin (etaf-ref '(:kind daily) :name 'etaf-ncm-origin)
+          :origin (etaf-ref '(:kind :daily) :name 'etaf-ncm-origin)
           :rows (etaf-ref nil :name 'etaf-ncm-rows)
           :selection (etaf-ref 0 :name 'etaf-ncm-selection)
           :window-start (etaf-ref 0 :name 'etaf-ncm-window-start)
@@ -535,7 +535,7 @@ the bar the pointer sits on."
 (defun etaf-ncm--target (app item)
   "Return the backend play target for ITEM inside APP."
   (cond
-   ((null item) (or (etaf-ncm--read app :origin) '(:kind daily)))
+   ((null item) (or (etaf-ncm--read app :origin) '(:kind :daily)))
    ((listp item)
     (let ((kind (plist-get item :kind))
           (id (plist-get item :id)))
