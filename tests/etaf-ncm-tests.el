@@ -341,6 +341,37 @@
     (should (equal seen '((:ok (:op t)) (:op :status))))
     (etaf-ncm-cancel (lambda (_request _callback) nil))))
 
+(ert-deftest etaf-ncm-tests-default-client-runs-the-skill-command ()
+  "The default client calls the skill script with the arguments of the request.
+A stub skill records the command line, so a request that translates into the
+wrong argument (a keyword instead of the song id, say) fails here instead of
+silently doing nothing against the real backend."
+  (let* ((directory (make-temp-file "etaf-ncm-skill" t))
+         (scripts (expand-file-name "scripts" directory))
+         (script (expand-file-name "netease-music.sh" scripts))
+         (log (expand-file-name "calls.log" directory))
+         reply)
+    (unwind-protect
+        (progn
+          (make-directory scripts t)
+          (with-temp-file script
+            (insert "#!/bin/sh\n"
+                    (format "printf '%%s\\n' \"$*\" >> %s\n" (shell-quote-argument log))
+                    "printf '{\"ok\": true, \"state\": \"playing\"}\\n'\n"))
+          (set-file-modes script #o755)
+          (let* ((client (etaf-ncm-make-client :skill-directory directory :timeout 10))
+                 (deadline (+ (float-time) 10)))
+            (etaf-ncm-client-call
+             client (list :op :play :target (list :kind :song :id 4242))
+             (lambda (result) (setq reply result)))
+            (while (and (null reply) (< (float-time) deadline))
+              (accept-process-output nil 0.05))
+            (should (eq (car-safe reply) :ok))
+            (should (with-temp-buffer
+                      (insert-file-contents log)
+                      (string-match-p "play 4242" (buffer-string))))))
+      (delete-directory directory t))))
+
 (ert-deftest etaf-ncm-tests-theme-tokens-cover-both-palettes ()
   "Colours resolve per palette, and the UI defaults follow the mode."
   (unwind-protect

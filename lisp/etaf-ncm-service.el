@@ -167,11 +167,13 @@ song stay visible.  TEXT may be nil."
   "Library resources served by `netease-api.mjs'.")
 
 (defconst etaf-ncm--play-commands
-  '((daily . "daily") (liked . "liked") (fm . "fm") (playlist . "playlist")
-    (album . "album") (artist . "artist") (chart . "chart")
-    (podcast . "podcast") (episode . "episode") (song . "play")
-    (query . "play"))
-  "Playback contexts accepted by `netease-music.sh'.")
+  '((:daily . "daily") (:liked . "liked") (:fm . "fm") (:playlist . "playlist")
+    (:album . "album") (:artist . "artist") (:chart . "chart")
+    (:podcast . "podcast") (:episode . "episode") (:song . "play")
+    (:query . "play"))
+  "Playback contexts accepted by `netease-music.sh'.
+Keys are the keyword kinds used by play targets, exactly as in
+`etaf-ncm--browse-resources'.")
 
 (defun etaf-ncm--client-request (client request callback)
   "Run REQUEST through the skill processes of CLIENT, then call CALLBACK."
@@ -274,11 +276,11 @@ the rest are the arguments.  Signal `etaf-ncm-error' for an unknown request."
        (unless command
          (signal 'etaf-ncm-error (list (format "Cannot play: %S" target))))
        (let ((argument (plist-get target :id)))
-         (when (memq kind '(song query playlist album artist chart podcast episode))
+         (when (memq kind '(:song :query :playlist :album :artist :chart :podcast :episode))
            (unless (and argument (not (string-empty-p (format "%s" argument))))
              (signal 'etaf-ncm-error (list (format "Cannot play: %S" target)))))
          (append (list command)
-                 (when (memq kind '(song query playlist album artist chart podcast episode))
+                 (when (memq kind '(:song :query :playlist :album :artist :chart :podcast :episode))
                    (list (etaf-ncm--id argument)))))))
     (:add
      (let ((id (plist-get request :id)))

@@ -114,6 +114,7 @@
       "name": "etaf-ncm-tests-open-and-close-own-a-buffer",
       "file": "tests/etaf-ncm-tests.el",
       "purpose": "Opening installs the player keymap and hides the mode line, and closing kills the buffer."
-    }
+},
+    {"name": "etaf-ncm-tests-default-client-runs-the-skill-command", "file": "tests/etaf-ncm-tests.el", "purpose": "The default client runs the skill script with the request translated into the right command line: a play request reaches the script as \"play <song id>\"."}
   ]
 }
