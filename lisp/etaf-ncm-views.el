@@ -526,10 +526,11 @@ controls into three lines, which is the shape a narrow frame can hold."
       (box :width '(ch 6) :height '(lh 1) :color (etaf-ncm-color :dim)
            :flex-shrink 0
         (text (expr (etaf-ncm--format-seconds duration)))))
-    ;; Transport line: one control cluster centred under the track line.
-    (flex :width 'stretch :height '(lh 1) :gap '((lh 0) (ch 1)) :align-items 'center
-      (box :flex-grow 1 :flex-basis '(px 0) :min-width '(ch 0) :height '(lh 1))
-      (flex :gap '((lh 0) (ch 1)) :align-items 'center
+    ;; Transport line: one control cluster centred under the track line.  The
+    ;; centring is the row's own justification: spacer boxes with `:flex-grow'
+    ;; stayed at their zero basis, which left the cluster along the left edge.
+    (flex :width 'stretch :height '(lh 1) :gap '((lh 0) (ch 1))
+          :justify-content 'center :align-items 'center
         (box :height '(lh 1) :role 'button :tab-index 0 :padding '((lh 0) (ch 1))
              :color (etaf-ncm-color :muted)
              :pointer (etaf-ncm--item-pointer) :hover-style (etaf-ncm--hover-surface)
@@ -565,8 +566,7 @@ controls into three lines, which is the shape a narrow frame can hold."
              :color (etaf-ncm-color :muted)
              :pointer (etaf-ncm--item-pointer) :hover-style (etaf-ncm--hover-surface)
              :help-echo "停止" :on-press on-stop
-          (text "■")))
-      (box :flex-grow 1 :flex-basis '(px 0) :min-width '(ch 0) :height '(lh 1)))))
+          (text "■")))))
 
 (provide 'etaf-ncm-views)
 ;;; etaf-ncm-views.el ends here
