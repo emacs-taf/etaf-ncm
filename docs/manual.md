@@ -48,8 +48,10 @@ is revived by its next mount.
 
 | Key | Action |
 | --- | --- |
-| `j` / `k`, `C-n` / `C-p`, `↓` / `↑` | Move the library selection, scrolling a page at the ends |
+| `j` / `k`, `C-n` / `C-p`, `↓` / `↑`, wheel | Move the library selection, scrolling a page at the ends |
+| click a row | Select it; click it again within half a second to play it |
 | `RET` | Play the selected row |
+| drag the progress bar | Seek to the position under the pointer |
 | `SPC` | Pause or resume |
 | `n` / `p` | Next / previous queue entry |
 | `a` | Append the selected song to the queue |

@@ -320,7 +320,7 @@ COMPACT stacks the search field under the title, the shape a narrow frame needs.
          :font-size 12
       (text (expr (if (eq pane 'aside)
                       (if (eq aside 'lyrics) "l 歌词/队列" "l 切换面板")
-                    "j/k 选择 · RET 播放"))))))
+                    "j/k 或滚轮选择 · 双击播放"))))))
 
 (etaf-define-component etaf-ncm--view-list
     (&key entries start total compact empty-note on-play)
@@ -345,7 +345,7 @@ COMPACT stacks the search field under the title, the shape a narrow frame needs.
                             (if entries (+ start (1- (length entries))) start)
                             total))))
       (box :if (not compact) :height '(lh 1)
-        (text "j/k 选择 · RET 播放 · a 加入队列 · / 搜索 · l 歌词 · ? 帮助")))))
+        (text "j/k 或滚轮选择 · 双击播放 · a 入队 · / 搜索 · l 歌词 · ? 帮助")))))
 
 ;;; ---------------------------------------------------------------------------
 ;;; Lyrics, queue and player
@@ -483,7 +483,7 @@ a compact one makes it the only visible pane so it fills the window."
     (&key title artist state elapsed duration volume shuffle repeat message
           queue-pos queue-count compact
           on-toggle on-next on-previous on-stop on-like on-volume on-seek
-          on-shuffle on-repeat)
+          on-seek-drag on-shuffle on-repeat)
   "Render the player bar for the current track and its controls.
 The transport keys are the bar's main controls, so they get a larger font and a
 padding-wide hit area of their own.  COMPACT stacks track, progress and
@@ -520,8 +520,9 @@ controls into three lines, which is the shape a narrow frame can hold."
       (box :flex-grow 1 :flex-basis '(px 0) :min-width '(ch 0) :height '(lh 2)
            :role 'button :tab-index 0 :padding '((lh 0) (ch 1))
            :pointer (etaf-ncm--item-pointer) :hover-style (etaf-ncm--hover-surface)
-           :help-echo "点击前进 15 秒"
+           :help-echo "拖动或点击改变进度"
            :on-press (lambda () (funcall on-seek 15))
+           :on-drag on-seek-drag
         (etaf-ncm--view-meter :ratio (etaf-ncm--view-ratio elapsed duration)))
       (box :width '(ch 6) :height '(lh 1) :color (etaf-ncm-color :dim)
         (text (expr (etaf-ncm--format-seconds duration))))

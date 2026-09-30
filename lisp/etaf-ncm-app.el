@@ -47,6 +47,10 @@
     (define-key map (kbd "C-p") #'etaf-ncm--previous-item)
     (define-key map (kbd "<down>") #'etaf-ncm--next-item)
     (define-key map (kbd "<up>") #'etaf-ncm--previous-item)
+    ;; The list is paginated, so a wheel notch moves the selection instead of
+    ;; scrolling the buffer out from under the layout.
+    (define-key map (kbd "<wheel-up>") #'etaf-ncm--previous-item)
+    (define-key map (kbd "<wheel-down>") #'etaf-ncm--next-item)
     (define-key map (kbd "RET") #'etaf-ncm--activate)
     (define-key map (kbd "SPC") #'etaf-ncm--toggle-playback)
     (define-key map (kbd "n") #'etaf-ncm--next-track)
@@ -291,7 +295,7 @@ In a wide layout, which shows both, this keeps the library list focused."
   "Show the player's key bindings."
   (interactive)
   (message
-   (concat "j/k 选择 · RET 播放 · SPC 暂停 · n/p 切歌 · a 加入队列 · s 搜索 · g 刷新"
+   (concat "j/k 或滚轮选择 · 单击选中 · 双击播放 · RET 播放 · SPC 暂停 · n/p 切歌 · a 加入队列 · s 搜索 · g 刷新"
            " · l 歌词/队列 · v 列表/面板 · 1-9 音乐库 · +/- 音量 · ,/. 快退快进"
            " · f/F 喜欢 · r 重复 · z 随机 · T 深浅色 · q 关闭")))
 
@@ -370,7 +374,7 @@ releases the polling timer and the session's pending backend requests."
          :empty-note (if (etaf-ncm--read session :loading)
                          "正在加载…"
                        "这里还没有内容：g 刷新，s 搜索")
-         :on-play (lambda (entry) (etaf-ncm-play session (plist-get entry :row)))))
+         :on-play (lambda (entry) (etaf-ncm--press-row session entry))))
       (etaf-ncm--view-aside
        :if (etaf-ncm--aside-shown-p session)
        :aside (etaf-ncm--read session :aside)
@@ -423,6 +427,7 @@ releases the polling timer and the session's pending backend requests."
                                           0)
                                       delta)))))
      :on-seek (lambda (seconds) (etaf-ncm-seek session seconds))
+     :on-seek-drag (lambda (gesture) (etaf-ncm--drag-seek session gesture))
      :on-shuffle (lambda ()
                    (etaf-ncm-set-shuffle
                     session

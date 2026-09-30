@@ -117,6 +117,7 @@ complete headless player for tests and other Lisp callers."
           :polled-at 0
           :last-tick (float-time)
           :timer nil
+          :last-press nil
           :section (etaf-ref :daily :name 'etaf-ncm-section)
           :title (etaf-ref "每日推荐" :name 'etaf-ncm-title)
           :subtitle (etaf-ref "根据你的口味生成，每天更新" :name 'etaf-ncm-subtitle)
@@ -482,6 +483,54 @@ A value outside that range signals `etaf-ncm-error'."
                            (etaf-ncm--note app message)
                            (etaf-ncm--request-status app)
                            (etaf-ncm--request-queue app))))
+
+(defconst etaf-ncm--double-press-window 0.45
+  "Seconds within which a second press on the same row plays it.
+A single press selects the row, exactly as the desktop client does; a second
+press on the same row starts playback.")
+
+(defun etaf-ncm--press-row (app entry)
+  "Select the row of ENTRY in APP, or play it when it was pressed twice.
+ENTRY is a list entry as `etaf-ncm--view-entries' builds it."
+  (let* ((row (plist-get entry :row))
+         (id (plist-get row :id))
+         (now (float-time))
+         (last (plist-get app :last-press))
+         (selection (etaf-ncm--read app :selection))
+         (delta (- (1- (or (plist-get entry :index) 1)) selection)))
+    (unless (zerop delta)
+      (etaf-ncm-move-selection app delta))
+    (if (and last (equal (car last) id)
+             (< (- now (cdr last)) etaf-ncm--double-press-window))
+        (progn
+          (setf (plist-get app :last-press) nil)
+          (etaf-ncm-play app row))
+      (setf (plist-get app :last-press) (cons id now))
+      (etaf-ncm--write app :message
+                       (format "已选中：%s（再点一次播放）"
+                               (or (plist-get row :name) "这一行"))))))
+
+(defun etaf-ncm--drag-seek (app gesture)
+  "Seek APP to the position a drag GESTURE points at on the progress bar.
+Ebox reports the gesture with the mouse event, so the target is the fraction of
+the bar the pointer sits on."
+  (when (eq (plist-get gesture :phase) 'end)
+    (let* ((event (plist-get gesture :event))
+           (position (and event (posn-point (event-end event))))
+           (buffer (plist-get app :buffer))
+           (host (plist-get gesture :host-ref))
+           (bounds (and buffer host (ebox-host-ref-bounds buffer host)))
+           (status (etaf-ncm--read app :status))
+           (duration (or (plist-get status :duration) 0))
+           (elapsed (or (etaf-ncm--read app :clock) 0)))
+      (when (and position bounds (consp bounds)
+                 (numberp (car bounds)) (numberp (cdr bounds))
+                 (> (cdr bounds) (car bounds)) (> duration 0))
+        (let* ((ratio (/ (float (- position (car bounds)))
+                         (- (cdr bounds) (car bounds))))
+               (target (max 0 (min duration (* ratio duration)))))
+          (etaf-ncm--write app :clock target)
+          (etaf-ncm-seek app (round (- target elapsed))))))))
 
 (defun etaf-ncm--target (app item)
   "Return the backend play target for ITEM inside APP."
