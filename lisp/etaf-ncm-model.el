@@ -126,7 +126,10 @@ complete headless player for tests and other Lisp callers."
           :selection (etaf-ref 0 :name 'etaf-ncm-selection)
           :window-start (etaf-ref 0 :name 'etaf-ncm-window-start)
           :status (etaf-ref nil :name 'etaf-ncm-status)
-          :clock (etaf-ref 0 :name 'etaf-ncm-clock)
+          ;; The displayed position is not reactive: a playing second changes it
+          ;; and is shown through the player bar's retained Hosts, so a write
+          ;; here would republish the whole view once per second.
+          :clock 0
           :queue (etaf-ref nil :name 'etaf-ncm-queue)
           :lyric (etaf-ref nil :name 'etaf-ncm-lyric)
           :aside (etaf-ref 'lyrics :name 'etaf-ncm-aside)
@@ -163,6 +166,102 @@ view for nothing."
 (defun etaf-ncm--update (model key function &rest arguments)
   "Publish (FUNCTION OLD-READING ARGUMENTS ...) as MODEL's value for KEY."
   (apply #'etaf-update-value (etaf-ncm--ref model key) function arguments))
+
+(defconst etaf-ncm--clock-host 'ncm-elapsed
+  "Retained Host that shows the played position on the player bar.")
+
+(defconst etaf-ncm--meter-host 'ncm-meter
+  "Retained Host that fills the player bar's progress meter.")
+
+(defconst etaf-ncm--reply-volatile-keys '(:elapsed :as-of)
+  "Status fields that move with every backend reply, not with the track.")
+
+(defun etaf-ncm--clock (app)
+  "Return APP's displayed playback position in seconds."
+  (or (plist-get app :clock) 0))
+
+(defun etaf-ncm--set-clock (app seconds)
+  "Store SECONDS as APP's displayed position without publishing.
+Display goes through `etaf-ncm--publish-clock'."
+  (setf (plist-get app :clock) seconds))
+
+(defun etaf-ncm--ratio (value total)
+  "Return VALUE/TOTAL clamped to a nonzero fraction."
+  (let ((total (if (and (numberp total) (> total 0)) total 1)))
+    (max 0.001 (min 1.0 (/ (float (or value 0)) total)))))
+
+(defun etaf-ncm--runtime (app)
+  "Return APP's mounted runtime, or nil when nothing displays APP."
+  (let ((buffer (plist-get app :buffer)))
+    (and (buffer-live-p buffer) (etaf-runtime-for-buffer buffer))))
+
+(defun etaf-ncm--meter-percent (app seconds)
+  "Return the progress meter fill for SECONDS in APP, as a percentage."
+  (let ((duration (or (plist-get (etaf-ncm--read app :status) :duration) 0)))
+    (* 100.0 (etaf-ncm--ratio seconds duration))))
+
+(defun etaf-ncm--clock-line (app)
+  "Return the lyric line index APP shows for its displayed position, or nil."
+  (let* ((lyric (etaf-ncm--read app :lyric))
+         (lines (plist-get lyric :lines)))
+    (and lines (etaf-ncm--lyric-index lines (etaf-ncm--clock app)))))
+
+(defun etaf-ncm--update-clock-hosts (app seconds)
+  "Replace APP's retained clock label and meter with SECONDS.
+Both replacements commit as one Ebox publication: a playing second then costs
+one retained update instead of a whole-view render plus a second update.
+Return non-nil when the update committed, and nil when the session has no
+mounted view or Ebox declined the update, so the caller republishes instead."
+  (let ((runtime (etaf-ncm--runtime app)))
+    (when runtime
+      (condition-case nil
+          (progn
+            (ebox-call-with-update-batch
+             (lambda ()
+               (etaf-runtime-update-host-content
+                runtime etaf-ncm--clock-host (etaf-ncm--format-seconds seconds))
+               (etaf-runtime-update-host-geometry
+                runtime etaf-ncm--meter-host
+                :width (list '% (etaf-ncm--meter-percent app seconds))))
+             (etaf-runtime-buffer runtime))
+            t)
+        (error nil)))))
+
+(defun etaf-ncm--republish-clock (app seconds)
+  "Publish APP's whole view with SECONDS as the displayed position.
+Writing the status is what republishes: the view renders the playback facts
+and the position together, so the bar, the lyric panel and every reader of
+`:status' agree again."
+  (etaf-ncm--write app :status
+                   (plist-put (copy-sequence (or (etaf-ncm--read app :status) (list)))
+                              :elapsed seconds)))
+
+(defun etaf-ncm--publish-clock (app seconds)
+  "Show SECONDS as APP's displayed playback position.
+A playing second changes only the position, so the elapsed label and the
+progress meter are replaced through their retained Hosts and the view is left
+for the moments that really change it: a new lyric line, a seek, or a reply
+that carries more than a new position."
+  (let ((line (etaf-ncm--clock-line app)))
+    (etaf-ncm--set-clock app seconds)
+    (if (or (not (eql line (etaf-ncm--clock-line app)))
+            (not (etaf-ncm--update-clock-hosts app seconds)))
+        (etaf-ncm--republish-clock app seconds))))
+
+(defun etaf-ncm--status-steady-p (previous status)
+  "Return non-nil when STATUS only moves PREVIOUS's volatile fields.
+A steady reply reports a new position and measurement time for the same track,
+so the player bar updates in place instead of republishing the whole view."
+  (and previous
+       (equal (etaf-ncm--status-steady previous)
+              (etaf-ncm--status-steady status))))
+
+(defun etaf-ncm--status-steady (status)
+  "Return STATUS without the fields that move with every backend reply."
+  (let ((copy (copy-sequence status)))
+    (dolist (key etaf-ncm--reply-volatile-keys)
+      (setq copy (plist-put copy key nil)))
+    copy))
 
 (defun etaf-ncm--client (model)
   "Return MODEL's backend client."
@@ -522,14 +621,15 @@ the bar the pointer sits on."
            (bounds (and buffer host (ebox-host-ref-bounds buffer host)))
            (status (etaf-ncm--read app :status))
            (duration (or (plist-get status :duration) 0))
-           (elapsed (or (etaf-ncm--read app :clock) 0)))
+           (elapsed (etaf-ncm--clock app)))
       (when (and position bounds (consp bounds)
                  (numberp (car bounds)) (numberp (cdr bounds))
                  (> (cdr bounds) (car bounds)) (> duration 0))
         (let* ((ratio (/ (float (- position (car bounds)))
                          (- (cdr bounds) (car bounds))))
                (target (max 0 (min duration (* ratio duration)))))
-          (etaf-ncm--write app :clock target)
+          (etaf-ncm--set-clock app target)
+          (etaf-ncm--republish-clock app target)
           (etaf-ncm-seek app (round (- target elapsed))))))))
 
 (defun etaf-ncm--target (app item)
@@ -624,16 +724,17 @@ the progress bar run one backend latency behind the song."
 
 (defun etaf-ncm--apply-status (app status)
   "Publish STATUS and fetch the lyric when the song changed.
-The elapsed position goes to `:clock', which changes every tick; the rest stays
-in `:status', so a playing second repaints the player bar instead of every view
-that reads the playback facts."
+A reply that only moves the position is displayed through
+`etaf-ncm--publish-clock', so a playing second does not republish the view; a
+reply that carries new playback facts publishes `:status'."
   (let* ((previous (etaf-ncm--read app :status))
          (song-id (plist-get status :song-id))
-         (lyric (etaf-ncm--read app :lyric)))
-    (etaf-ncm--write app :clock (or (plist-get status :elapsed) 0))
-    (etaf-ncm--write app :status
-                     (plist-put (copy-sequence status) :elapsed
-                                (or (plist-get (etaf-ncm--read app :status) :elapsed) 0)))
+         (lyric (etaf-ncm--read app :lyric))
+         (elapsed (or (plist-get status :elapsed) 0)))
+    (if (etaf-ncm--status-steady-p previous status)
+        (etaf-ncm--publish-clock app elapsed)
+      (etaf-ncm--set-clock app elapsed)
+      (etaf-ncm--write app :status status))
     (when (and song-id (not (equal song-id (plist-get lyric :id))))
       (etaf-ncm--request-lyric app song-id))
     (when (and previous (plist-get previous :song-id)
@@ -700,10 +801,10 @@ second for the same second."
       (setf (plist-get app :last-tick) now)
       (when (and (etaf-ncm--playing-p app)
                  (not (etaf-ncm--poll-due-p app now)))
-        (let* ((elapsed (+ (or (etaf-ncm--read app :clock) 0) (- now last)))
+        (let* ((elapsed (+ (etaf-ncm--clock app) (- now last)))
                (duration (or (plist-get (etaf-ncm--read app :status) :duration) 0)))
-          (etaf-ncm--write app :clock
-                           (if (> duration 0) (min elapsed duration) elapsed))))
+          (etaf-ncm--publish-clock
+           app (if (> duration 0) (min elapsed duration) elapsed))))
       (when (etaf-ncm--poll-due-p app now)
         (etaf-ncm--request-status app)))))
 
@@ -922,10 +1023,10 @@ rows), `:visible' (the rows on the current page), `:selection', `:window-start',
   (let* ((rows (etaf-ncm--read app :rows))
          (page (etaf-ncm--page-rows app))
          (status (plist-put (copy-sequence (or (etaf-ncm--read app :status) nil))
-                            :elapsed (etaf-ncm--read app :clock)))
+                            :elapsed (etaf-ncm--clock app)))
          (lyric (etaf-ncm--read app :lyric))
          (lines (plist-get lyric :lines))
-         (index (and lines (etaf-ncm--lyric-index lines (or (etaf-ncm--read app :clock) 0)))))
+         (index (and lines (etaf-ncm--lyric-index lines (etaf-ncm--clock app)))))
     (list :section (etaf-ncm--read app :section)
           :title (etaf-ncm--read app :title)
           :subtitle (etaf-ncm--read app :subtitle)

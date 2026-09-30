@@ -116,14 +116,14 @@ j/k move the library selection.")
   (let ((status (or (etaf-ncm--read model :status)
                     (list :state 'idle :duration 0 :volume 0
                           :queue-pos 0 :queue-count 0 :shuffle nil :repeat nil))))
-    (plist-put (copy-sequence status) :elapsed (or (etaf-ncm--read model :clock) 0))))
+    (plist-put (copy-sequence status) :elapsed (etaf-ncm--clock model))))
 
 (defun etaf-ncm--lyric-panel (model)
   "Return MODEL's lyric window as props for the lyrics View."
   (let* ((lyric (etaf-ncm--read model :lyric))
          (lines (plist-get lyric :lines))
          (trans (plist-get lyric :trans))
-         (elapsed (or (etaf-ncm--read model :clock) 0))
+         (elapsed (etaf-ncm--clock model))
          (index (and lines (etaf-ncm--lyric-index lines elapsed)))
          (window (and lines
                       (etaf-ncm--lyric-window lines index etaf-ncm--lyric-window-size)))
