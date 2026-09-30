@@ -98,13 +98,13 @@ over, one step above the panel it sits on."
         :help-echo (or label "音乐库")
         :hover-style (etaf-ncm--hover-surface)
         :on-press on-press
-    (box :width '(ch 3) :height '(lh 2) :text-align 'center :font-size 18
-         :color (if active (etaf-ncm-color :accent) (etaf-ncm-color :dim))
+    (box :width '(ch 3) :height '(lh 1) :text-align 'center
+         :color (if active (etaf-ncm-color :accent) (etaf-ncm-color :muted))
       (text (expr (or glyph ""))))
-    (box :flex-grow 1 :flex-basis '(px 0) :min-width '(ch 0) :height '(lh 2)
+    (box :flex-grow 1 :flex-basis '(px 0) :min-width '(ch 0) :height '(lh 1)
          :overflow 'hidden :font-weight (if active 'bold 'normal)
       (text (expr (or label ""))))
-    (box :if badge :width '(ch 5) :height '(lh 2) :text-align 'right
+    (box :if badge :width '(ch 5) :height '(lh 1) :text-align 'right
          :font-weight 'normal :color (etaf-ncm-color :dim)
       (text (expr badge)))))
 
@@ -511,12 +511,12 @@ controls into three lines, which is the shape a narrow frame can hold."
            :color (etaf-ncm-color :dim) :font-size 12 :overflow 'hidden
         (text (expr (format "%s/%s · 音量 %s" (or queue-pos 0) (or queue-count 0)
                             (or volume 0))))))
-    ;; Progress line: elapsed, seekable meter, duration, then the transport keys.
-    (flex :width 'stretch :height '(lh 2) :gap '((lh 0) (ch 1)) :align-items 'center
+    ;; Progress line: elapsed, seekable meter and duration.
+    (flex :width 'stretch :height '(lh 1) :gap '((lh 0) (ch 1)) :align-items 'center
       (box :width '(ch 6) :height '(lh 1) :text-align 'right
            :color (etaf-ncm-color :dim) :flex-shrink 0
         (text (expr (etaf-ncm--format-seconds elapsed))))
-      (box :flex-grow 1 :flex-basis '(px 0) :min-width '(ch 0) :height '(lh 2)
+      (box :flex-grow 1 :flex-basis '(px 0) :min-width '(ch 0) :height '(lh 1)
            :role 'button :tab-index 0 :padding '((lh 0) (ch 1))
            :pointer (etaf-ncm--item-pointer) :hover-style (etaf-ncm--hover-surface)
            :help-echo "拖动或点击改变进度"
@@ -525,45 +525,48 @@ controls into three lines, which is the shape a narrow frame can hold."
         (etaf-ncm--view-meter :ratio (etaf-ncm--view-ratio elapsed duration)))
       (box :width '(ch 6) :height '(lh 1) :color (etaf-ncm-color :dim)
            :flex-shrink 0
-        (text (expr (etaf-ncm--format-seconds duration))))
+        (text (expr (etaf-ncm--format-seconds duration)))))
+    ;; Transport line: one control cluster centred under the track line.
+    (flex :width 'stretch :height '(lh 1) :gap '((lh 0) (ch 1)) :align-items 'center
+      (box :flex-grow 1 :flex-basis '(px 0) :min-width '(ch 0) :height '(lh 1))
       (flex :gap '((lh 0) (ch 1)) :align-items 'center
-        (box :height '(lh 2) :role 'button :tab-index 0 :padding '((lh 0) (ch 1))
+        (box :height '(lh 1) :role 'button :tab-index 0 :padding '((lh 0) (ch 1))
              :color (etaf-ncm-color :muted)
              :pointer (etaf-ncm--item-pointer) :hover-style (etaf-ncm--hover-surface)
              :help-echo "喜欢这首歌" :on-press on-like
           (text "♡"))
-        (box :height '(lh 2) :role 'button :tab-index 0 :padding '((lh 0) (ch 1))
+        (box :height '(lh 1) :role 'button :tab-index 0 :padding '((lh 0) (ch 1))
              :color (if shuffle (etaf-ncm-color :accent) (etaf-ncm-color :muted))
              :pointer (etaf-ncm--item-pointer) :hover-style (etaf-ncm--hover-surface)
              :help-echo "随机播放" :on-press on-shuffle
           (text "⇄"))
-        (box :height '(lh 2) :role 'button :tab-index 0 :padding '((lh 0) (ch 1))
+        (box :height '(lh 1) :role 'button :tab-index 0 :padding '((lh 0) (ch 1))
              :color (if repeat (etaf-ncm-color :accent) (etaf-ncm-color :muted))
              :pointer (etaf-ncm--item-pointer) :hover-style (etaf-ncm--hover-surface)
              :help-echo "单曲循环" :on-press on-repeat
-          (text "↻")))
-      (flex :gap '((lh 0) (ch 1)) :align-items 'center
-        (box :height '(lh 2) :role 'button :tab-index 0 :padding '((lh 0) (ch 1))
+          (text "↻"))
+        (box :height '(lh 1) :role 'button :tab-index 0 :padding '((lh 0) (ch 1))
              :color (etaf-ncm-color :ink)
              :pointer (etaf-ncm--item-pointer) :hover-style (etaf-ncm--hover-surface)
              :help-echo "上一首" :on-press on-previous
           (text "⏮︎"))
-        (box :height '(lh 2) :role 'button :tab-index 0 :padding '((lh 0) (ch 2))
+        (box :height '(lh 1) :role 'button :tab-index 0 :padding '((lh 0) (ch 2))
              :font-weight 'bold :color (etaf-ncm-color :accent)
              :background-color (etaf-ncm-color :accent-soft)
              :pointer (etaf-ncm--item-pointer) :hover-style (etaf-ncm--hover-surface)
              :help-echo "播放 / 暂停" :on-press on-toggle
           (text (expr (if (eq state 'playing) "⏸︎" "▶︎"))))
-        (box :height '(lh 2) :role 'button :tab-index 0 :padding '((lh 0) (ch 1))
+        (box :height '(lh 1) :role 'button :tab-index 0 :padding '((lh 0) (ch 1))
              :color (etaf-ncm-color :ink)
              :pointer (etaf-ncm--item-pointer) :hover-style (etaf-ncm--hover-surface)
              :help-echo "下一首" :on-press on-next
           (text "⏭︎"))
-        (box :height '(lh 2) :role 'button :tab-index 0 :padding '((lh 0) (ch 1))
+        (box :height '(lh 1) :role 'button :tab-index 0 :padding '((lh 0) (ch 1))
              :color (etaf-ncm-color :muted)
              :pointer (etaf-ncm--item-pointer) :hover-style (etaf-ncm--hover-surface)
              :help-echo "停止" :on-press on-stop
-          (text "■"))))))
+          (text "■")))
+      (box :flex-grow 1 :flex-basis '(px 0) :min-width '(ch 0) :height '(lh 1)))))
 
 (provide 'etaf-ncm-views)
 ;;; etaf-ncm-views.el ends here
