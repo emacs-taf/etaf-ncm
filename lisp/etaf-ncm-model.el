@@ -111,6 +111,7 @@ complete headless player for tests and other Lisp callers."
                       (etaf-ncm-make-client)))))
     (list :client client
           :buffer nil
+          :mounted-width nil
           :page-size (etaf-ref etaf-ncm-page-size :name 'etaf-ncm-page-size)
           :disposed nil
           :status-in-flight nil
@@ -865,6 +866,28 @@ one publication costs, so apply once the drag settles instead of per event.")
           (run-at-time etaf-ncm--resize-settle-delay nil
                        #'etaf-ncm--window-size-change-apply))))
 
+(defun etaf-ncm--settle-canvas (app window)
+  "Repaint APP's canvas at WINDOW's settled size.
+A player mounted before the window manager finished resizing its frame keeps the
+canvas it painted at mount: Ebox records the window's width in its render state
+while the painted rows still belong to the old viewport, so its own resize path
+sees nothing to do.  Repainting once at a neighbouring width and once at the
+real width replaces that stale canvas.  A session without a mounted view, or a
+rejected repaint, is left alone."
+  (let* ((buffer (plist-get app :buffer))
+         (runtime (and (buffer-live-p buffer) (etaf-runtime-for-buffer buffer)))
+         (live (and window (window-live-p window)))
+         (width (and live (* (window-body-width window) (window-font-width window))))
+         (height (and live (window-body-height window)))
+         (mounted (plist-get app :mounted-width)))
+    (when (and runtime width height mounted (> width mounted))
+      (condition-case nil
+          (progn
+            (ebox-rerender-buffer-with-context buffer (max 1 (1- width)) height)
+            (ebox-rerender-buffer-with-context buffer width height)
+            (setf (plist-get app :mounted-width) width))
+        (error nil)))))
+
 (defun etaf-ncm--window-size-change-apply ()
   "Adapt every mounted player to its window's settled size."
   (setq etaf-ncm--resize-timer nil)
@@ -876,9 +899,14 @@ one publication costs, so apply once the drag settles instead of per event.")
           (let ((buffer (window-buffer window)))
             (when (and (buffer-live-p buffer)
                        (buffer-local-value 'etaf-ncm--model buffer))
-              (etaf-ncm--sync-layout
-               (buffer-local-value 'etaf-ncm--model buffer)
-               window))))))))
+              (let* ((model (buffer-local-value 'etaf-ncm--model buffer))
+                     (layout (etaf-ncm--read model :layout))
+                     (settled (etaf-ncm--sync-layout model window)))
+                ;; A window that grew across a layout boundary is the case a
+                ;; mount that preceded the frame resize leaves painted at the
+                ;; old canvas; a smaller change keeps the ordinary path.
+                (unless (eq layout settled)
+                  (etaf-ncm--settle-canvas model window))))))))))
 
 (defun etaf-ncm--compact-layout-p (app)
   "Return non-nil when APP shows one pane at a time."
