@@ -839,17 +839,28 @@ second for the same second."
 ;;; Keyboard navigation and panels
 ;;; ---------------------------------------------------------------------------
 
+(defconst etaf-ncm--reserved-lines 1
+  "Lines the page size leaves to the view's own bottom padding.
+Rows that show symbol glyphs render a little taller than the frame's line
+height, because their fallback font has larger metrics than the layout's
+`(lh N)' boxes assume.  The view keeps its last line clear for those pixels
+(see the root flex's `:padding-bottom'), so the page size must leave that line
+out of its row budget; without either half the player bar's control row is
+clipped at the bottom of the window.")
+
 (defun etaf-ncm--page-size-for (window &optional layout)
   "Return the library row count that fits WINDOW's height in LAYOUT.
 LAYOUT is the layout the rows are rendered in: `narrow' and `medium' spend lines
-on chips and pane tabs, while `wide' and an unknown LAYOUT subtract less chrome."
+on chips and pane tabs, while `wide' and an unknown LAYOUT subtract less chrome.
+One extra line stays clear; see `etaf-ncm--reserved-lines'."
   (let* ((height (if (and window (window-live-p window))
                      (window-body-height window)
                    (frame-height)))
-         (chrome (pcase layout
-                   ('narrow 19)
-                   ('medium 17)
-                   (_ 13))))
+         (chrome (+ etaf-ncm--reserved-lines
+                    (pcase layout
+                      ('narrow 19)
+                      ('medium 17)
+                      (_ 13)))))
     (max 4 (- height chrome))))
 
 (defun etaf-ncm--window-columns (&optional window)

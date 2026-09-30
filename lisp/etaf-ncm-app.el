@@ -357,6 +357,12 @@ releases the polling timer and the session's pending backend requests."
        (etaf-ncm--dispose session))))
   :view
   (flex :flex-direction 'column :width '(vw 100) :height '(vh 100)
+        ;; Rows that show symbol glyphs (the state dot, the transport icons, the
+        ;; sidebar glyphs) render a little taller than the frame's line height
+        ;; because their fallback font has larger metrics.  Keep the last line
+        ;; clear so those extra pixels land in empty space instead of below the
+        ;; window, which clipped the player bar's control row.
+        :padding-bottom '(lh 1)
         :color (etaf-ncm-color :ink) :bgcolor (etaf-ncm-color :bg)
     (flex :width 'stretch :flex-grow 1 :min-height '(lh 0)
           :align-items 'stretch
