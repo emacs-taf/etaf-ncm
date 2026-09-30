@@ -131,7 +131,7 @@ COMPACT drops the album column, which a narrow frame cannot show."
          :color (cond (playing (etaf-ncm-color :accent))
                       (selected (etaf-ncm-color :muted))
                       (t (etaf-ncm-color :dim)))
-      (text (expr (if playing "▶" (format "%2s" index)))))
+      (text (expr (if playing "▶︎" (format "%2s" index)))))
     (box :height '(lh 1) :overflow 'hidden
       (text (expr (or (plist-get row :name) ""))))
     (box :height '(lh 1) :overflow 'hidden :font-weight 'normal
@@ -268,7 +268,7 @@ COMPACT stacks the search field under the title, the shape a narrow frame needs.
         (etaf-text-input :value query :label "搜索"
                          :placeholder "搜索歌曲、歌手、歌单或专辑"
                          :hide-label t :on-change on-search))
-      (etaf-button :label "▶ 播放全部" :variant 'primary :pointer 'hand
+      (etaf-button :label "▶︎ 播放全部" :variant 'primary :pointer 'hand
                    :help-echo "播放整个列表" :on-press on-play-all))
     (flex :if (not compact) :width 'stretch :height '(lh 2)
           :gap '((lh 0) (ch 1)) :align-items 'center
@@ -281,7 +281,7 @@ COMPACT stacks the search field under the title, the shape a narrow frame needs.
         (etaf-text-input :value query :label "搜索"
                          :placeholder "搜索歌曲、歌手、歌单或专辑"
                          :hide-label t :on-change on-search))
-      (etaf-button :label "▶ 播放全部" :variant 'primary :pointer 'hand
+      (etaf-button :label "▶︎ 播放全部" :variant 'primary :pointer 'hand
                    :help-echo "播放整个列表" :on-press on-play-all)
       (etaf-button :label (if loading "… 加载中" "↻ 换一批") :variant 'ghost
                    :on-press on-refresh))))
@@ -316,7 +316,7 @@ COMPACT stacks the search field under the title, the shape a narrow frame needs.
         (text (expr (nth 1 tab)))))
     (box :flex-grow 1 :flex-basis '(px 0) :min-width '(ch 0)
          :height '(lh 1) :text-align 'right :color (etaf-ncm-color :dim)
-         :font-size 12
+         :font-size 12 :overflow 'hidden
       (text (expr (if (eq pane 'aside)
                       (if (eq aside 'lyrics) "l 歌词/队列" "l 切换面板")
                     "j/k 或滚轮选择 · 双击播放"))))))
@@ -343,7 +343,7 @@ COMPACT stacks the search field under the title, the shape a narrow frame needs.
                             start
                             (if entries (+ start (1- (length entries))) start)
                             total))))
-      (box :if (not compact) :height '(lh 1)
+      (box :if (not compact) :height '(lh 1) :overflow 'hidden
         (text "j/k 或滚轮选择 · 双击播放 · a 入队 · / 搜索 · l 歌词 · ? 帮助")))))
 
 ;;; ---------------------------------------------------------------------------
@@ -448,7 +448,7 @@ Each entry is (:index :name :right :current) from the player model."
       :on-press (lambda () (funcall on-jump (plist-get entry :index)))
       (box :width '(ch 3) :height '(lh 1) :color (etaf-ncm-color :dim)
         (text (expr (if (plist-get entry :current)
-                        "▶"
+                        "▶︎"
                       (format "%s." (plist-get entry :index))))))
       (box :flex-grow 1 :flex-basis '(px 0) :min-width '(ch 0) :height '(lh 1)
            :overflow 'hidden
@@ -547,18 +547,18 @@ controls into three lines, which is the shape a narrow frame can hold."
              :color (etaf-ncm-color :ink)
              :pointer (etaf-ncm--item-pointer) :hover-style (etaf-ncm--hover-surface)
              :help-echo "上一首" :on-press on-previous
-          (text "⏮"))
+          (text "⏮︎"))
         (box :height '(lh 2) :role 'button :tab-index 0 :padding '((lh 0) (ch 2))
              :font-weight 'bold :color (etaf-ncm-color :accent)
              :background-color (etaf-ncm-color :accent-soft)
              :pointer (etaf-ncm--item-pointer) :hover-style (etaf-ncm--hover-surface)
              :help-echo "播放 / 暂停" :on-press on-toggle
-          (text (expr (if (eq state 'playing) "⏸" "▶"))))
+          (text (expr (if (eq state 'playing) "⏸︎" "▶︎"))))
         (box :height '(lh 2) :role 'button :tab-index 0 :padding '((lh 0) (ch 1))
              :color (etaf-ncm-color :ink)
              :pointer (etaf-ncm--item-pointer) :hover-style (etaf-ncm--hover-surface)
              :help-echo "下一首" :on-press on-next
-          (text "⏭"))
+          (text "⏭︎"))
         (box :height '(lh 2) :role 'button :tab-index 0 :padding '((lh 0) (ch 1))
              :color (etaf-ncm-color :muted)
              :pointer (etaf-ncm--item-pointer) :hover-style (etaf-ncm--hover-surface)
