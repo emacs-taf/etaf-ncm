@@ -27,7 +27,7 @@
 ;;; Shared geometry
 ;;; ---------------------------------------------------------------------------
 
-(defconst etaf-ncm--sidebar-width '(ch 26)
+(defconst etaf-ncm--sidebar-width '(ch 24)
   "Width of the library sidebar.")
 
 (defconst etaf-ncm--rail-width '(ch 6)
@@ -86,7 +86,7 @@ over, one step above the panel it sits on."
 (etaf-define-component etaf-ncm--view-nav-item (&key glyph label active badge on-press)
   "Render one library entry with GLYPH, LABEL, BADGE and press callback."
   :view
-  (flex :width 'stretch :height '(lh 1) :gap '((lh 0) (ch 1))
+  (flex :width 'stretch :height '(lh 2) :gap '((lh 0) (ch 1))
         :align-items 'center :padding '((lh 0) (ch 2))
         :role 'button :tab-index 0
         :background-color (and active (etaf-ncm-color :accent-soft))
@@ -98,13 +98,13 @@ over, one step above the panel it sits on."
         :help-echo (or label "音乐库")
         :hover-style (etaf-ncm--hover-surface)
         :on-press on-press
-    (box :width '(ch 2) :height '(lh 1) :text-align 'center
+    (box :width '(ch 3) :height '(lh 2) :text-align 'center :font-size 18
          :color (if active (etaf-ncm-color :accent) (etaf-ncm-color :dim))
       (text (expr (or glyph ""))))
-    (box :flex-grow 1 :flex-basis '(px 0) :min-width '(ch 0) :height '(lh 1)
+    (box :flex-grow 1 :flex-basis '(px 0) :min-width '(ch 0) :height '(lh 2)
          :overflow 'hidden :font-weight (if active 'bold 'normal)
       (text (expr (or label ""))))
-    (box :if badge :width '(ch 5) :height '(lh 1) :text-align 'right
+    (box :if badge :width '(ch 5) :height '(lh 2) :text-align 'right
          :font-weight 'normal :color (etaf-ncm-color :dim)
       (text (expr badge)))))
 
@@ -160,7 +160,7 @@ COMPACT drops the album column, which a narrow frame cannot show."
   (column :width size :height '(lh 7) :bgcolor (etaf-ncm-color :panel3)
           :item-gap '(lh 0) :cross-align 'center
     (box :height '(lh 2))
-    (box :height '(lh 2) :text-align 'center :font-size 30
+    (box :height '(lh 2) :text-align 'center :font-weight 'bold
          :color (etaf-ncm-color :accent)
       (text (expr (or glyph "♪"))))
     (box :height '(lh 3))))
@@ -186,11 +186,12 @@ COMPACT drops the album column, which a narrow frame cannot show."
   "Render the library sidebar from GROUPS with SECTION highlighted.
 COMPACT renders the glyph-only rail a medium layout has room for."
   :view
-  (column :width (if compact etaf-ncm--rail-width etaf-ncm--sidebar-width)
-          :height 'stretch
-          :padding '((lh 1) (ch 1)) :item-gap '(lh 0)
-          :background-color (etaf-ncm-color :panel)
-          :border-right (etaf-ncm--view-border 'right (etaf-ncm-color :line))
+  (flex :flex-direction 'column
+        :width (if compact etaf-ncm--rail-width etaf-ncm--sidebar-width)
+        :height 'stretch
+        :padding '((lh 1) (ch 1)) :gap '((lh 0) (ch 0))
+        :background-color (etaf-ncm-color :panel)
+        :border-right (etaf-ncm--view-border 'right (etaf-ncm-color :line))
     (flex :width 'stretch :height '(lh 2) :gap '((lh 0) (ch 1))
           :align-items 'center :padding '((lh 0) (ch 1))
       (text :font-weight 'bold :color (etaf-ncm-color :accent) "♫")
@@ -210,7 +211,7 @@ COMPACT renders the glyph-only rail a medium layout has room for."
         :label (if compact "" (nth 1 entry))
         :active (eq (car entry) section)
         :on-press (lambda () (funcall on-locate (car entry)))))
-    (box :height 'stretch)
+    (box :flex-grow 1 :flex-basis '(lh 0) :min-height '(lh 0))
     (flex :width 'stretch :gap '((lh 0) (ch 1)) :align-items 'center
           :padding '((lh 1) (ch 1))
           :border-top (etaf-ncm--view-border 'top (etaf-ncm-color :line))
@@ -254,7 +255,7 @@ COMPACT stacks the search field under the title, the shape a narrow frame needs.
     (flex :if compact :width 'stretch :height '(lh 1) :gap '((lh 0) (ch 1))
           :align-items 'center
       (box :flex-grow 1 :flex-basis '(px 0) :min-width '(ch 0) :height '(lh 1)
-           :overflow 'hidden :font-size 17 :font-weight 'bold
+           :overflow 'hidden :font-weight 'bold
         (text (expr (or title ""))))
       (box :height '(lh 1) :overflow 'hidden :color (etaf-ncm-color :muted)
            :font-size 12
@@ -272,7 +273,7 @@ COMPACT stacks the search field under the title, the shape a narrow frame needs.
     (flex :if (not compact) :width 'stretch :height '(lh 2)
           :gap '((lh 0) (ch 1)) :align-items 'center
       (column :flex-grow 1 :flex-basis '(px 0) :min-width '(ch 0) :item-gap '(lh 0)
-        (text :font-size 17 :font-weight 'bold (expr (or title "")))
+        (text :font-weight 'bold (expr (or title "")))
         (box :height '(lh 1) :overflow 'hidden :color (etaf-ncm-color :muted)
              :font-size 12
           (text (expr (or subtitle "")))))
@@ -390,7 +391,7 @@ LINES is the visible slice of the parsed lyric and TRANS its translations."
     (flex :width 'stretch :gap '((lh 0) (ch 1)) :align-items 'center
       (etaf-ncm--view-cover :size '(ch 10))
       (column :flex-grow 1 :flex-basis '(px 0) :min-width '(ch 0) :item-gap '(lh 0)
-        (box :height '(lh 1) :overflow 'hidden :font-size 14 :font-weight 'bold
+        (box :height '(lh 1) :overflow 'hidden :font-weight 'bold
           (text (expr (or title "还没有播放"))))
         (box :height '(lh 1) :overflow 'hidden :color (etaf-ncm-color :muted)
           (text (expr (or artist ""))))

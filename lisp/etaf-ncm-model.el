@@ -797,17 +797,42 @@ the wide layout, because it has no viewport to adapt to."
       (etaf-ncm--write app :page-size size))
     layout))
 
+(defvar etaf-ncm--resize-timer nil
+  "Pending trailing task that applies the latest window sizes.")
+
+(defvar etaf-ncm--resize-frames nil
+  "Frames whose window sizes changed since the last applied batch.")
+
+(defvar etaf-ncm--resize-settle-delay 0.12
+  "Seconds of quiet after the last resize event before applying a layout.
+Applying the layout writes library, layout and page-size readings, and every
+write republishes the whole view.  Dragging an edge fires far more events than
+one publication costs, so apply once the drag settles instead of per event.")
+
 (defun etaf-ncm--window-size-change (frame)
-  "Adapt every mounted player on FRAME to its new window widths.
-The hook stays installed for the session: it costs one window scan per resize
-and never touches a buffer without a player model."
+  "Record FRAME's size change; apply it once the resize settles."
   (when (frame-live-p frame)
-    (dolist (window (window-list frame 'no-minibuf))
-      (let ((buffer (window-buffer window)))
-        (when (and (buffer-live-p buffer)
-                   (buffer-local-value 'etaf-ncm--model buffer))
-          (etaf-ncm--sync-layout (buffer-local-value 'etaf-ncm--model buffer)
-                                 window))))))
+    (cl-pushnew frame etaf-ncm--resize-frames)
+    (when etaf-ncm--resize-timer
+      (cancel-timer etaf-ncm--resize-timer))
+    (setq etaf-ncm--resize-timer
+          (run-at-time etaf-ncm--resize-settle-delay nil
+                       #'etaf-ncm--window-size-change-apply))))
+
+(defun etaf-ncm--window-size-change-apply ()
+  "Adapt every mounted player to its window's settled size."
+  (setq etaf-ncm--resize-timer nil)
+  (let ((frames (prog1 (nreverse etaf-ncm--resize-frames)
+                  (setq etaf-ncm--resize-frames nil))))
+    (dolist (frame frames)
+      (when (frame-live-p frame)
+        (dolist (window (window-list frame 'no-minibuf))
+          (let ((buffer (window-buffer window)))
+            (when (and (buffer-live-p buffer)
+                       (buffer-local-value 'etaf-ncm--model buffer))
+              (etaf-ncm--sync-layout
+               (buffer-local-value 'etaf-ncm--model buffer)
+               window))))))))
 
 (defun etaf-ncm--compact-layout-p (app)
   "Return non-nil when APP shows one pane at a time."
