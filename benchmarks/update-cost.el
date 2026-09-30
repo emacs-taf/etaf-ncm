@@ -13,6 +13,16 @@
 ;; a selection write costs about 250 ms and a clock write about 100 ms,
 ;; independent of the viewport, on a twelve-row fixture.  The cost is the whole
 ;; tree being laid out again on every update; see `docs/architecture.md'.
+;;
+;; Measured caveat (2026-09-30): in headless batch the mount viewport width does
+;; not widen the rendered layout.  The player bar stays 42 columns and the page
+;; max stays 68 columns at viewport widths 1386, 2400, 3600 and 4800; a minimal
+;; `ebox-render' of `:width (vw 100)' with `ebox-viewport-width' 200 likewise
+;; renders content width.  These numbers therefore describe the app's
+;; natural-width layout (about 68 columns), where the wide three-column design
+;; is cramped (labels truncate, rows wrap, extra scroll regions appear), not a
+;; real GUI window.  Read them as a worst-case narrow layout until the headless
+;; viewport is honored or the benchmark runs on a real frame.
 
 ;;; Code:
 (load "tests/etaf-ncm-tests.el")
