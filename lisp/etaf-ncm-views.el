@@ -122,10 +122,13 @@ whose data did not change keep its rendered output."
         :help-echo (format "播放 %s" (or (plist-get row :name) "这一行"))
         :on-press (lambda () (funcall press index))
     (box :height '(lh 1) :justify-self 'end
-         :color (cond (playing (etaf-ncm-color :accent))
-                      (selected (etaf-ncm-color :muted))
+         :color (cond (selected (etaf-ncm-color :muted))
                       (t (etaf-ncm-color :dim)))
-      (text (expr (if playing "▶︎" (format "%2s" index)))))
+      ;; A glyph marker would fall back to a taller symbol font and grow the
+      ;; row; the shared SVG icon keeps the row at one line height.
+      (etaf-ui-icon :if playing :name 'play :set 'svg :size 1.0 :min-width 2
+                    :color (etaf-ncm-color :accent))
+      (text :if (not playing) (expr (format "%2s" index))))
     (box :height '(lh 1) :overflow 'hidden
       (text (expr (or (plist-get row :name) ""))))
     (box :height '(lh 1) :overflow 'hidden :font-weight 'normal
@@ -153,9 +156,10 @@ whose data did not change keep its rendered output."
   :view
   (flex :width size :height height :bgcolor (etaf-ncm-color :panel3)
         :align-items 'center :justify-content 'center
-    (box :height '(lh 1) :text-align 'center :font-weight 'bold
-         :color (etaf-ncm-color :accent)
-      (text (expr (or glyph "♪"))))))
+    (etaf-ui-icon :if (not glyph) :name 'music :set 'svg :size 1.0 :min-width 2
+                  :color (etaf-ncm-color :accent))
+    (text :if glyph :height '(lh 1) :text-align 'center
+          (expr glyph))))
 
 (etaf-define-component etaf-ncm--view-sidebar
     (&key groups section account compact on-locate)
@@ -170,7 +174,8 @@ COMPACT renders the glyph-only rail a medium layout has room for."
         :border-right (etaf-ncm--view-border 'right (etaf-ncm-color :line))
     (flex :width 'stretch :height '(lh 2) :gap '((lh 0) (ch 1))
           :align-items 'center :padding '((lh 0) (ch 1))
-      (text :font-weight 'bold :color (etaf-ncm-color :accent) "♫")
+      (etaf-ui-icon :name 'music :set 'svg :size 1.0 :min-width 2
+                    :color (etaf-ncm-color :accent))
       (box :if (not compact) :height '(lh 1)
         (text :font-weight 'bold "网易云音乐"))
       (box :if (not compact) :height '(lh 1) :color (etaf-ncm-color :dim)
@@ -194,7 +199,8 @@ COMPACT renders the glyph-only rail a medium layout has room for."
     (flex :width 'stretch :gap '((lh 0) (ch 1)) :align-items 'center
           :padding '((lh 1) (ch 1))
           :border-top (etaf-ncm--view-border 'top (etaf-ncm-color :line))
-      (text :color (etaf-ncm-color (if account :ok :danger)) "●")
+      (box :width '(ch 1) :height '(lh 1) :flex-shrink 0
+           :background-color (etaf-ncm-color (if account :ok :danger)))
       (box :if (not compact) :flex-grow 1 :flex-basis '(px 0) :min-width '(ch 0)
            :height '(lh 1)
            :overflow 'hidden :color (etaf-ncm-color :muted)
@@ -241,7 +247,7 @@ COMPACT stacks the search field under the title, the shape a narrow frame needs.
       (box :height '(lh 1) :overflow 'hidden :color (etaf-ncm-color :muted)
            :font-size 12
         (text (expr (or subtitle ""))))
-      (etaf-button :label (if loading "…" "↻") :variant 'ghost
+      (etaf-button :label (if loading "..." "换一批") :variant 'ghost
                    :on-press on-refresh))
     (flex :if compact :width 'stretch :height '(lh 2) :gap '((lh 0) (ch 1))
           :align-items 'center
@@ -262,9 +268,9 @@ COMPACT stacks the search field under the title, the shape a narrow frame needs.
         (etaf-text-input :value query :label "搜索"
                          :placeholder "搜索歌曲、歌手、歌单或专辑"
                          :hide-label t :on-change on-search))
-      (etaf-button :if on-play-all :label "▶︎ 播放全部" :variant 'primary :pointer 'hand
+      (etaf-button :if on-play-all :label "播放全部" :variant 'primary :pointer 'hand
                    :help-echo "播放整个列表" :on-press on-play-all)
-      (etaf-button :label (if loading "… 加载中" "↻ 换一批") :variant 'ghost
+      (etaf-button :label (if loading "正在加载" "换一批") :variant 'ghost
                    :on-press on-refresh))))
 
 (etaf-define-component etaf-ncm--view-pane-tabs (&key pane aside on-pane on-aside)
@@ -388,7 +394,7 @@ LINES is the visible slice of the parsed lyric and TRANS its translations."
           (text (expr (or album ""))))))
     (box :height '(lh 1))
     (box :if loading :height '(lh 1) :color (etaf-ncm-color :dim)
-      (text "正在取歌词…"))
+      (text "正在取歌词..."))
     (box :if (and (not loading) (zerop (or total 0))) :height '(lh 1)
          :color (etaf-ncm-color :dim)
       (text "这首歌没有歌词"))
@@ -444,9 +450,10 @@ Each entry is (:index :name :right :current) from the player model."
       :on-press (lambda () (funcall on-jump (plist-get entry :index)))
       (box :width (list 'ch (max 3 (1+ (length (number-to-string (or count 0))))))
            :height '(lh 1) :color (etaf-ncm-color :dim)
-        (text (expr (if (plist-get entry :current)
-                        "▶︎"
-                      (format "%s." (plist-get entry :index))))))
+        (etaf-ui-icon :if (plist-get entry :current) :name 'play :set 'svg :size 1.0
+                      :min-width 2 :color (etaf-ncm-color :accent))
+        (text :if (not (plist-get entry :current))
+              (expr (format "%s." (plist-get entry :index)))))
       (box :flex-grow 1 :flex-basis '(px 0) :min-width '(ch 0) :height '(lh 1)
            :overflow 'hidden
         (text (expr (or (plist-get entry :name) ""))))

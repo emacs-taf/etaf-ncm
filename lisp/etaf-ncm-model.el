@@ -249,16 +249,15 @@ Display goes through `etaf-ncm--publish-clock'."
 
 (defun etaf-ncm--update-clock-hosts (app seconds)
   "Replace APP's elapsed label and progress fill with SECONDS.
-Both writes go through ETAF's retained Host boundary, so a playing second
-publishes without a View publication or layout work.  Return nil when APP has
-no mounted Runtime; the caller then republishes instead."
+The elapsed label updates through its retained Host; the meter is the shared
+range's flow fill, so a declined fixed-geometry update returns nil and the
+caller rebuilds the view with the new position instead."
   (when-let* ((runtime (etaf-ncm--runtime app)))
     (etaf-runtime-update-host-contents
      runtime (list (cons etaf-ncm--clock-host (etaf-ncm--format-seconds seconds))))
     (etaf-runtime-update-host-geometries
      runtime (list (cons etaf-ncm--meter-host
-                        (list :width (list '% (round (etaf-ncm--meter-percent app seconds)))))))
-    t))
+                        (list :width (list '% (round (etaf-ncm--meter-percent app seconds)))))))))
 
 (defun etaf-ncm--republish-clock (app seconds)
   "Publish APP's whole view with SECONDS as the displayed position.
