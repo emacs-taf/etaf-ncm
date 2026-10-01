@@ -104,9 +104,11 @@ over, one step above the panel it sits on."
       (text (expr badge)))))
 
 (etaf-define-component etaf-ncm--view-row
-    (&key index row selected playing compact on-press)
+    (&key index row selected playing compact press)
   "Render library ROW number INDEX, marked SELECTED and PLAYING as appropriate.
-COMPACT drops the album column, which a narrow frame cannot show."
+COMPACT drops the album column, which a narrow frame cannot show.  PRESS is
+called with INDEX when the row is clicked; keeping it stable is what lets a row
+whose data did not change keep its rendered output."
   :view
   (grid :width 'stretch :height '(lh 1) :role 'button :tab-index 0
         :grid-template-columns (if compact etaf-ncm--row-columns-compact
@@ -121,7 +123,7 @@ COMPACT drops the album column, which a narrow frame cannot show."
         :pointer (etaf-ncm--item-pointer)
         :hover-style (etaf-ncm--hover-surface)
         :help-echo (format "播放 %s" (or (plist-get row :name) "这一行"))
-        :on-press on-press
+        :on-press (lambda () (funcall press index))
     (box :height '(lh 1) :justify-self 'end
          :color (cond (playing (etaf-ncm-color :accent))
                       (selected (etaf-ncm-color :muted))
@@ -321,8 +323,9 @@ COMPACT stacks the search field under the title, the shape a narrow frame needs.
                     "j/k 或滚轮选择 · 双击播放"))))))
 
 (etaf-define-component etaf-ncm--view-list
-    (&key entries start total compact empty-note on-play)
-  "Render the visible library ENTRIES and a page footer."
+    (&key entries start total compact empty-note on-press)
+  "Render the visible library ENTRIES and a page footer.
+ON-PRESS is called with a row's page index when that row is clicked."
   :view
   (column :width 'stretch :flex-grow 1 :min-height '(lh 0) :item-gap '(lh 0)
           :overflow 'hidden
@@ -333,7 +336,7 @@ COMPACT stacks the search field under the title, the shape a narrow frame needs.
       :selected (plist-get entry :selected)
       :playing (plist-get entry :playing)
       :compact compact
-      :on-press (lambda () (funcall on-play entry)))
+      :press on-press)
     (box :if entries :height 'stretch)
     (flex :if entries :width 'stretch :height '(lh 1) :gap '((lh 0) (ch 2))
           :color (etaf-ncm-color :dim) :font-size 12

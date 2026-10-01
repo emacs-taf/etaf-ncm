@@ -15,6 +15,8 @@ All notable user-visible changes to ETAF NCM.
   `etaf-ncm-prefetch-libraries` turns the background warming off.
 - A playing second updates the elapsed label and the progress meter in place
   instead of republishing the whole view.
+- A list update re-renders only the rows whose data changed: the view passes
+  stable callbacks instead of a fresh closure per row.
 
 ## 0.1.0
 

@@ -344,7 +344,44 @@ releases the polling timer and the session's pending backend requests."
   :bindings ((session (or model
                           (signal 'etaf-ncm-error
                                   '("etaf-ncm-app needs the :model from `etaf-ncm-create'"))))
-             (palette (etaf-ncm--ref session :theme)))
+             (palette (etaf-ncm--ref session :theme))
+             ;; Callbacks are instance values, not per-render closures: a
+             ;; re-render that passes a new function object to a keyed child
+             ;; would make that child render again for nothing.
+             (on-locate (lambda (section) (etaf-ncm-locate session section)))
+             (on-search (lambda (text) (etaf-ncm--search-text session text)))
+             (on-play-library (lambda () (etaf-ncm-play session)))
+             (on-refresh (lambda () (etaf-ncm-refresh session)))
+             (on-press-row (lambda (index) (etaf-ncm-press-row session index)))
+             (on-switch-aside (lambda (panel)
+                                (etaf-ncm--write session :aside panel)))
+             (on-jump-queue (lambda (index) (etaf-ncm-jump-queue session index)))
+             (on-show-pane (lambda (target) (etaf-ncm-show-pane session target)))
+             (on-show-aside (lambda (target)
+                              (etaf-ncm--write session :aside target)
+                              (etaf-ncm-show-pane session 'aside)))
+             (on-toggle (lambda () (etaf-ncm-toggle-playback session)))
+             (on-next (lambda () (etaf-ncm-next-track session)))
+             (on-previous (lambda () (etaf-ncm-previous-track session)))
+             (on-stop (lambda () (etaf-ncm-stop session)))
+             (on-like (lambda () (etaf-ncm-like session)))
+             (on-volume (lambda (delta)
+                          (etaf-ncm-set-volume
+                           session
+                           (max 0 (min 130 (+ (or (plist-get (etaf-ncm--view-status session)
+                                                             :volume)
+                                                  0)
+                                              delta))))))
+             (on-seek (lambda (seconds) (etaf-ncm-seek session seconds)))
+             (on-seek-drag (lambda (gesture) (etaf-ncm--drag-seek session gesture)))
+             (on-shuffle (lambda ()
+                           (etaf-ncm-set-shuffle
+                            session
+                            (not (plist-get (etaf-ncm--view-status session) :shuffle)))))
+             (on-repeat (lambda ()
+                          (etaf-ncm-set-repeat
+                           session
+                           (not (plist-get (etaf-ncm--view-status session) :repeat))))))
   :setup
   (progn
     (etaf-theme-provide palette)
@@ -371,14 +408,14 @@ releases the polling timer and the session's pending backend requests."
        :groups etaf-ncm-sections
        :section (etaf-ncm--read session :section)
        :account (etaf-ncm--read session :account)
-       :on-locate (lambda (section) (etaf-ncm-locate session section)))
+       :on-locate on-locate)
       (etaf-ncm--view-sidebar
        :if (eq (etaf-ncm--read session :layout) 'medium)
        :compact t
        :groups etaf-ncm-sections
        :section (etaf-ncm--read session :section)
        :account (etaf-ncm--read session :account)
-       :on-locate (lambda (section) (etaf-ncm-locate session section)))
+       :on-locate on-locate)
       (flex :if (etaf-ncm--list-shown-p session)
             :flex-direction 'column :width 'stretch :flex-grow 1
             :flex-basis '(px 0) :min-width '(ch 0) :min-height '(lh 0)
@@ -391,14 +428,14 @@ releases the polling timer and the session's pending backend requests."
          :query (etaf-ncm--read session :query)
          :loading (etaf-ncm--read session :loading)
          :compact (etaf-ncm--compact-layout-p session)
-         :on-search (lambda (text) (etaf-ncm--search-text session text))
-         :on-play-all (lambda () (etaf-ncm-play session))
-         :on-refresh (lambda () (etaf-ncm-refresh session)))
+         :on-search on-search
+         :on-play-all on-play-library
+         :on-refresh on-refresh)
         (etaf-ncm--view-chips
          :if (eq (etaf-ncm--read session :layout) 'narrow)
          :groups etaf-ncm-sections
          :section (etaf-ncm--read session :section)
-         :on-locate (lambda (section) (etaf-ncm-locate session section)))
+         :on-locate on-locate)
         (flex :if (etaf-ncm--read session :error) :width 'stretch :height '(lh 1)
               :align-items 'center :padding '((lh 0) (ch 1))
               :background-color (etaf-ncm-color :danger-bg)
@@ -413,7 +450,7 @@ releases the polling timer and the session's pending backend requests."
          :empty-note (if (etaf-ncm--read session :loading)
                          "正在加载…"
                        "这里还没有内容：g 刷新，s 搜索")
-         :on-play (lambda (entry) (etaf-ncm--press-row session entry))))
+         :on-press on-press-row))
       (etaf-ncm--view-aside
        :if (etaf-ncm--aside-shown-p session)
        :aside (etaf-ncm--read session :aside)
@@ -430,16 +467,14 @@ releases the polling timer and the session's pending backend requests."
        :pos (plist-get (etaf-ncm--queue-panel session) :pos)
        :count (plist-get (etaf-ncm--queue-panel session) :count)
        :layout (etaf-ncm--read session :layout)
-       :on-switch (lambda (panel) (etaf-ncm--write session :aside panel))
-       :on-jump (lambda (index) (etaf-ncm-jump-queue session index))))
+       :on-switch on-switch-aside
+       :on-jump on-jump-queue))
     (etaf-ncm--view-pane-tabs
      :if (etaf-ncm--compact-layout-p session)
      :pane (etaf-ncm--read session :pane)
      :aside (etaf-ncm--read session :aside)
-     :on-pane (lambda (target) (etaf-ncm-show-pane session target))
-     :on-aside (lambda (target)
-                 (etaf-ncm--write session :aside target)
-                 (etaf-ncm-show-pane session 'aside)))
+     :on-pane on-show-pane
+     :on-aside on-show-aside)
     (etaf-ncm--view-player
      :compact (etaf-ncm--compact-layout-p session)
      :title (plist-get (etaf-ncm--view-status session) :title)
@@ -453,28 +488,16 @@ releases the polling timer and the session's pending backend requests."
      :message (etaf-ncm--read session :message)
      :queue-pos (plist-get (etaf-ncm--view-status session) :queue-pos)
      :queue-count (plist-get (etaf-ncm--view-status session) :queue-count)
-     :on-toggle (lambda () (etaf-ncm-toggle-playback session))
-     :on-next (lambda () (etaf-ncm-next-track session))
-     :on-previous (lambda () (etaf-ncm-previous-track session))
-     :on-stop (lambda () (etaf-ncm-stop session))
-     :on-like (lambda () (etaf-ncm-like session))
-     :on-volume (lambda (delta)
-                  (etaf-ncm-set-volume
-                   session
-                   (max 0 (min 130 (+ (or (plist-get (etaf-ncm--view-status session)
-                                                     :volume)
-                                          0)
-                                      delta)))))
-     :on-seek (lambda (seconds) (etaf-ncm-seek session seconds))
-     :on-seek-drag (lambda (gesture) (etaf-ncm--drag-seek session gesture))
-     :on-shuffle (lambda ()
-                   (etaf-ncm-set-shuffle
-                    session
-                    (not (plist-get (etaf-ncm--view-status session) :shuffle))))
-     :on-repeat (lambda ()
-                  (etaf-ncm-set-repeat
-                   session
-                   (not (plist-get (etaf-ncm--view-status session) :repeat)))))))
+     :on-toggle on-toggle
+     :on-next on-next
+     :on-previous on-previous
+     :on-stop on-stop
+     :on-like on-like
+     :on-volume on-volume
+     :on-seek on-seek
+     :on-seek-drag on-seek-drag
+     :on-shuffle on-shuffle
+     :on-repeat on-repeat)))
 
 (defun etaf-ncm-view (&optional model)
   "Return the player View for MODEL.
