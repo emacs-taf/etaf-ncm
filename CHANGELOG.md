@@ -4,6 +4,12 @@ All notable user-visible changes to ETAF NCM.
 
 ## Unreleased
 
+- Every row stays within the frame's line height, so the canvas is never taller
+  than the window and the bottom bar is not clipped. Glyphs that fell back to a
+  taller font (`♪`, `♫`, `▶︎` with its variation selector, `↻`, `●`, `…`) are
+  replaced with the shared SVG icons, plain text or a block; the GUI scenario
+  now fails a checkpoint when any line exceeds the line height or a resize
+  leaves the canvas taller than the window.
 - The bottom player bar follows the native client's layout and keeps one clear
   line above and below itself: cover, VIP/title and track actions on the left, a
   red play/pause pill with the seek bar in the centre, and reported quality,

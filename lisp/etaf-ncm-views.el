@@ -255,7 +255,7 @@ COMPACT stacks the search field under the title, the shape a narrow frame needs.
         (etaf-text-input :value query :label "搜索"
                          :placeholder "搜索歌曲、歌手、歌单或专辑"
                          :hide-label t :on-change on-search))
-      (etaf-button :if on-play-all :label "▶︎ 播放全部" :variant 'primary :pointer 'hand
+      (etaf-button :if on-play-all :label "▶ 播放全部" :variant 'primary :pointer 'hand
                    :help-echo "播放整个列表" :on-press on-play-all))
     (flex :if (not compact) :width 'stretch :height '(lh 2)
           :gap '((lh 0) (ch 1)) :align-items 'center

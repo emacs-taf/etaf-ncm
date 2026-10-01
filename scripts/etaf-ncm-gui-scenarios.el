@@ -112,9 +112,9 @@
   "Return non-nil when CONTEXT's player displays TEXT."
   (string-match-p (regexp-quote text) (etaf-ncm-gui--text context)))
 
-(defun etaf-ncm-gui--assert (name passed)
-  "Return a verifier assertion NAME for PASSED."
-  (etaf-gui-verifier-assert name passed))
+(defun etaf-ncm-gui--assert (name passed &optional detail)
+  "Return a verifier assertion NAME for PASSED, with optional DETAIL."
+  (etaf-gui-verifier-assert name passed detail))
 
 (defun etaf-ncm-gui--action (id execute assertions &optional screenshot)
   "Build one scenario action ID from EXECUTE and ASSERTIONS.
@@ -177,7 +177,13 @@ background input-to-paint sample."
    :settled-p (lambda (context)
                 (and (= (frame-width) width) (= (frame-height) height)
                      (eq (plist-get (etaf-ncm-gui--state context) :layout)
-                         expected-layout)))
+                         expected-layout)
+                     ;; The layout state flips before the canvas repaints; the
+                     ;; resize is settled once the painted height matches too.
+                     (with-current-buffer (etaf-ncm-gui--target context)
+                       (let ((window (get-buffer-window (current-buffer))))
+                         (= (cdr (window-text-pixel-size window))
+                            (window-body-height window t))))))
    :screenshot screenshot
    :assertions
    (lambda (context)
@@ -188,7 +194,18 @@ background input-to-paint sample."
          (eq (plist-get state :layout) expected-layout))
         (etaf-ncm-gui--assert
          (format "frame is %dx%d" width height)
-         (and (= (frame-width) width) (= (frame-height) height))))))))
+         (and (= (frame-width) width) (= (frame-height) height)))
+        (etaf-ncm-gui--assert
+         "canvas height fits the window"
+         (with-current-buffer (etaf-ncm-gui--target context)
+           (let ((window (get-buffer-window (current-buffer))))
+             (= (cdr (window-text-pixel-size window))
+                (window-body-height window t))))
+         (with-current-buffer (etaf-ncm-gui--target context)
+           (let ((window (get-buffer-window (current-buffer))))
+             (format "canvas %s vs window %s"
+                     (cdr (window-text-pixel-size window))
+                     (window-body-height window t))))))))))
 
 (defun etaf-ncm-gui-run (directory &optional screenshots)
   "Verify the NetEase player in DIRECTORY, optionally taking SCREENSHOTS.
@@ -199,6 +216,26 @@ closed."
    (etaf-gui-verifier-scenario-create
     :name "ncm-player"
     :claim "Documented keys and the whole layout matrix on a scripted backend"
+    :invariants
+    (lambda (context)
+      ;; The layout budgets rows, so one line taller than the frame's line
+      ;; height pushes the canvas past the window and clips the bottom rows.
+      ;; Check every checkpoint on the real frame: only a displayed buffer
+      ;; reports a true line-pixel-height.
+      (with-current-buffer (etaf-ncm-gui--target context)
+        (let ((char-height (frame-char-height))
+              over)
+          (save-excursion
+            (goto-char (point-min))
+            (while (not (eobp))
+              (let ((height (line-pixel-height)))
+                (when (> height char-height)
+                  (push (line-number-at-pos) over)))
+              (forward-line 1)))
+          (list (etaf-ncm-gui--assert
+                 "no line exceeds the frame line height"
+                 (null over)
+                 (and over (format "lines %S" (nreverse over))))))))
     :initialize
     (lambda (context)
       (ignore-errors (etaf-ncm-close))
