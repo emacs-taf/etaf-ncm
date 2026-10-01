@@ -9,24 +9,18 @@
 ;;   emacs -Q --batch -L . -L lisp -L tests -L ../../etaf -L ../../etaf-ui \
 ;;         -L ../../ebox -L ../../ecss -l benchmarks/update-phases.el
 ;;
-;; Findings on 2026-09-30 (byte-compiled framework, twelve-row fixture, one
-;; clock write, 130-175 ms in total with the measurement advice in place):
+;; Findings on 2026-10-01 (byte-compiled framework, twelve-row fixture):
 ;;
-;;   etaf-set-value                        173 ms   the whole update
-;;     etaf-render-port-update             157 ms
-;;       ebox-commit                       157 ms
-;;         ebox-surface-update-buffer-scoped  84 ms
-;;           ebox--pub--prepare-surface       73 ms
-;;             ebox-surface--project          69 ms
-;;               ebox-surface--render-candidate   35 ms   the layout
-;;         (the rest of ebox-commit)         73 ms   candidate build and diff
-;;   ebox--render-layout-in-context           14 calls, 42 ms
-;;   ebox-tree--children-raw              5587 calls,  5 ms
+;;   A selection write republishes the view: the candidate is rebuilt and Ebox
+;;   lays the whole surface out again, so the cost sits in `ebox-commit' and
+;;   `ebox-surface--render-candidate'.
+;;   A clock tick inside one lyric line does not take this path at all: the
+;;   elapsed label and the progress meter are replaced through their retained
+;;   Hosts, so only the retained update and its Ebox batch appear here.
 ;;
-;; The tree walks are cheap; the money is in ebox-commit's own candidate work
-;; (about 73 ms), the surface projection around the layout (about 34 ms) and the
-;; layout itself (about 42 ms).  Optimizing means making the candidate reuse the
-;; published tree instead of rebuilding it, which is where the next round starts.
+;; Use this benchmark to see which parts of the ordinary publication remain:
+;; the candidate rebuild and the whole-surface layout are where a structural
+;; update still pays.
 
 ;;; Code:
 (load "tests/etaf-ncm-tests.el")
