@@ -181,9 +181,7 @@ background input-to-paint sample."
                      ;; The layout state flips before the canvas repaints; the
                      ;; resize is settled once the painted height matches too.
                      (with-current-buffer (etaf-ncm-gui--target context)
-                       (let ((window (get-buffer-window (current-buffer))))
-                         (= (cdr (window-text-pixel-size window))
-                            (window-body-height window t))))))
+                       (etaf-gui-verifier-canvas-filled-p))))
    :screenshot screenshot
    :assertions
    (lambda (context)
@@ -195,17 +193,8 @@ background input-to-paint sample."
         (etaf-ncm-gui--assert
          (format "frame is %dx%d" width height)
          (and (= (frame-width) width) (= (frame-height) height)))
-        (etaf-ncm-gui--assert
-         "canvas height fits the window"
-         (with-current-buffer (etaf-ncm-gui--target context)
-           (let ((window (get-buffer-window (current-buffer))))
-             (= (cdr (window-text-pixel-size window))
-                (window-body-height window t))))
-         (with-current-buffer (etaf-ncm-gui--target context)
-           (let ((window (get-buffer-window (current-buffer))))
-             (format "canvas %s vs window %s"
-                     (cdr (window-text-pixel-size window))
-                     (window-body-height window t))))))))))
+        (with-current-buffer (etaf-ncm-gui--target context)
+          (etaf-gui-verifier-canvas-assertion)))))))
 
 (defun etaf-ncm-gui-run (directory &optional screenshots)
   "Verify the NetEase player in DIRECTORY, optionally taking SCREENSHOTS.
@@ -218,24 +207,11 @@ closed."
     :claim "Documented keys and the whole layout matrix on a scripted backend"
     :invariants
     (lambda (context)
-      ;; The layout budgets rows, so one line taller than the frame's line
-      ;; height pushes the canvas past the window and clips the bottom rows.
-      ;; Check every checkpoint on the real frame: only a displayed buffer
-      ;; reports a true line-pixel-height.
+      ;; Row heights stay within the frame line height at every checkpoint,
+      ;; on the real frame; the resize actions below also settle on a canvas
+      ;; that matches the window, so a clipped bottom bar fails here.
       (with-current-buffer (etaf-ncm-gui--target context)
-        (let ((char-height (frame-char-height))
-              over)
-          (save-excursion
-            (goto-char (point-min))
-            (while (not (eobp))
-              (let ((height (line-pixel-height)))
-                (when (> height char-height)
-                  (push (line-number-at-pos) over)))
-              (forward-line 1)))
-          (list (etaf-ncm-gui--assert
-                 "no line exceeds the frame line height"
-                 (null over)
-                 (and over (format "lines %S" (nreverse over))))))))
+        (etaf-gui-verifier-line-height-assertions)))
     :initialize
     (lambda (context)
       (ignore-errors (etaf-ncm-close))
