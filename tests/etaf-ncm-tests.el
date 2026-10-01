@@ -1053,7 +1053,7 @@ locate the entry by its help text instead of a character offset."
                    (etaf-ncm-tests--client request callback))))))
     (etaf-ncm-tests--with-player app
       (etaf-ncm-tests--rendered-text)
-      (dolist (sample '((0.5 65) (0.8 104) (-1 0) (2 130)))
+      (dolist (sample '((0.5 50) (0.8 80) (-1 0) (2 100)))
         (setq etaf-ncm-tests--requests nil)
         (etaf-ncm-tests--slider-gesture 'ncm-volume 'start 0.1)
         (etaf-ncm-tests--slider-gesture 'ncm-volume 'move (car sample))
@@ -1142,11 +1142,10 @@ locate the entry by its help text instead of a character offset."
         (should (eq (plist-get (etaf-ncm-state app) :pane) 'aside))
         (should (equal (plist-get (etaf-ncm-state app) :selection) selected))))))
 
-(ert-deftest etaf-ncm-tests-player-clock-retains-the-view ()
-  "Playing seconds update the elapsed Host without publishing a View.
-The painted progress width moves through the same retained geometry update;
-that pixel half is asserted by the graphical range check because an absolutely
-positioned Host has no batch-visible text span."
+(ert-deftest etaf-ncm-tests-player-clock-moves-the-elapsed-label-and-meter ()
+  "Playing seconds move the elapsed label and the progress meter.
+The meter is the shared range's flow fill, so its painted span grows with the
+position instead of a retained width update."
   (let* ((etaf-ncm-tests--poll-interval 1)
          (calls 0)
          (app (etaf-ncm-tests--session
@@ -1159,13 +1158,16 @@ positioned Host has no batch-visible text span."
     (etaf-ncm-tests--with-player app
       (etaf-ncm-tests--rendered-text)
       (let* ((runtime (etaf-runtime-for-buffer (current-buffer)))
-             (generation (etaf-runtime-generation runtime))
-             (before (etaf-ncm-tests--host-text 'ncm-elapsed)))
+             (before (etaf-ncm-tests--host-text 'ncm-elapsed))
+             (meter-before (etaf-host-ref-bounds runtime 'ncm-meter)))
         (with-timeout (5 (ert-fail "Playback polling did not complete"))
           (while (< calls 3) (sleep-for 0.06)))
         (etaf-ncm-tests--rendered-text)
-        (should (= (etaf-runtime-generation runtime) generation))
-        (should-not (equal (etaf-ncm-tests--host-text 'ncm-elapsed) before))))))
+        (should-not (equal (etaf-ncm-tests--host-text 'ncm-elapsed) before))
+        (let ((meter-after (etaf-host-ref-bounds runtime 'ncm-meter)))
+          (should (and meter-before meter-after
+                       (> (- (cdr meter-after) (car meter-after))
+                          (- (cdr meter-before) (car meter-before))))))))))
 
 (ert-deftest etaf-ncm-tests-keys-reach-the-player-around-the-renderer-map ()
   "The documented keys reach the player in a mounted buffer.

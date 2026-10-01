@@ -236,9 +236,9 @@
       "purpose": "Cover, lyric and queue controls reveal their panes across layouts while preserving the library selection."
     },
     {
-      "name": "etaf-ncm-tests-player-clock-retains-the-view",
+      "name": "etaf-ncm-tests-player-clock-moves-the-elapsed-label-and-meter",
       "file": "tests/etaf-ncm-tests.el",
-      "purpose": "Playing seconds move the retained elapsed label and progress fill without advancing the ETAF View generation."
+      "purpose": "Playing seconds move the retained elapsed label and widen the shared range fill that carries the progress meter."
     },
     {
       "name": "etaf-ncm-tests-keys-reach-the-player-around-the-renderer-map",

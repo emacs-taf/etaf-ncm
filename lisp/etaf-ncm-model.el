@@ -162,6 +162,8 @@ complete headless player for tests and other Lisp callers."
           ;; and is shown through the player bar's retained Hosts, so a write
           ;; here would republish the whole view once per second.
           :clock 0
+          ;; (wall-clock . target) of a seek the backend has not applied yet.
+          :seek-guard (etaf-ref nil :name 'etaf-ncm-seek-guard)
           :queue (etaf-ref nil :name 'etaf-ncm-queue)
           ;; Nil follows playback; a wheel gesture pins a loaded window until
           ;; the playing entry or queue contents change.
@@ -222,9 +224,6 @@ Display goes through `etaf-ncm--publish-clock'."
 (defconst etaf-ncm--meter-host 'ncm-meter
   "Retained Host that fills the player bar's progress meter.")
 
-(defconst etaf-ncm--thumb-host 'ncm-thumb
-  "Retained Host that marks the played position.")
-
 (defconst etaf-ncm--reply-volatile-keys '(:elapsed :as-of)
   "Status fields that move with every backend reply, not with the track.")
 
@@ -250,16 +249,15 @@ Display goes through `etaf-ncm--publish-clock'."
 
 (defun etaf-ncm--update-clock-hosts (app seconds)
   "Replace APP's elapsed label and progress fill with SECONDS.
-Both writes go through ETAF's retained Host boundary, so a playing second
-publishes without a View publication or layout work.  Return nil when APP has
-no mounted Runtime; the caller then republishes instead."
+The elapsed label updates through its retained Host; the meter is the shared
+range's flow fill, so its fixed-geometry update is declined here and the nil
+result makes the caller rebuild the view with the new position instead."
   (when-let* ((runtime (etaf-ncm--runtime app)))
-    (etaf-runtime-update-host-contents
-     runtime (list (cons etaf-ncm--clock-host (etaf-ncm--format-seconds seconds))))
-    (etaf-runtime-update-host-geometries
-     runtime (list (cons etaf-ncm--meter-host
-                        (list :width (list '% (round (etaf-ncm--meter-percent app seconds)))))))
-    t))
+    (let ((percent (list '% (round (etaf-ncm--meter-percent app seconds)))))
+      (etaf-runtime-update-host-contents
+       runtime (list (cons etaf-ncm--clock-host (etaf-ncm--format-seconds seconds))))
+      (etaf-runtime-update-host-geometries
+       runtime (list (cons etaf-ncm--meter-host (list :width percent)))))))
 
 (defun etaf-ncm--republish-clock (app seconds)
   "Publish APP's whole view with SECONDS as the displayed position.
@@ -717,17 +715,24 @@ whole current library."
   (etaf-ncm--command app (list :op :stop) "已停止播放"))
 
 (defun etaf-ncm-set-volume (app volume)
-  "Set APP's volume to VOLUME, an integer between 0 and 130.
-A value outside that range signals `etaf-ncm-error'."
-  (unless (and (numberp volume) (<= 0 volume 130))
-    (signal 'etaf-ncm-error (list (format "音量要在 0-130 之间：%S" volume))))
+  "Set APP's volume to VOLUME, an integer between 0 and 100.
+The bar's fill and the percentage label share this scale.  A value outside
+that range signals `etaf-ncm-error'."
+  (unless (and (numberp volume) (<= 0 volume 100))
+    (signal 'etaf-ncm-error (list (format "音量要在 0-100 之间：%S" volume))))
   (etaf-ncm--command app (list :op :volume :value (round volume))
                      (format "音量 %d" (round volume))))
 
 (defun etaf-ncm-seek (app seconds)
-  "Move APP's playback position by SECONDS relative to the current one."
+  "Move APP's playback position by SECONDS relative to the current one.
+The target stays displayed for a short window: an asynchronous backend keeps
+reporting the old position until mpv applies the seek, and without the guard
+the progress bar jumps back and forth around the click."
   (unless (numberp seconds)
     (signal 'etaf-ncm-error (list (format "进度偏移必须是秒数：%S" seconds))))
+  (etaf-ncm--write app :seek-guard
+                   (cons (+ (float-time) 3.0)
+                         (max 0 (+ (etaf-ncm--clock app) (round seconds)))))
   (etaf-ncm--command app (list :op :seek :seconds (round seconds))
                      (format "进度 %s%ss" (if (< seconds 0) "-" "+") (abs (round seconds)))))
 
@@ -742,9 +747,19 @@ A value outside that range signals `etaf-ncm-error'."
                      (if on "列表循环：开" "列表循环：关")))
 
 (defun etaf-ncm-like (app &optional unlike)
-  "Like the song playing in APP, or unlike it when UNLIKE is non-nil."
-  (etaf-ncm--command app (list :op (if unlike :unlike :like))
-                     (if unlike "已取消喜欢" "已加入我喜欢的音乐")))
+  "Like the song playing in APP, or unlike it when UNLIKE is non-nil.
+The heart flips before the backend answers; a failed request puts the
+previous state back, and the reply reconciles it with measured facts."
+  (let ((previous (plist-get (or (etaf-ncm--read app :status) (list)) :liked)))
+    (etaf-ncm--note app (if unlike "已取消喜欢" "已加入我喜欢的音乐"))
+    (etaf-ncm--optimistic-status
+     app (lambda (status) (plist-put status :liked (not unlike))))
+    (etaf-ncm--call app (list :op (if unlike :unlike :like))
+                    :on-ok (lambda (_data) (etaf-ncm--request-status app))
+                    :on-error (lambda (_message)
+                                (etaf-ncm--optimistic-status
+                                 app (lambda (status)
+                                       (plist-put status :liked previous)))))))
 
 (defconst etaf-ncm--queue-commands '(:play :next :previous :jump :stop :add)
   "Commands whose reply can move the queue, which is then reloaded.")
@@ -861,10 +876,16 @@ seeks by offset: show the target immediately, then ask for the difference."
   (unless (numberp seconds)
     (signal 'etaf-ncm-error (list (format "进度目标必须是秒数：%S" seconds))))
   (let* ((current (etaf-ncm--clock app))
-         (target (max 0 seconds)))
-    (etaf-ncm--set-clock app target)
-    (etaf-ncm--republish-clock app target)
-    (etaf-ncm-seek app (round (- target current)))))
+         (target (max 0 seconds))
+         (last (plist-get app :seek-commit)))
+    ;; A range press reports its commit once, but a duplicated pointer event
+    ;; must not apply the same seek twice.
+    (unless (and last (equal (car last) target)
+                 (< (- (float-time) (cdr last)) 0.8))
+      (plist-put app :seek-commit (cons target (float-time)))
+      (etaf-ncm--set-clock app target)
+      (etaf-ncm--republish-clock app target)
+      (etaf-ncm-seek app (round (- target current))))))
 
 (defun etaf-ncm--target (app item)
   "Return the backend play target for ITEM inside APP."
@@ -972,6 +993,25 @@ reply that carries new playback facts publishes `:status'."
          (song-id (plist-get status :song-id))
          (lyric (etaf-ncm--read app :lyric))
          (elapsed (or (plist-get status :elapsed) 0)))
+    ;; A seek that mpv has not applied yet must not drag the bar back: keep
+    ;; showing the requested target until the backend reaches it or the guard
+    ;; expires.
+    (let ((guard (etaf-ncm--read app :seek-guard)))
+      (when guard
+        (let ((until (car guard)) (target (cdr guard)))
+          (cond ((and (< (float-time) until)
+                      (> (abs (- (or elapsed 0) target)) 1))
+                 (setq elapsed target)
+                 (setq status (plist-put status :elapsed target)))
+                ((or (>= (float-time) until)
+                     (<= (abs (- (or elapsed 0) target)) 1))
+                 (etaf-ncm--write app :seek-guard nil))))))
+    ;; The backend status carries no like state; carry the one this session
+    ;; knows into the same-song comparison and keep it for the new status.
+    (setq status (plist-put status :liked
+                            (and previous
+                                 (equal song-id (plist-get previous :song-id))
+                                 (plist-get previous :liked))))
     (if (etaf-ncm--status-steady-p previous status)
         (etaf-ncm--publish-clock app elapsed)
       (etaf-ncm--set-clock app elapsed)

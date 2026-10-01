@@ -135,7 +135,7 @@
 ;; Stop playback and leave the queue.
 ;;
 ;; Function: etaf-ncm-set-volume (app volume)
-;; Set the backend volume to VOLUME, an integer from 0 to 130.
+;; Set the backend volume to VOLUME, an integer from 0 to 100.
 ;; The backend clamps out-of-range values; the player reports the volume the
 ;; backend accepted after its next status poll.
 ;;

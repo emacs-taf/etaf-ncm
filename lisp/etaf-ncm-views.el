@@ -496,7 +496,7 @@ appends a small count or state next to the icon."
       (text (expr (or label ""))))))
 
 (etaf-define-component etaf-ncm--view-track
-    (&key title artist vip queue-count compact shuffle message
+    (&key title artist vip queue-count compact shuffle message liked
           on-lyrics on-add on-like on-shuffle on-stop on-queue)
   "Render the cover, one-line track identity and the small action row."
   :view
@@ -527,7 +527,9 @@ appends a small count or state next to the icon."
                                 (concat " - " artist)))))))
       (flex :height '(lh 1) :gap '((lh 0) (ch 1)) :align-items 'center
         (etaf-ncm--view-control :ref 'ncm-plus :icon 'plus :help "加入队列 (a)" :on-press on-add)
-        (etaf-ncm--view-control :ref 'ncm-like :icon 'heart :help "喜欢 / 取消喜欢 (f / F)" :on-press on-like)
+        (etaf-ncm--view-control :ref 'ncm-like :icon (if liked 'heart-filled 'heart)
+                                :active liked
+                                :help "喜欢 / 取消喜欢 (f / F)" :on-press on-like)
         (etaf-ncm--view-control :ref 'ncm-shuffle :icon 'shuffle :help "随机播放 (z)"
                                 :on-press on-shuffle :active shuffle)
         (etaf-ncm--view-control :ref 'ncm-stop :icon 'close :help "停止" :on-press on-stop)
@@ -599,7 +601,8 @@ Controls sit in separated groups so the right edge reads as three ideas
                   :set 'svg :size 0.9 :color (etaf-ncm-color :muted) :min-width 2)
     (flex :flex-direction 'row :width (if compact '(ch 8) '(ch 12)) :height '(lh 1)
           :flex-shrink 0
-      (etaf-range :value (or volume 0) :min 0 :max 130 :ref 'ncm-volume
+      (etaf-range :value (or volume 0) :min 0 :max 100 :ref 'ncm-volume
+                  :fill-ref 'ncm-volume-fill
                   :aria-label "音量，点击或拖动调节"
                   :color (etaf-ncm-color :accent)
                   :track-color (etaf-ncm-color :panel3)
@@ -610,7 +613,7 @@ Controls sit in separated groups so the right edge reads as three ideas
 
 (etaf-define-component etaf-ncm--view-player
     (&key title artist vip quality state elapsed duration volume shuffle repeat lyrics message
-          queue-count compact on-toggle on-next on-previous on-stop on-like on-add
+          queue-count compact liked on-toggle on-next on-previous on-stop on-like on-add
           on-volume on-seek on-shuffle on-repeat
           on-lyrics on-queue)
   "Render a native-style three-column bar, or three compact rows.
@@ -625,7 +628,8 @@ budget reserves."
     (grid :if (not compact) :width 'stretch :height '(lh 3)
           :grid-template-columns '((fr 1) (fr 1) (fr 1)) :gap '((lh 0) (ch 2))
       (etaf-ncm--view-track :title title :artist artist :vip vip :queue-count queue-count
-                            :message message :shuffle shuffle :on-lyrics on-lyrics :on-add on-add
+                            :message message :shuffle shuffle :liked liked
+                            :on-lyrics on-lyrics :on-add on-add
                             :on-like on-like :on-shuffle on-shuffle :on-stop on-stop :on-queue on-queue)
       (flex :flex-direction 'column :width 'stretch :height '(lh 3)
         (etaf-ncm--view-transport :state state :repeat repeat :on-like on-like
@@ -638,7 +642,8 @@ budget reserves."
                                    :on-volume on-volume)))
     (flex :if compact :width 'stretch :height '(lh 3) :flex-direction 'column
       (etaf-ncm--view-track :title title :artist artist :vip vip :queue-count queue-count
-                            :compact t :shuffle shuffle :on-add on-add :on-like on-like
+                            :compact t :shuffle shuffle :liked liked
+                            :on-add on-add :on-like on-like
                             :on-shuffle on-shuffle :on-stop on-stop :on-queue on-queue)
       (flex :width 'stretch :height '(lh 1) :gap '((lh 0) (ch 2))
         (box :flex-grow 1 :flex-basis '(px 0) :min-width '(ch 0) :height '(lh 1)

@@ -16,6 +16,11 @@ All notable user-visible changes to ETAF NCM.
 - The sidebar and the narrow chip strip draw the same shared SVG icons as the
   player bar (`star`, `radio`, `disc`, `chart`, `mic` and `clock` joined the
   set), instead of a mix of text glyphs.
+- The volume bar follows the native 0–100% scale, so its filled width matches
+  the percentage label, and both the seek and volume bars keep the pointed
+  position while the backend applies a gesture instead of jumping back.
+- The like control flips between the filled and hollow heart as soon as it is
+  pressed and returns to its previous state when the request fails.
 - `n`, `p`, `SPC`, `<next>`, `<prior>`, `q` and `RET` reach the player in a
   mounted buffer even though the renderer binds them in its own minor-mode map.
   `RET` activates the focused control and falls back to the selected row.

@@ -366,7 +366,7 @@ In a wide layout, which shows both, this keeps the library list focused."
   (interactive)
   (let* ((model (etaf-ncm--current-model))
          (volume (or (plist-get (etaf-ncm--view-status model) :volume) 0)))
-    (etaf-ncm-set-volume model (min 130 (+ volume 10)))))
+    (etaf-ncm-set-volume model (min 100 (+ volume 10)))))
 
 (defun etaf-ncm--volume-down ()
   "Lower the volume by ten."
@@ -581,6 +581,7 @@ releases the polling timer and the session's pending backend requests."
      :duration (plist-get (etaf-ncm--view-status session) :duration)
      :volume (plist-get (etaf-ncm--view-status session) :volume)
      :shuffle (plist-get (etaf-ncm--view-status session) :shuffle)
+     :liked (plist-get (etaf-ncm--view-status session) :liked)
      :repeat (plist-get (etaf-ncm--view-status session) :repeat)
      :message (etaf-ncm--read session :message)
      :lyrics (and (eq (etaf-ncm--read session :aside) 'lyrics)
