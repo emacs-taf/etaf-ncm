@@ -475,6 +475,20 @@ publishing a selection can delay it past any fixed window."
                    '(:kind :daily)))
     (should (= (plist-get (etaf-ncm-tests--request :jump) :index) 4))))
 
+(ert-deftest etaf-ncm-tests-toggle-starts-the-selected-song-when-nothing-is-loaded ()
+  "SPC with an empty queue plays the selected row instead of a no-op toggle."
+  ;; Bind the scripted status: it is a global default for every other
+  ;; scenario, so scribbling on it would change their backend too.
+  (let ((etaf-ncm-tests--status
+         (list :state "idle" :title "" :queue_pos "0/0" :volume "55")))
+    (setq etaf-ncm-tests--requests nil)
+    (let ((app (etaf-ncm-tests--session)))
+      (etaf-ncm-refresh app)
+      (should (eq (plist-get (plist-get (etaf-ncm-state app) :status) :state) 'idle))
+      (etaf-ncm-toggle-playback app)
+      (should (etaf-ncm-tests--request :play))
+      (should-not (etaf-ncm-tests--request :toggle)))))
+
 (ert-deftest etaf-ncm-tests-transport-effect-is-visible-before-the-reply ()
   "Pausing flips the displayed state before the backend answers."
   (setq etaf-ncm-tests--requests nil)
@@ -1176,6 +1190,9 @@ map; the player overrides the colliding commands, so the real command loop,
 not just `etaf-ncm-mode-map', must find the player command."
   (setq etaf-ncm-tests--requests nil)
   (let ((app (etaf-ncm-tests--session)))
+    ;; Read the backend status first: with a playing queue SPC toggles; the
+    ;; empty-queue path plays the selection and has its own scenario.
+    (etaf-ncm-refresh app)
     (etaf-ncm-tests--with-player app
       (execute-kbd-macro (kbd "<next>"))
       (let ((state (etaf-ncm-state app)))

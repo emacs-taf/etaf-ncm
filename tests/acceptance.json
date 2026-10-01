@@ -61,6 +61,11 @@
       "purpose": "Transport, volume, seek, shuffle, list repeat, like and queue-jump commands send their existing requests; repeat reports 列表循环 on and off."
     },
     {
+      "name": "etaf-ncm-tests-toggle-starts-the-selected-song-when-nothing-is-loaded",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "SPC with an empty queue plays the selected row instead of toggling a queue that has nothing to toggle."
+    },
+    {
       "name": "etaf-ncm-tests-press-on-the-selected-row-plays-it",
       "file": "tests/etaf-ncm-tests.el",
       "purpose": "Pressing the selected song row plays its library and jumps to the row without a timing window."

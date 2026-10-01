@@ -699,8 +699,21 @@ whole current library."
                      (format "切到队列第 %s 首" index)))
 
 (defun etaf-ncm-toggle-playback (app)
-  "Pause or resume APP depending on the playback state."
-  (etaf-ncm--command app (list :op :toggle) "已切换播放状态"))
+  "Pause or resume APP, or start APP's selected song when nothing is loaded.
+The toggle reaches the backend as one command, and a queue the backend
+reports as empty has nothing to toggle: the selection plays instead, which is
+what a person expects after selecting a song and pressing SPC or the play
+pill.  Before any status has arrived the toggle is sent unchanged, so an
+app still reading a pending session never starts a library item instead."
+  (let* ((status (etaf-ncm--read app :status))
+         (loaded (or (null status)
+                     (not (equal (or (plist-get status :title) "") ""))
+                     (> (or (plist-get status :queue-count) 0) 0))))
+    (if loaded
+        (etaf-ncm--command app (list :op :toggle) "已切换播放状态")
+      (if-let* ((row (etaf-ncm--selected-row app)))
+          (etaf-ncm-play app row)
+        (etaf-ncm--note app "先选中一首歌再播放")))))
 
 (defun etaf-ncm-next-track (app)
   "Play the next song in APP's queue."

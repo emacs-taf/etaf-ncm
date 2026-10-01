@@ -4,6 +4,10 @@ All notable user-visible changes to ETAF NCM.
 
 ## Unreleased
 
+- Pressing `SPC` or the play pill with an empty queue plays the selected song
+  instead of sending a toggle the backend cannot act on.  Selecting a row and
+  pressing play now starts that song, and the play/pause button no longer
+  flashes back to paused.
 - Every row stays within the frame's line height, so the canvas is never taller
   than the window and the bottom bar is not clipped. Glyphs that fell back to a
   taller font (`♪`, `♫`, `▶︎` with its variation selector, `↻`, `●`, `…`) are

@@ -57,7 +57,7 @@ is revived by its next mount.
 | click or drag the progress bar | Seek to the position under the pointer |
 | click or drag the volume slider | Set volume at the pointer, from 0 to 130% |
 | click the cover / `词` / queue control | Show lyrics / lyrics / the queue, preserving the current selection and queue window |
-| `SPC` | Pause or resume |
+| `SPC` | Pause or resume; with an empty queue it plays the selected song |
 | `n` / `p` | Next / previous queue entry |
 | `a` | Append the selected song to the queue |
 | `s`, `/` | Search songs (a `read-string` prompt) |
