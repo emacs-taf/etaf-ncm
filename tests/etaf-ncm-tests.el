@@ -1143,9 +1143,9 @@ locate the entry by its help text instead of a character offset."
         (should (equal (plist-get (etaf-ncm-state app) :selection) selected))))))
 
 (ert-deftest etaf-ncm-tests-player-clock-moves-the-elapsed-label-and-meter ()
-  "Playing seconds move the elapsed label and the progress meter.
-The meter is the shared range's flow fill, so its painted span grows with the
-position instead of a retained width update."
+  "Playing seconds move the elapsed label and the progress meter in place.
+The meter is the shared range's fill overlay, so its painted span grows
+through a retained width update without publishing a new View."
   (let* ((etaf-ncm-tests--poll-interval 1)
          (calls 0)
          (app (etaf-ncm-tests--session
@@ -1158,11 +1158,13 @@ position instead of a retained width update."
     (etaf-ncm-tests--with-player app
       (etaf-ncm-tests--rendered-text)
       (let* ((runtime (etaf-runtime-for-buffer (current-buffer)))
+             (generation (etaf-runtime-generation runtime))
              (before (etaf-ncm-tests--host-text 'ncm-elapsed))
              (meter-before (etaf-host-ref-bounds runtime 'ncm-meter)))
         (with-timeout (5 (ert-fail "Playback polling did not complete"))
           (while (< calls 3) (sleep-for 0.06)))
         (etaf-ncm-tests--rendered-text)
+        (should (= (etaf-runtime-generation runtime) generation))
         (should-not (equal (etaf-ncm-tests--host-text 'ncm-elapsed) before))
         (let ((meter-after (etaf-host-ref-bounds runtime 'ncm-meter)))
           (should (and meter-before meter-after
