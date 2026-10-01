@@ -48,10 +48,11 @@ is revived by its next mount.
 
 | Key | Action |
 | --- | --- |
-| `j` / `k`, `C-n` / `C-p`, `↓` / `↑`, wheel | Move the library selection, scrolling a page at the ends |
-| click a row | Select it; click it again within half a second to play it |
+| `j` / `k`, `C-n` / `C-p`, `↓` / `↑` | Move the library selection, scrolling a page at the ends |
+| wheel | Scroll the queue window when over the visible queue panel; elsewhere, move the library selection |
+| click a row | Select it; pressing the selected row plays it |
 | `RET` | Play the selected row |
-| `Home` / `End` | Jump to the first / last row of the library |
+| `Home` / `End` | Jump to the first / last loaded row of the library |
 | `PageUp` / `PageDown` | Move the selection by one page |
 | drag the progress bar | Seek to the position under the pointer |
 | `SPC` | Pause or resume |
@@ -61,7 +62,7 @@ is revived by its next mount.
 | `g` | Refresh the library, playback status, queue and account |
 | `l` | Switch the side panel between the lyric and the queue |
 | `v` | Switch between the library list and the side panel in a compact layout |
-| `r` | Toggle single-song repeat |
+| `r` | Toggle list repeat (`列表循环`) |
 | `z` | Toggle shuffle |
 | `f` / `F` | Like / unlike the playing song |
 | `+` / `=` / `-` | Volume up / down by ten |
@@ -69,7 +70,7 @@ is revived by its next mount.
 | `1`-`9` | Jump to the nth sidebar library |
 | `T` | Switch between the dark and the light palette |
 | `?` | Show the key reference |
-| `TAB` / `S-TAB` | Cycle focus through buttons, the search field and the panel tabs |
+| `TAB` / `S-TAB` | Cycle focus through buttons, the search field, panel tabs and visible queue entries |
 | `q` | Close the player buffer |
 
 `n` and `p` intentionally replace Ebox's line scrolling: the library is
@@ -94,6 +95,10 @@ two lines, so the library loses a few rows: the page count follows the layout.
 queue panel, and `etaf-ncm-show-pane` does the same from Lisp. `etaf-ncm-state`
 reports the current `:layout` and `:pane`.
 
+The queue and lyric windows also fit the panel's height. Enlarging the window
+shows more entries; shrinking it keeps the playing queue entry or current lyric
+line visible. Translations share the lyric's line budget.
+
 Both width thresholds are defcustoms, so a font or a display scale that makes
 the text wider only needs a different pair of numbers. A session without a
 window, as in a headless batch run, keeps the `wide` layout.
@@ -110,6 +115,18 @@ Search queries the catalog by song by default; the search library accepts a
 playlist scope as well. Results behave like any other library: they can be
 played, and songs can be queued.
 
+Library loads request 1000 rows by default. Set `etaf-ncm-list-limit` to change
+that budget; the actual request is at least `etaf-ncm-fetch-limit` (the existing
+lower bound) and three visible pages. `Home`, `End`, `PageUp` and `PageDown`
+navigate every loaded row, including those beyond the first 100.
+
+The footer shows `第 X-Y 首 / 共 N 首` with the backend's total when supplied.
+If the backend returns only part of a library, a second line says
+`已加载 M / 共 N 首` instead of presenting that partial count as the library
+size. Raise the limit and press
+`g` to request more; the backend may still impose its own limit. Cached lists
+retain their totals while refreshing.
+
 ## Playback and the queue
 
 Every playback action is a backend command; the player reports what it sent in
@@ -118,13 +135,24 @@ stays a guess. Transport commands show their effect immediately and reconcile
 with the reply; a command that can move the queue reloads it.
 
 A press selects a row and a press on the selected row plays it: a double click
-therefore starts the song even when the first repaint took a moment. A song
-plays directly; a playlist, album, artist, chart, podcast or episode is
-resolved by the backend into its playable songs.
+therefore starts the song even when the first repaint took a moment. In the
+daily recommendation, liked songs and private FM, playing a song row first
+queues that library, then jumps to the row's position after the list starts.
+`n` and `p` therefore continue through the library. The `播放全部` button appears
+only in those libraries, where whole-list playback is supported.
 
-The queue panel shows the entries around the playing position together with the
-total count, which is the same list `netease-music queue` prints. Jumping to an
-entry plays it; the current entry is marked in the list.
+Songs in search results or recent plays still play directly. A playlist, album,
+artist, chart, podcast or episode row is resolved by the backend into its
+playable songs. `r` controls list repeat (`列表循环`), the backend's mpv
+`loop-playlist` setting.
+
+The queue panel opens around the playing position and shows
+`第 X-Y 首 / 共 N 首` using the loaded window and backend count. Roll the wheel
+over the panel to reach any loaded queue entry without changing the library
+selection or playback. That window stays where you scrolled through unchanged
+status refreshes; a new playing entry or changed queue centres it on playback
+again. Clicking an entry jumps to it, and visible entries remain reachable by
+`TAB` and `RET`. The current entry is marked in the list.
 
 ## Lyric, translation and theme
 

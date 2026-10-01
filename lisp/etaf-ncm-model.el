@@ -79,7 +79,16 @@ At or above this width the player keeps a narrow glyph-only library rail
   :group 'etaf-ncm)
 
 (defcustom etaf-ncm-fetch-limit 100
-  "Maximum rows requested from the backend for one library load."
+  "Lower bound on rows requested from the backend for one library load.
+The request also respects `etaf-ncm-list-limit' and three visible pages."
+  :type 'integer
+  :group 'etaf-ncm)
+
+(defcustom etaf-ncm-list-limit 1000
+  "Rows requested from the backend for a library load.
+The request uses at least `etaf-ncm-fetch-limit' and three visible pages.
+When the backend reports more rows than it returns, the footer shows both the
+loaded count and the total; navigation covers the loaded rows."
   :type 'integer
   :group 'etaf-ncm)
 
@@ -127,12 +136,16 @@ complete headless player for tests and other Lisp callers."
           :buffer nil
           :mounted-width nil
           :page-size (etaf-ref etaf-ncm-page-size :name 'etaf-ncm-page-size)
+          :queue-rows (etaf-ref etaf-ncm-page-size :name 'etaf-ncm-queue-rows)
+          :lyric-rows (etaf-ref (max 0 (- etaf-ncm-page-size 7))
+                               :name 'etaf-ncm-lyric-rows)
           :disposed nil
           :status-in-flight nil
           :polled-at 0
           :last-tick (float-time)
           :timer nil
           :last-press nil
+          :play-generation 0
           :list-cache (make-hash-table :test 'equal)
           :list-key nil
           :list-refresh-in-flight nil
@@ -141,6 +154,7 @@ complete headless player for tests and other Lisp callers."
           :subtitle (etaf-ref "根据你的口味生成，每天更新" :name 'etaf-ncm-subtitle)
           :origin (etaf-ref '(:kind :daily) :name 'etaf-ncm-origin)
           :rows (etaf-ref nil :name 'etaf-ncm-rows)
+          :list-total (etaf-ref 0 :name 'etaf-ncm-list-total)
           :selection (etaf-ref 0 :name 'etaf-ncm-selection)
           :window-start (etaf-ref 0 :name 'etaf-ncm-window-start)
           :status (etaf-ref nil :name 'etaf-ncm-status)
@@ -149,6 +163,9 @@ complete headless player for tests and other Lisp callers."
           ;; here would republish the whole view once per second.
           :clock 0
           :queue (etaf-ref nil :name 'etaf-ncm-queue)
+          ;; Nil follows playback; a wheel gesture pins a loaded window until
+          ;; the playing entry or queue contents change.
+          :queue-start (etaf-ref nil :name 'etaf-ncm-queue-start)
           :lyric (etaf-ref nil :name 'etaf-ncm-lyric)
           :aside (etaf-ref 'lyrics :name 'etaf-ncm-aside)
           :theme (etaf-ref (etaf-ncm-theme-defaults) :name 'etaf-ncm-theme)
@@ -410,24 +427,26 @@ SCOPE is `song' (default) or `playlist'.  An empty KEYWORD signals
 (defun etaf-ncm--browse-request (app section)
   "Return the backend browse REQUEST for APP's SECTION."
   (list :op :browse :resource section
-        :limit (max etaf-ncm-fetch-limit (* 3 (etaf-ncm--read app :page-size)))))
+        :limit (max etaf-ncm-list-limit etaf-ncm-fetch-limit
+                    (* 3 (etaf-ncm--read app :page-size)))))
 
 (defun etaf-ncm--list-entry (app key)
   "Return APP's cached library list for KEY, or nil."
   (gethash key (plist-get app :list-cache)))
 
-(defun etaf-ncm--store-list (app key request rows)
-  "Cache ROWS for KEY in APP, remembering REQUEST for later refreshes."
-  (puthash key (list :rows rows :at (float-time) :request request)
+(defun etaf-ncm--store-list (app key request rows total)
+  "Cache ROWS and TOTAL for KEY in APP, keeping REQUEST for later refreshes."
+  (puthash key (list :rows rows :total total :at (float-time) :request request)
            (plist-get app :list-cache)))
 
 (defun etaf-ncm--show-cached-list (app key keep-position-p)
   "Show APP's cached rows for KEY when one exists, without a loading state.
 KEEP-POSITION-P leaves the reader where they are, for a refresh of the list
 they are already looking at."
-  (when-let* ((entry (etaf-ncm--list-entry app key)))
+  (let ((entry (etaf-ncm--list-entry app key)))
     (etaf-batch
       (etaf-ncm--write app :rows (plist-get entry :rows))
+      (etaf-ncm--write app :list-total (or (plist-get entry :total) 0))
       (if keep-position-p
           (etaf-ncm--clamp-list-position app)
         (etaf-ncm--write app :selection 0)
@@ -461,19 +480,23 @@ reader is already looking at."
     (etaf-ncm--call
      app request
      :on-ok (lambda (data)
-              (let ((rows (etaf-ncm--library-rows kind data)))
-                (etaf-ncm--store-list app key request rows)
+              (let* ((rows (etaf-ncm--library-rows kind data))
+                     (total (or (etaf-ncm--parse-number (plist-get data :total))
+                                (length rows))))
+                (etaf-ncm--store-list app key request rows total)
                 (if background
                     (progn
                       (setf (plist-get app :list-refresh-in-flight) nil)
-                      (when (and (equal key (plist-get app :list-key))
-                                 (not (equal rows (etaf-ncm--read app :rows))))
+                      (when (equal key (plist-get app :list-key))
                         (etaf-batch
                           (etaf-ncm--write app :rows rows)
+                          (etaf-ncm--write app :list-total total)
                           (etaf-ncm--clamp-list-position app))))
-                  (when (= generation (etaf-ncm--read app :generation))
+                  (when (and (= generation (etaf-ncm--read app :generation))
+                             (equal key (plist-get app :list-key)))
                     (etaf-batch
                       (etaf-ncm--write app :rows rows)
+                      (etaf-ncm--write app :list-total total)
                       (if keep-position-p
                           (etaf-ncm--clamp-list-position app)
                         (etaf-ncm--write app :selection 0)
@@ -485,9 +508,11 @@ reader is already looking at."
      :on-error (lambda (message _hint)
                  (if background
                      (setf (plist-get app :list-refresh-in-flight) nil)
-                   (when (= generation (etaf-ncm--read app :generation))
+                   (when (and (= generation (etaf-ncm--read app :generation))
+                              (equal key (plist-get app :list-key)))
                      (etaf-ncm--write app :loading nil)
                      (etaf-ncm--write app :rows nil)
+                     (etaf-ncm--write app :list-total 0)
                      (etaf-ncm--note app message)))))))
 
 (defun etaf-ncm--list-stale-p (entry now)
@@ -636,12 +661,32 @@ with a prefetch."
 
 (defun etaf-ncm-play (app &optional item)
   "Play ITEM in APP, or the current library when ITEM is nil.
-ITEM is a row from the visible list, a song id, or a keyword string.  Playing a
-library row replaces the queue with that song, playlist, album, artist, chart,
-podcast or episode; ITEM nil replays the whole current library."
-  (let ((target (etaf-ncm--target app item)))
-    (etaf-ncm--command app (list :op :play :target target)
-                       (format "正在播放：%s" (etaf-ncm--target-label app item)))))
+ITEM is a library row, a song id, or a keyword string.  A song row in a
+playable library queues that library, then jumps to its loaded-list position
+after playback succeeds.  Other targets play directly.  ITEM nil replays the
+whole current library."
+  (let* ((target (etaf-ncm--target app item))
+         (origin (etaf-ncm--playable-origin app))
+         (rows (etaf-ncm--read app :rows))
+         (index (and origin (listp item) (eq (plist-get item :kind) :song)
+                     (or (cl-position item rows :test #'eq)
+                         (cl-position item rows :test #'equal))))
+         (generation (cl-incf (plist-get app :play-generation)))
+         (message (format "正在播放：%s" (etaf-ncm--target-label app item))))
+    (etaf-ncm--command
+     app (list :op :play :target (if index origin target)) message
+     (when index
+       (lambda ()
+         ;; A late list reply must not jump over a newer play request or
+         ;; restart a session that was closed while the list was loading.
+         (when (and (= generation (plist-get app :play-generation))
+                    (not (plist-get app :disposed)))
+           (etaf-ncm--command app (list :op :jump :index (1+ index)) message)))))))
+
+(defun etaf-ncm--playable-origin (app)
+  "Return APP's origin when the backend can play it as a whole list."
+  (let ((origin (etaf-ncm--read app :origin)))
+    (and (assq (plist-get origin :kind) etaf-ncm--play-commands) origin)))
 
 (defun etaf-ncm-add-to-queue (app item)
   "Append ITEM to APP's queue without interrupting the current song."
@@ -693,9 +738,9 @@ A value outside that range signals `etaf-ncm-error'."
                      (if on "随机播放：开" "随机播放：关")))
 
 (defun etaf-ncm-set-repeat (app on)
-  "Turn single-song repeat in APP ON or off."
+  "Turn list repeat (列表循环) in APP ON or off."
   (etaf-ncm--command app (list :op :repeat :on (and on t))
-                     (if on "单曲循环：开" "单曲循环：关")))
+                     (if on "列表循环：开" "列表循环：关")))
 
 (defun etaf-ncm-like (app &optional unlike)
   "Like the song playing in APP, or unlike it when UNLIKE is non-nil."
@@ -751,20 +796,25 @@ reply then replaces that guess with measured facts."
             (plist-put status :repeat (plist-get request :on)))))
     (_ nil)))
 
-(defun etaf-ncm--command (app request message)
+(defun etaf-ncm--command (app request message &optional on-ok)
   "Send REQUEST for APP, showing MESSAGE and its local effect immediately.
 The backend reply reconciles the optimistic state; only a command that can
-move the queue reloads it."
+move the queue reloads it.  ON-OK, when given, continues a command sequence
+instead of reconciling an intermediate playback state."
+  (when (memq (plist-get request :op) '(:next :previous :stop :jump))
+    (cl-incf (plist-get app :play-generation)))
   (etaf-batch
     (etaf-ncm--note app message)
     (etaf-ncm--optimistic-command app request))
   (etaf-ncm--call app request
                   :on-ok (lambda (_data)
-                           (etaf-batch
-                             (etaf-ncm--request-status app)
-                             (when (memq (plist-get request :op)
-                                         etaf-ncm--queue-commands)
-                               (etaf-ncm--request-queue app))))))
+                           (if on-ok
+                               (funcall on-ok)
+                             (etaf-batch
+                               (etaf-ncm--request-status app)
+                               (when (memq (plist-get request :op)
+                                           etaf-ncm--queue-commands)
+                                 (etaf-ncm--request-queue app)))))))
 
 (defconst etaf-ncm--double-press-window 1.0
   "Seconds within which a second press on the same row counts as a double press.
@@ -940,8 +990,11 @@ reply that carries new playback facts publishes `:status'."
       (etaf-ncm--write app :status status))
     (when (and song-id (not (equal song-id (plist-get lyric :id))))
       (etaf-ncm--request-lyric app song-id))
-    (when (and previous (plist-get previous :song-id)
-               song-id (not (equal song-id (plist-get previous :song-id))))
+    (when (and previous
+               (or (not (equal (plist-get status :queue-pos)
+                               (plist-get previous :queue-pos)))
+                   (and (plist-get previous :song-id) song-id
+                        (not (equal song-id (plist-get previous :song-id))))))
       (etaf-ncm--request-queue app))))
 
 (defun etaf-ncm--normalize-status (data)
@@ -966,11 +1019,17 @@ reply that carries new playback facts publishes `:status'."
   (etaf-ncm--call
    app (list :op :queue :limit 200)
    :on-ok (lambda (data)
-            (etaf-ncm--write
-             app :queue
-             (list :count (or (etaf-ncm--parse-number (plist-get data :count)) 0)
-                   :pos (or (etaf-ncm--parse-number (plist-get data :pos)) 0)
-                   :songs (etaf-ncm--list (plist-get data :songs)))))))
+            (let ((previous (etaf-ncm--read app :queue))
+                  (queue (list :count (or (etaf-ncm--parse-number
+                                          (plist-get data :count)) 0)
+                               :pos (or (etaf-ncm--parse-number
+                                         (plist-get data :pos)) 0)
+                               :songs (etaf-ncm--list (plist-get data :songs)))))
+              (etaf-batch
+                (unless (and (equal (plist-get previous :pos) (plist-get queue :pos))
+                             (equal (plist-get previous :songs) (plist-get queue :songs)))
+                  (etaf-ncm--write app :queue-start nil))
+                (etaf-ncm--write app :queue queue))))))
 
 (defun etaf-ncm--request-lyric (app song-id)
   "Fetch the lyric of SONG-ID for APP."
@@ -1035,6 +1094,7 @@ second for the same second."
 (defun etaf-ncm--dispose (app)
   "Release APP's timer and in-flight requests."
   (setf (plist-get app :disposed) t)
+  (cl-incf (plist-get app :play-generation))
   (when-let* ((timer (plist-get app :timer)))
     (cancel-timer timer)
     (setf (plist-get app :timer) nil))
@@ -1094,8 +1154,15 @@ The result is `wide', `medium' or `narrow'; see `etaf-ncm-wide-columns' and
         ((>= columns etaf-ncm-medium-columns) 'medium)
         (t 'narrow)))
 
+(defun etaf-ncm--body-rows-for (height layout)
+  "Return the body height below HEIGHT lines of player chrome in LAYOUT.
+The root padding, three player lines and its border stay outside the body;
+compact layouts also have a two-line pane switch and its border."
+  (max 0 (- height etaf-ncm--reserved-lines 4
+            (if (eq layout 'wide) 0 3))))
+
 (defun etaf-ncm--sync-layout (app &optional window)
-  "Match APP's layout, pane visibility and page size to WINDOW.
+  "Match APP's layout, pane visibility and row budgets to WINDOW.
 WINDOW defaults to the window showing APP's buffer.  A headless session keeps
 the wide layout, because it has no viewport to adapt to."
   (let* ((buffer (plist-get app :buffer))
@@ -1104,14 +1171,21 @@ the wide layout, because it has no viewport to adapt to."
          (layout (if window
                      (etaf-ncm--layout-for (etaf-ncm--window-columns window))
                    'wide))
-         (size (etaf-ncm--page-size-for window layout)))
-    (when (and (eq layout 'wide)
-               (not (eq (etaf-ncm--read app :pane) 'list)))
-      (etaf-ncm--write app :pane 'list))
-    (unless (eq layout (etaf-ncm--read app :layout))
-      (etaf-ncm--write app :layout layout))
-    (unless (equal size (etaf-ncm--read app :page-size))
-      (etaf-ncm--write app :page-size size))
+         (size (etaf-ncm--page-size-for window layout))
+         (height (if (and window (window-live-p window))
+                     (window-body-height window)
+                   (frame-height)))
+         ;; Aside padding, tabs with their border, and the queue heading.
+         (queue-rows (max 0 (- (etaf-ncm--body-rows-for height layout) 7))))
+    (etaf-batch
+      (when (eq layout 'wide)
+        (etaf-ncm--write app :pane 'list))
+      (etaf-ncm--write app :layout layout)
+      (etaf-ncm--write app :page-size size)
+      (etaf-ncm--write app :queue-rows queue-rows)
+      ;; The lyric cover, spacer and footer take seven more lines than the
+      ;; queue heading.  Translations share this budget with lyric lines.
+      (etaf-ncm--write app :lyric-rows (max 0 (- queue-rows 7))))
     layout))
 
 (defvar etaf-ncm--resize-timer nil
@@ -1201,6 +1275,24 @@ rejected repaint, is left alone."
                             (max 0 (- total size))))))
     (list (seq-subseq rows start (min total (+ start size))) start total)))
 
+(defun etaf-ncm--queue-window-start (app)
+  "Return the clamped start of APP's loaded queue window, counting from zero.
+A nil scroll position centres the window on the playing entry."
+  (let* ((queue (etaf-ncm--read app :queue))
+         (size (etaf-ncm--read app :queue-rows))
+         (total (length (plist-get queue :songs)))
+         (start (or (etaf-ncm--read app :queue-start)
+                    (- (max 0 (1- (or (plist-get queue :pos) 0))) (/ size 2)))))
+    (max 0 (min start (max 0 (- total size))))))
+
+(defun etaf-ncm--scroll-queue (app delta)
+  "Move APP's loaded queue window by DELTA rows without changing playback."
+  (let* ((total (length (plist-get (etaf-ncm--read app :queue) :songs)))
+         (size (etaf-ncm--read app :queue-rows)))
+    (etaf-ncm--write app :queue-start
+                     (max 0 (min (+ (etaf-ncm--queue-window-start app) delta)
+                                 (max 0 (- total size)))))))
+
 (defun etaf-ncm-move-selection (app delta)
   "Move APP's list selection by DELTA rows and keep it inside the page."
   (let* ((rows (etaf-ncm--read app :rows))
@@ -1261,7 +1353,10 @@ not remove anything from the frame."
 The snapshot is a copy: mutating it never changes the player.  Keys are
 `:section', `:title', `:subtitle', `:mode', `:query', `:items' (the library
 rows), `:visible' (the rows on the current page), `:selection', `:window-start',
-`:page-size', `:status', `:queue', `:lyric', `:lyric-line', `:aside',
+`:page-size', `:rows-total' (loaded count), `:list-total' (backend total or the
+loaded count), `:queue-rows', `:queue-start' (zero-based loaded window start),
+`:lyric-rows' (display lines including translations), `:status', `:queue',
+`:lyric', `:lyric-line', `:aside',
 `:layout', `:pane', `:theme', `:account', `:loading', `:error' and `:message'."
   (let* ((rows (etaf-ncm--read app :rows))
          (page (etaf-ncm--page-rows app))
@@ -1281,6 +1376,10 @@ rows), `:visible' (the rows on the current page), `:selection', `:window-start',
           :selection (etaf-ncm--read app :selection)
           :page-size (etaf-ncm--read app :page-size)
           :rows-total (length rows)
+          :list-total (etaf-ncm--read app :list-total)
+          :queue-rows (etaf-ncm--read app :queue-rows)
+          :queue-start (etaf-ncm--queue-window-start app)
+          :lyric-rows (etaf-ncm--read app :lyric-rows)
           :status (and status (copy-sequence status))
           :queue (let ((queue (etaf-ncm--read app :queue)))
                    (when queue

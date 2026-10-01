@@ -169,14 +169,15 @@
     (should (equal (plist-get (etaf-ncm-state app) :title) "搜索结果"))))
 
 (ert-deftest etaf-ncm-tests-play-uses-the-selected-row ()
-  "Playing the selection sends its kind and id."
+  "Playing a song selection queues its library and jumps to the selected row."
   (setq etaf-ncm-tests--requests nil)
   (let ((app (etaf-ncm-tests--session)))
     (etaf-ncm-refresh app)
     (etaf-ncm-move-selection app 2)
     (etaf-ncm-activate-selection app)
     (let ((request (etaf-ncm-tests--request :play)))
-      (should (equal (plist-get request :target) (list :kind :song :id 3)))
+      (should (equal (plist-get request :target) (list :kind :daily)))
+      (should (= (plist-get (etaf-ncm-tests--request :jump) :index) 3))
       (should (equal (plist-get (etaf-ncm-state app) :message) "正在播放：曲目 3")))
     (etaf-ncm-play app)
     (should (equal (plist-get (etaf-ncm-state app) :message) "正在播放：每日推荐"))))
@@ -188,7 +189,8 @@
     (etaf-ncm-refresh app)
     (etaf-ncm-play app (nth 0 (etaf-ncm-tests--rows app)))
     (should (equal (plist-get (etaf-ncm-tests--request :play) :target)
-                   '(:kind :song :id 1)))
+                   '(:kind :daily)))
+    (should (= (plist-get (etaf-ncm-tests--request :jump) :index) 1))
     (etaf-ncm-play app 42)
     (should (equal (plist-get (etaf-ncm-tests--request :play) :target)
                    '(:kind :song :id 42)))
@@ -237,6 +239,10 @@
     (should (eq (plist-get (etaf-ncm-tests--request :shuffle) :on) t))
     (etaf-ncm-set-repeat app nil)
     (should (eq (plist-get (etaf-ncm-tests--request :repeat) :on) nil))
+    (should (equal (plist-get (etaf-ncm-state app) :message) "列表循环：关"))
+    (etaf-ncm-set-repeat app t)
+    (should (eq (plist-get (etaf-ncm-tests--request :repeat) :on) t))
+    (should (equal (plist-get (etaf-ncm-state app) :message) "列表循环：开"))
     (etaf-ncm-like app)
     (should (etaf-ncm-tests--request :like))
     (etaf-ncm-like app t)
@@ -408,17 +414,17 @@ silently doing nothing against the real backend."
           (etaf-mount buffer (etaf-ncm-view app)
                       (list :viewport-width 1200 :viewport-height 40))
           (with-current-buffer buffer
-            (should (string-match-p "曲目 1" (buffer-string)))
-            (should (string-match-p "每日推荐" (buffer-string)))
+            (should (string-match-p "曲目 1" (buffer-substring-no-properties (point-min) (point-max))))
+            (should (string-match-p "每日推荐" (buffer-substring-no-properties (point-min) (point-max))))
             (should (string-match-p (plist-get (etaf-ncm-state app) :message)
-                                    (buffer-string))))
+                                    (buffer-substring-no-properties (point-min) (point-max)))))
           (kill-buffer buffer)
           (should-not (get-buffer " *etaf-ncm-tests-mount*"))
           (let ((again (get-buffer-create " *etaf-ncm-tests-mount*")))
             (etaf-mount again (etaf-ncm-view app)
                         (list :viewport-width 1200 :viewport-height 40))
             (with-current-buffer again
-              (should (string-match-p "曲目 1" (buffer-string))))))
+              (should (string-match-p "曲目 1" (buffer-substring-no-properties (point-min) (point-max)))))))
       (when (get-buffer " *etaf-ncm-tests-mount*")
         (kill-buffer " *etaf-ncm-tests-mount*")))))
 
@@ -431,8 +437,10 @@ silently doing nothing against the real backend."
           (should (buffer-live-p buffer))
           (with-current-buffer buffer
             (should (eq (current-local-map) etaf-ncm-mode-map))
+            (should (eq (key-binding [wheel-down])
+                        (lookup-key etaf-ncm-mode-map [wheel-down])))
             (should-not mode-line-format)
-            (should (string-match-p "曲目 1" (buffer-string))))
+            (should (string-match-p "曲目 1" (buffer-substring-no-properties (point-min) (point-max)))))
           (etaf-ncm-close)
           (should-not (get-buffer etaf-ncm-buffer-name)))
       (when (get-buffer etaf-ncm-buffer-name)
@@ -449,7 +457,8 @@ publishing a selection can delay it past any fixed window."
     (should-not (etaf-ncm-tests--request :play))
     (etaf-ncm-press-row app 3)
     (should (equal (plist-get (etaf-ncm-tests--request :play) :target)
-                   '(:kind :song :id 3)))))
+                   '(:kind :daily)))
+    (should (= (plist-get (etaf-ncm-tests--request :jump) :index) 3))))
 
 (ert-deftest etaf-ncm-tests-press-selects-another-row-before-playing ()
   "A press on a different row selects it; the next press plays it."
@@ -463,7 +472,8 @@ publishing a selection can delay it past any fixed window."
                             (or (plist-get (etaf-ncm-state app) :message) "")))
     (etaf-ncm-press-row app 4)
     (should (equal (plist-get (etaf-ncm-tests--request :play) :target)
-                   '(:kind :song :id 4)))))
+                   '(:kind :daily)))
+    (should (= (plist-get (etaf-ncm-tests--request :jump) :index) 4))))
 
 (ert-deftest etaf-ncm-tests-transport-effect-is-visible-before-the-reply ()
   "Pausing flips the displayed state before the backend answers."
@@ -507,6 +517,371 @@ The background reply must not move the reader's selection."
              (list :ok (etaf-ncm-tests--fixture "daily")))
     (should (= (plist-get (etaf-ncm-state app) :selection) 4))
     (should (= (plist-get (etaf-ncm-state app) :rows-total) 12))))
+
+;;; ---------------------------------------------------------------------------
+;;; Long libraries and panel interaction
+;;; ---------------------------------------------------------------------------
+
+(defun etaf-ncm-tests--songs (count &optional prefix)
+  "Return COUNT backend songs with a distinct PREFIX."
+  (cl-loop for index from 1 to count
+           collect (list :id index :name (format "%s%03d" (or prefix "长列表") index)
+                         :artist "歌手" :album "专辑" :ms 180000)))
+
+(defmacro etaf-ncm-tests--with-player (app &rest body)
+  "Open APP in an isolated buffer and a roomy window while running BODY."
+  (declare (indent 1) (debug t))
+  `(let ((etaf-ncm-buffer-name (generate-new-buffer-name " *ncm-acceptance*"))
+         (etaf-ncm-status-interval 3600)
+         (display-buffer-overriding-action '((display-buffer-same-window)))
+         (frame (selected-frame))
+         (width (frame-width))
+         (height (frame-height)))
+     (unwind-protect
+         (save-window-excursion
+           (delete-other-windows)
+           (set-frame-size frame 180 48)
+           (etaf-ncm-open ,app)
+           ,@body)
+       (etaf-ncm-close)
+       (set-frame-size frame width height))))
+
+(defun etaf-ncm-tests--rendered-text ()
+  "Flush the current mounted player and read its text without properties."
+  (etaf-runtime-flush (etaf-runtime-for-buffer (current-buffer)))
+  (buffer-substring-no-properties (point-min) (point-max)))
+
+(defun etaf-ncm-tests--key (key)
+  "Invoke KEY through the player's published keymap."
+  (call-interactively (lookup-key etaf-ncm-mode-map (kbd key))))
+
+(defun etaf-ncm-tests--wheel (window direction column row)
+  "Send DIRECTION at COLUMN and ROW through WINDOW's active wheel binding.
+The synthetic wheel event carries pixels, just like an Emacs mouse event."
+  (funcall (with-current-buffer (window-buffer window)
+             (key-binding (vector direction)))
+           (list direction
+                 (list window (window-start window)
+                       (cons (* column (window-font-width window))
+                             (* row (window-font-height window))) 0))))
+
+(ert-deftest etaf-ncm-tests-browse-limit-covers-long-libraries ()
+  "Browse loads 500 rows and respects the new limit, old limit and page floor."
+  (dolist (limits '((1000 100 24 1000) (1000 1500 24 1500) (100 50 80 240)))
+    (let* ((etaf-ncm-list-limit (nth 0 limits))
+           (etaf-ncm-fetch-limit (nth 1 limits))
+           (etaf-ncm-page-size (nth 2 limits))
+           seen
+           (app (etaf-ncm-create
+                 :client (lambda (request callback)
+                           (setq seen request)
+                           (funcall callback
+                                    (list :ok (list :total 500 :songs
+                                                    (etaf-ncm-tests--songs
+                                                     (min 500 (plist-get request :limit))))))))))
+      (etaf-ncm-locate app :liked)
+      (should (= (plist-get seen :limit) (nth 3 limits)))
+      (should (= (plist-get (etaf-ncm-state app) :rows-total)
+                 (min 500 (nth 3 limits))))
+      (should (= (plist-get (etaf-ncm-state app) :list-total) 500)))))
+
+(ert-deftest etaf-ncm-tests-library-total-survives-cache-and-refresh ()
+  "Partial totals survive cache hits, change without new rows, and clear on error."
+  (let* ((songs (etaf-ncm-tests--songs 100))
+         pending defer
+         (app (etaf-ncm-create
+               :client (lambda (request callback)
+                         (if (eq (plist-get request :op) :browse)
+                             (if defer
+                                 (setq pending callback)
+                               (funcall callback (list :ok (list :songs songs :total "500"))))
+                           (etaf-ncm-tests--client request callback))))))
+    (etaf-ncm-tests--with-player app
+      (etaf-ncm-locate app :liked)
+      (should (= (plist-get (etaf-ncm-state app) :rows-total) 100))
+      (should (= (plist-get (etaf-ncm-state app) :list-total) 500))
+      (should (string-match-p "已加载 100 / 共 500 首"
+                              (etaf-ncm-tests--rendered-text)))
+      (etaf-ncm-locate app :daily)
+      (setq defer t)
+      (etaf-ncm-locate app :liked)
+      (should-not (plist-get (etaf-ncm-state app) :loading))
+      (should (= (plist-get (etaf-ncm-state app) :list-total) 500))
+      (etaf-ncm-move-selection app 99)
+      (funcall pending (list :ok (list :songs songs :total 501)))
+      (should (= (plist-get (etaf-ncm-state app) :selection) 99))
+      (should (= (plist-get (etaf-ncm-state app) :list-total) 501))
+      (should (string-match-p "已加载 100 / 共 501 首"
+                              (etaf-ncm-tests--rendered-text)))
+      (etaf-ncm-refresh app)
+      (funcall pending (list :ok (list :songs nil :total 501)))
+      (should (string-match-p "第 0-0 首 / 共 501 首"
+                              (etaf-ncm-tests--rendered-text)))
+      (should (string-match-p "已加载 0 / 共 501 首"
+                              (etaf-ncm-tests--rendered-text)))
+      (etaf-ncm-refresh app)
+      (funcall pending '(:error "加载失败"))
+      (should (= (plist-get (etaf-ncm-state app) :list-total) 0))
+      (should (= (plist-get (etaf-ncm-state app) :rows-total) 0)))))
+
+(ert-deftest etaf-ncm-tests-long-library-keys-show-one-based-ranges ()
+  "Home, End and page keys navigate every loaded row and display one-based ranges."
+  (let ((app (etaf-ncm-create
+              :client (lambda (request callback)
+                        (if (eq (plist-get request :op) :browse)
+                            (funcall callback (list :ok (list :songs (etaf-ncm-tests--songs 500)
+                                                             :total 500)))
+                          (etaf-ncm-tests--client request callback))))))
+    (etaf-ncm-tests--with-player app
+      (let ((size (plist-get (etaf-ncm-state app) :page-size)))
+        (should (string-match-p (format "第 1-%d 首 / 共 500 首" size)
+                                (etaf-ncm-tests--rendered-text)))
+        (etaf-ncm-tests--key "<end>")
+        (let ((state (etaf-ncm-state app)))
+          (should (= (plist-get state :selection) 499))
+          (should (= (plist-get state :window-start) (- 500 size)))
+          (should (= (plist-get (car (last (plist-get state :visible))) :id) 500)))
+        (should (string-match-p (format "第 %d-500 首 / 共 500 首" (- 501 size))
+                                (etaf-ncm-tests--rendered-text)))
+        (etaf-ncm-tests--key "<prior>")
+        (should (= (plist-get (etaf-ncm-state app) :selection) (- 499 size)))
+        (etaf-ncm-tests--key "<next>")
+        (should (= (plist-get (etaf-ncm-state app) :selection) 499))
+        (etaf-ncm-tests--key "<home>")
+        (should (= (plist-get (etaf-ncm-state app) :selection) 0))
+        (should (= (plist-get (etaf-ncm-state app) :window-start) 0))))))
+
+(ert-deftest etaf-ncm-tests-superseded-library-keeps-visible-total ()
+  "A late foreground reply cannot overwrite a revisited cached library or total."
+  (let* (defer pending
+         (app (etaf-ncm-create
+               :client (lambda (_request callback)
+                         (if defer
+                             (push callback pending)
+                           (funcall callback
+                                    (list :ok (list :songs (etaf-ncm-tests--songs 100)
+                                                    :total 500))))))))
+    (etaf-ncm-locate app :liked)
+    (setq defer t)
+    (etaf-ncm-locate app :daily)
+    (should (= (plist-get (etaf-ncm-state app) :rows-total) 0))
+    (should (= (plist-get (etaf-ncm-state app) :list-total) 0))
+    (etaf-ncm-locate app :liked)
+    (funcall (cadr pending) (list :ok (list :songs (etaf-ncm-tests--songs 3) :total 3)))
+    (should (= (plist-get (etaf-ncm-state app) :rows-total) 100))
+    (should (= (plist-get (etaf-ncm-state app) :list-total) 500))
+    (should (eq (plist-get (etaf-ncm-state app) :section) :liked))))
+
+(ert-deftest etaf-ncm-tests-song-row-waits-for-library-before-jump ()
+  "A song in each playable library waits for play, then jumps by its full-list index."
+  (dolist (section '(:daily :liked :fm))
+    (let* ((etaf-ncm-page-size 8)
+           (songs (etaf-ncm-tests--songs 200))
+           requests play-reply jump-reply
+           (app (etaf-ncm-create
+                 :client (lambda (request callback)
+                           (push request requests)
+                           (pcase (plist-get request :op)
+                             (:browse (funcall callback (list :ok (list :songs songs))))
+                             (:play (setq play-reply callback))
+                             (:jump (setq jump-reply callback))
+                             (:queue (funcall callback
+                                              (list :ok (list :songs songs :count 200 :pos 137))))
+                             (_ (etaf-ncm-tests--client request callback)))))))
+      (etaf-ncm-locate app section)
+      (etaf-ncm-press-row app 137)
+      (should (= (plist-get (etaf-ncm-state app) :selection) 136))
+      (setq requests nil)
+      (etaf-ncm-press-row app 137)
+      (should (equal requests (list (list :op :play :target (list :kind section)))))
+      ;; Navigation while the request is in flight must not change the jump.
+      (etaf-ncm-move-selection app 10)
+      (funcall play-reply '(:ok (:ok t)))
+      (should (equal (mapcar (lambda (request) (plist-get request :op))
+                            (reverse requests)) '(:play :jump)))
+      (should (= (plist-get (car requests) :index) 137))
+      (funcall jump-reply '(:ok (:ok t)))
+      (should (= (plist-get (plist-get (etaf-ncm-state app) :queue) :count) 200))
+      (should (= (plist-get (plist-get (etaf-ncm-state app) :queue) :pos) 137))
+      (should (equal (plist-get (etaf-ncm-state app) :message) "正在播放：长列表137")))))
+
+(ert-deftest etaf-ncm-tests-song-row-failure-and-supersession ()
+  "Failed or superseded list play never jumps over another playback request."
+  (let* (pending jumps
+         (app (etaf-ncm-create
+               :client (lambda (request callback)
+                         (pcase (plist-get request :op)
+                           (:play (push callback pending))
+                           (:jump (push request jumps)
+                                  (funcall callback '(:error "跳转失败")))
+                           (_ (etaf-ncm-tests--client request callback)))))))
+    (etaf-ncm-locate app :daily)
+    (etaf-ncm-activate-selection app)
+    (funcall (pop pending) '(:error "播放失败"))
+    (should-not jumps)
+    (should (equal (plist-get (etaf-ncm-state app) :error) "播放失败"))
+    (etaf-ncm-activate-selection app)
+    (etaf-ncm-play app 999)
+    (funcall (cadr pending) '(:ok (:ok t)))
+    (should-not jumps)
+    (funcall (car pending) '(:ok (:ok t)))
+    (etaf-ncm-activate-selection app)
+    (etaf-ncm-stop app)
+    (funcall (car pending) '(:ok (:ok t)))
+    (should-not jumps)
+    (etaf-ncm-activate-selection app)
+    (funcall (car pending) '(:ok (:ok t)))
+    (should (= (plist-get (car jumps) :index) 1))
+    (should (equal (plist-get (etaf-ncm-state app) :error) "跳转失败"))))
+
+(ert-deftest etaf-ncm-tests-other-libraries-play-rows-directly ()
+  "Recent, search and list-of-lists rows keep their individual play targets."
+  (let ((app (etaf-ncm-tests--session)))
+    (dolist (entry '((:recent :song) (:playlists :playlist) (:albums :album)
+                     (:artists :artist) (:charts :chart) (:podcasts :podcast)
+                     (:search :song)))
+      (if (eq (car entry) :search)
+          (etaf-ncm-search app "曲目")
+        (etaf-ncm-locate app (car entry)))
+      (setq etaf-ncm-tests--requests nil)
+      (etaf-ncm-activate-selection app)
+      (should (equal (plist-get (etaf-ncm-tests--request :play) :target)
+                     (list :kind (cadr entry) :id (plist-get (car (etaf-ncm-tests--rows app)) :id))))
+      (should-not (etaf-ncm-tests--request :jump)))))
+
+(ert-deftest etaf-ncm-tests-play-all-only-for-supported-origins ()
+  "Both header layouts offer play-all only for daily, liked and FM libraries."
+  (dolist (wide '(1 1000))
+    (let ((etaf-ncm-wide-columns wide)
+          (app (etaf-ncm-tests--session)))
+      (etaf-ncm-tests--with-player app
+        (dolist (section '(:daily :liked :fm :playlists :albums :artists :charts
+                           :podcasts :recent :search))
+          (if (eq section :search)
+              (etaf-ncm-search app "曲目")
+            (etaf-ncm-locate app section))
+          (should (eq (and (string-match-p "播放全部" (etaf-ncm-tests--rendered-text)) t)
+                      (and (memq section '(:daily :liked :fm)) t))))))))
+
+(ert-deftest etaf-ncm-tests-queue-wheel-scrolls-only-the-event-panel ()
+  "Wheel events reach the entire queue, preserve selection and follow a new track."
+  (dolist (layout '(wide medium narrow))
+    (let* ((etaf-ncm-wide-columns (if (eq layout 'wide) 1 1000))
+           (etaf-ncm-medium-columns (if (eq layout 'narrow) 1000 1))
+           (songs (etaf-ncm-tests--songs 80 "队列"))
+           (pos 40)
+           (app (etaf-ncm-create
+                 :client (lambda (request callback)
+                           (if (eq (plist-get request :op) :queue)
+                               (funcall callback (list :ok (list :count 90 :pos pos :songs songs)))
+                             (etaf-ncm-tests--client request callback))))))
+      (etaf-ncm-tests--with-player app
+        (etaf-ncm-toggle-aside app)
+        (should (eq (plist-get (etaf-ncm-state app) :layout) layout))
+        (let* ((window (selected-window))
+               (right (- (window-body-width window) 4))
+               (size (plist-get (etaf-ncm-state app) :queue-rows))
+               (start (plist-get (etaf-ncm-state app) :queue-start)))
+          (should (> size 12))
+          (should (string-match-p (format "第 %d-%d 首 / 共 90 首" (1+ start) (+ start size))
+                                  (etaf-ncm-tests--rendered-text)))
+          ;; Current buffer and point need not belong to the event window.
+          (with-temp-buffer
+            (etaf-batch
+              (dotimes (_ 100) (etaf-ncm-tests--wheel window 'wheel-down right 8))))
+          (should (= (plist-get (etaf-ncm-state app) :selection) 0))
+          (should (= (plist-get (etaf-ncm-state app) :queue-start) (- 80 size)))
+          (should (string-match-p "队列080" (etaf-ncm-tests--rendered-text)))
+          (etaf-batch
+            (dotimes (_ 100) (etaf-ncm-tests--wheel window 'wheel-up right 8)))
+          (should (= (plist-get (etaf-ncm-state app) :queue-start) 0))
+          (should (string-match-p "队列001" (etaf-ncm-tests--rendered-text)))
+          (etaf-ncm-refresh app)
+          (unless (eq layout 'wide) (etaf-ncm-show-pane app 'aside))
+          (should (= (plist-get (etaf-ncm-state app) :queue-start) 0))
+          (setq pos 60)
+          (etaf-ncm-refresh app)
+          (unless (eq layout 'wide) (etaf-ncm-show-pane app 'aside))
+          (should (= (plist-get (etaf-ncm-state app) :queue-start)
+                     (min (- 59 (/ size 2)) (- 80 size))))
+          ;; The player bar and the library/rail retain selection scrolling.
+          (etaf-ncm-tests--wheel window 'wheel-down right (1- (window-body-height window)))
+          (should (= (plist-get (etaf-ncm-state app) :selection) 1))
+          (if (eq layout 'wide)
+              (etaf-ncm-tests--wheel window 'wheel-down 2 8)
+            (etaf-ncm-show-pane app 'list)
+            (etaf-ncm-tests--wheel window 'wheel-down right 8))
+          (should (= (plist-get (etaf-ncm-state app) :selection) 2))
+          (etaf-ncm-toggle-aside app)
+          (etaf-ncm-tests--wheel window 'wheel-down right 8)
+          (should (= (plist-get (etaf-ncm-state app) :selection) 3)))))))
+
+(ert-deftest etaf-ncm-tests-panel-budgets-fit-resized-windows ()
+  "Queue and translated lyric windows shrink with their own panel height."
+  (let* ((lyric (mapconcat (lambda (index) (format "[00:%02d.00]歌词%02d" index index))
+                          (number-sequence 0 59) "\n"))
+         (trans (replace-regexp-in-string "歌词" "译文" lyric))
+         (app (etaf-ncm-create
+               :client (lambda (request callback)
+                         (if (eq (plist-get request :op) :lyric)
+                             (funcall callback (list :ok (list :lyric lyric :trans trans)))
+                           (etaf-ncm-tests--client request callback))))))
+    (etaf-ncm-tests--with-player app
+      (let* ((before (etaf-ncm-state app))
+             (text (etaf-ncm-tests--rendered-text)))
+        (should (string-match-p "歌词42" text))
+        (should (string-match-p "译文42" text))
+        (set-frame-height (selected-frame) 32)
+        (etaf-ncm-refresh app)
+        (let* ((after (etaf-ncm-state app))
+               (text (etaf-ncm-tests--rendered-text))
+               (count 0) (start 0))
+          (should (< (plist-get after :queue-rows) (plist-get before :queue-rows)))
+          (should (< (plist-get after :lyric-rows) (plist-get before :lyric-rows)))
+          (should (string-match-p "歌词42" text))
+          (should (string-match-p "译文42" text))
+          (while (string-match "\\(?:歌词\\|译文\\)[0-9][0-9]" text start)
+            (cl-incf count)
+            (setq start (match-end 0)))
+          (should (<= count (plist-get after :lyric-rows))))))))
+
+(ert-deftest etaf-ncm-tests-queue-entries-click-and-tab-activate ()
+  "Scrolled queue entries still jump on mouse activation and TAB/RET."
+  (let* ((songs (etaf-ncm-tests--songs 45 "队列"))
+         (app (etaf-ncm-create
+               :client (lambda (request callback)
+                         (if (eq (plist-get request :op) :queue)
+                             (funcall callback (list :ok (list :songs songs :count 45 :pos 2)))
+                           (etaf-ncm-tests--client request callback))))))
+    (etaf-ncm-tests--with-player app
+      (etaf-ncm-toggle-aside app)
+      (let* ((window (selected-window))
+             (right (- (window-body-width window) 4)))
+        (etaf-batch
+          (dotimes (_ 50) (etaf-ncm-tests--wheel window 'wheel-down right 8)))
+        (etaf-ncm-tests--rendered-text)
+        (goto-char (point-min))
+        (search-forward "队列045")
+        (backward-char 1)
+        (let ((event (list 'mouse-1 (list window (point) (cons right 8) 0))))
+          (setq etaf-ncm-tests--requests nil)
+          (funcall (key-binding [mouse-1]) event)
+          (should (= (plist-get (etaf-ncm-tests--request :jump) :index) 45)))
+        (etaf-ncm-tests--rendered-text)
+        (let (index)
+          (dotimes (_ 150)
+            (unless index
+              (call-interactively (key-binding (kbd "TAB")))
+              (let ((help (get-char-property (point) 'help-echo)))
+                (when (and (stringp help)
+                           (string-match "播放队列第 \\([0-9]+\\) 首" help))
+                  (setq index (string-to-number (match-string 1 help)))))))
+          (should index)
+          (should (> index 10))
+          (setq etaf-ncm-tests--requests nil)
+          (call-interactively (key-binding (kbd "RET")))
+          (should (= (plist-get (etaf-ncm-tests--request :jump) :index) index))
+          (should (= (plist-get (etaf-ncm-state app) :selection) 0)))))))
 
 (provide 'etaf-ncm-tests)
 ;;; etaf-ncm-tests.el ends here

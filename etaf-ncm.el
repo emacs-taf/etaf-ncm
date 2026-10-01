@@ -73,10 +73,15 @@
 ;; Return APP's session state as a detached plist snapshot.
 ;; Keys are `:section', `:title', `:subtitle', `:mode', `:query', `:items',
 ;; `:visible', `:window-start', `:selection', `:page-size', `:rows-total',
+;; `:list-total', `:queue-rows', `:queue-start', `:lyric-rows',
 ;; `:status', `:queue', `:lyric', `:lyric-line', `:aside', `:theme', `:account',
 ;; `:layout', `:pane', `:loading', `:error' and `:message'.  The snapshot copies
 ;; every value, so mutating it never changes the player; use it to render
 ;; outside ETAF or to assert behavior in tests.
+;; `:rows-total' counts loaded library rows; `:list-total' keeps the backend's
+;; total when reported and otherwise equals the loaded count.  `:queue-rows'
+;; and `:lyric-rows' are panel line budgets (translations use lyric lines too);
+;; `:queue-start' is the zero-based start of the loaded queue window.
 ;;
 ;; Function: etaf-ncm-refresh (app)
 ;; Reload APP's library, playback status, queue and account.
@@ -97,9 +102,11 @@
 ;; the backend.  A blank KEYWORD signals `etaf-ncm-error'.
 ;;
 ;; Function: etaf-ncm-play (app &optional item)
-;; Play ITEM, or APP's selected row when ITEM is nil.
+;; Play ITEM, or APP's current library when ITEM is nil.
 ;; ITEM is a library row as reported in `etaf-ncm-state' `:items'; a row carries
-;; at least `:kind' and `:id'.  A song plays directly, while a playlist, album,
+;; at least `:kind' and `:id'.  A song row in the daily, liked or FM library
+;; first plays that library and then jumps to the row's 1-based loaded position.
+;; Other songs play directly, while a playlist, album,
 ;; artist, chart or podcast is resolved by the backend into its playable songs.
 ;; A row without a playable target signals `etaf-ncm-error'.
 ;;
@@ -136,7 +143,8 @@
 ;; Turn shuffle mode on when ON is non-nil and off otherwise.
 ;;
 ;; Function: etaf-ncm-set-repeat (app on)
-;; Turn repeat mode on when ON is non-nil and off otherwise.
+;; Turn list repeat (列表循环) on when ON is non-nil and off otherwise.
+;; The existing backend repeat command controls mpv's loop-playlist.
 ;;
 ;; Function: etaf-ncm-like (app &optional unlike)
 ;; Add the current song to the liked songs, or remove it when UNLIKE is non-nil.
@@ -193,7 +201,13 @@
 ;; and every pane uses the full width.
 ;;
 ;; Variable: etaf-ncm-fetch-limit
-;; Maximum number of rows requested from the backend for one library load.
+;; Lower bound on rows requested for one library load, retained for callers
+;; that configured it before `etaf-ncm-list-limit'.
+;;
+;; Variable: etaf-ncm-list-limit
+;; Rows requested for one library load, default 1000.  The actual request is
+;; the maximum of this value, `etaf-ncm-fetch-limit' and three visible pages.
+;; Backend totals stay distinct from loaded counts when the reply is partial.
 ;;
 ;; Variable: etaf-ncm-status-interval
 ;; Seconds between playback ticks while a song is playing.

@@ -42,9 +42,6 @@
 (defconst etaf-ncm--row-columns-compact '((ch 3) (fr 1) (ch 18) (ch 5) (ch 6))
   "Grid columns of a compact library row: index, title, artist, badge, time.")
 
-(defconst etaf-ncm--lyric-window-size 14
-  "Lyric lines rendered around the current line.")
-
 (defun etaf-ncm--view-border (_side color)
   "Return the border value of SIDE drawn with COLOR."
   (list '(px 1) 'solid color))
@@ -66,13 +63,13 @@ over, one step above the panel it sits on."
 (defun etaf-ncm--lyric-window (lines index size)
   "Return (START . VISIBLE) for a window of SIZE LINES around INDEX."
   (let* ((total (length lines))
-         (size (max 1 (min size total)))
+         (size (max 0 (min size total)))
          (start (max 0 (min (- index (/ size 3)) (- total size)))))
     (cons start (seq-subseq lines start (+ start size)))))
 
 (defun etaf-ncm--translation-for (trans seconds)
   "Return the translation of SECONDS from TRANS, or nil."
-  (cdr (assq seconds trans)))
+  (cdr (cl-assoc seconds trans :test #'=)))
 
 ;;; ---------------------------------------------------------------------------
 ;;; Primitive Views
@@ -269,7 +266,7 @@ COMPACT stacks the search field under the title, the shape a narrow frame needs.
         (etaf-text-input :value query :label "搜索"
                          :placeholder "搜索歌曲、歌手、歌单或专辑"
                          :hide-label t :on-change on-search))
-      (etaf-button :label "▶︎ 播放全部" :variant 'primary :pointer 'hand
+      (etaf-button :if on-play-all :label "▶︎ 播放全部" :variant 'primary :pointer 'hand
                    :help-echo "播放整个列表" :on-press on-play-all))
     (flex :if (not compact) :width 'stretch :height '(lh 2)
           :gap '((lh 0) (ch 1)) :align-items 'center
@@ -282,7 +279,7 @@ COMPACT stacks the search field under the title, the shape a narrow frame needs.
         (etaf-text-input :value query :label "搜索"
                          :placeholder "搜索歌曲、歌手、歌单或专辑"
                          :hide-label t :on-change on-search))
-      (etaf-button :label "▶︎ 播放全部" :variant 'primary :pointer 'hand
+      (etaf-button :if on-play-all :label "▶︎ 播放全部" :variant 'primary :pointer 'hand
                    :help-echo "播放整个列表" :on-press on-play-all)
       (etaf-button :label (if loading "… 加载中" "↻ 换一批") :variant 'ghost
                    :on-press on-refresh))))
@@ -291,7 +288,7 @@ COMPACT stacks the search field under the title, the shape a narrow frame needs.
   "Render the list/lyrics/queue switch a compact layout uses."
   :view
   (flex :width 'stretch :height '(lh 2) :gap '((lh 0) (ch 2))
-        :align-items 'center :padding '((lh 0) (ch 2))
+        :flex-shrink 0 :align-items 'center :padding '((lh 0) (ch 2))
         :background-color (etaf-ncm-color :panel)
         :border-top (etaf-ncm--view-border 'top (etaf-ncm-color :line))
     (flex :for (tab (list (list 'list "列表")
@@ -323,12 +320,12 @@ COMPACT stacks the search field under the title, the shape a narrow frame needs.
                     "j/k 或滚轮选择 · 双击播放"))))))
 
 (etaf-define-component etaf-ncm--view-list
-    (&key entries start total compact empty-note on-press)
+    (&key entries start total loaded compact empty-note on-press)
   "Render the visible library ENTRIES and a page footer.
 ON-PRESS is called with a row's page index when that row is clicked."
   :view
-  (column :width 'stretch :flex-grow 1 :min-height '(lh 0) :item-gap '(lh 0)
-          :overflow 'hidden
+  (flex :flex-direction 'column :width 'stretch :flex-grow 1 :flex-basis '(lh 0)
+        :min-height '(lh 0) :gap '((lh 0) (px 0)) :overflow 'hidden
     (etaf-ncm--view-note :if (null entries) :text empty-note)
     (etaf-ncm--view-row :for (entry entries) :key (plist-get entry :index)
       :index (plist-get entry :index)
@@ -337,16 +334,22 @@ ON-PRESS is called with a row's page index when that row is clicked."
       :playing (plist-get entry :playing)
       :compact compact
       :press on-press)
-    (box :if entries :height 'stretch)
-    (flex :if entries :width 'stretch :height '(lh 1) :gap '((lh 0) (ch 2))
+    (box :if entries :flex-grow 1 :flex-basis '(lh 0) :min-height '(lh 0))
+    (flex :if (or entries (> total 0)) :flex-direction 'column
+          :width 'stretch :height (if (< loaded total) '(lh 2) '(lh 1))
+          :flex-shrink 0 :gap '((lh 0) (px 0))
           :color (etaf-ncm-color :dim) :font-size 12
-      (box :height '(lh 1)
-        (text (expr (format "第 %s-%s 首，共 %s 首"
-                            start
-                            (if entries (+ start (1- (length entries))) start)
-                            total))))
-      (box :if (not compact) :height '(lh 1) :overflow 'hidden
-        (text "j/k 或滚轮选择 · 双击播放 · a 入队 · / 搜索 · l 歌词 · ? 帮助")))))
+      (flex :width 'stretch :height '(lh 1) :gap '((lh 0) (ch 2))
+        (box :height '(lh 1) :flex-shrink 0
+          (text (expr (format "第 %s-%s 首 / 共 %s 首"
+                              (if entries start 0)
+                              (if entries (+ start (1- (length entries))) 0)
+                              total))))
+        (box :if (not compact) :height '(lh 1) :overflow 'hidden
+             :flex-grow 1 :flex-basis '(px 0) :min-width '(ch 0)
+          (text "j/k 或滚轮选择 · 双击播放 · a 入队 · / 搜索 · l 歌词 · ? 帮助")))
+      (box :if (< loaded total) :height '(lh 1)
+        (text (expr (format "已加载 %s / 共 %s 首" loaded total)))))))
 
 ;;; ---------------------------------------------------------------------------
 ;;; Lyrics, queue and player
@@ -403,7 +406,7 @@ LINES is the visible slice of the parsed lyric and TRANS its translations."
     (box :height '(lh 1))
     (box :if loading :height '(lh 1) :color (etaf-ncm-color :dim)
       (text "正在取歌词…"))
-    (box :if (and (not loading) (null lines)) :height '(lh 1)
+    (box :if (and (not loading) (zerop (or total 0))) :height '(lh 1)
          :color (etaf-ncm-color :dim)
       (text "这首歌没有歌词"))
     (flex :if lines :flex-direction 'column :width 'stretch :flex-grow 1
@@ -416,9 +419,10 @@ LINES is the visible slice of the parsed lyric and TRANS its translations."
                       (etaf-ncm-color :muted))
              :font-weight (if (equal (car line) current) 'bold 'normal)
           (text (expr (or (cdr line) " "))))
-        (box :if (cdr (assq (car line) trans)) :height '(lh 1) :overflow 'hidden
+        (box :if (etaf-ncm--translation-for trans (car line))
+             :height '(lh 1) :overflow 'hidden
              :color (etaf-ncm-color :dim) :font-size 12
-          (text (expr (or (cdr (assq (car line) trans)) ""))))))
+          (text (expr (or (etaf-ncm--translation-for trans (car line)) ""))))))
     (box :if lines :width 'stretch :height '(lh 1) :color (etaf-ncm-color :dim)
          :font-size 12 :text-align 'center
       (text (expr (format "%s / %s" (or position 0) (or total 0)))))))
@@ -429,16 +433,21 @@ Each entry is (:index :name :right :current) from the player model."
   :view
   (flex :flex-direction 'column :width 'stretch :flex-grow 1 :flex-basis '(lh 0)
         :min-height '(lh 0) :gap '((lh 0) (px 0)) :overflow 'hidden
-    (flex :width 'stretch :height '(lh 2) :gap '((lh 0) (ch 1))
-          :align-items 'center
+    (column :width 'stretch :height '(lh 2) :item-gap '(lh 0)
       (text :font-weight 'bold "播放队列")
       (text :color (etaf-ncm-color :dim)
-            (expr (format "%s / %s" (or pos 0) (or count 0)))))
-    (box :if (null entries) :height '(lh 1) :color (etaf-ncm-color :dim)
+            (expr (format "第 %s-%s 首 / 共 %s 首"
+                          (or (plist-get (car entries) :index) 0)
+                          (or (plist-get (car (last entries)) :index) 0)
+                          (or count 0)))))
+    (box :if (and (null entries) (zerop (or count 0)))
+         :height '(lh 1) :color (etaf-ncm-color :dim)
       (text "队列是空的"))
     (flex :for (entry entries) :key (plist-get entry :index)
       :width 'stretch :height '(lh 1) :role 'button :tab-index 0
       :pointer (etaf-ncm--item-pointer)
+      :help-echo (format "播放队列第 %s 首：%s"
+                         (plist-get entry :index) (plist-get entry :name))
       :hover-style (etaf-ncm--hover-surface)
       :gap '((lh 0) (ch 1)) :align-items 'center
       :background-color (and (plist-get entry :current)
@@ -448,7 +457,8 @@ Each entry is (:index :name :right :current) from the player model."
                (etaf-ncm-color :muted))
       :font-weight (if (plist-get entry :current) 'bold 'normal)
       :on-press (lambda () (funcall on-jump (plist-get entry :index)))
-      (box :width '(ch 3) :height '(lh 1) :color (etaf-ncm-color :dim)
+      (box :width (list 'ch (max 3 (1+ (length (number-to-string (or count 0))))))
+           :height '(lh 1) :color (etaf-ncm-color :dim)
         (text (expr (if (plist-get entry :current)
                         "▶︎"
                       (format "%s." (plist-get entry :index))))))
@@ -491,7 +501,7 @@ padding-wide hit area of their own.  COMPACT stacks track, progress and
 controls into three lines, which is the shape a narrow frame can hold."
   :view
   (flex :flex-direction 'column :width 'stretch
-        :height '(lh 3)
+        :height '(lh 3) :flex-shrink 0
         :gap '((lh 0) (ch 2)) :padding '((lh 0) (ch 2))
         :background-color (etaf-ncm-color :panel)
         :border-top (etaf-ncm--view-border 'top (etaf-ncm-color :line))
@@ -547,7 +557,7 @@ controls into three lines, which is the shape a narrow frame can hold."
         (box :height '(lh 1) :role 'button :tab-index 0 :padding '((lh 0) (ch 1))
              :color (if repeat (etaf-ncm-color :accent) (etaf-ncm-color :muted))
              :pointer (etaf-ncm--item-pointer) :hover-style (etaf-ncm--hover-surface)
-             :help-echo "单曲循环" :on-press on-repeat
+             :help-echo "列表循环" :on-press on-repeat
           (text "↻"))
         (box :height '(lh 1) :role 'button :tab-index 0 :padding '((lh 0) (ch 1))
              :color (etaf-ncm-color :ink)

@@ -47,10 +47,9 @@
     (define-key map (kbd "C-p") #'etaf-ncm--previous-item)
     (define-key map (kbd "<down>") #'etaf-ncm--next-item)
     (define-key map (kbd "<up>") #'etaf-ncm--previous-item)
-    ;; The list is paginated, so a wheel notch moves the selection instead of
-    ;; scrolling the buffer out from under the layout.
-    (define-key map (kbd "<wheel-up>") #'etaf-ncm--previous-item)
-    (define-key map (kbd "<wheel-down>") #'etaf-ncm--next-item)
+    ;; The event position chooses between the library and the queue window.
+    (define-key map (kbd "<wheel-up>") #'etaf-ncm--wheel-up)
+    (define-key map (kbd "<wheel-down>") #'etaf-ncm--wheel-down)
     ;; Jumping around a long library: first, last and by whole pages.
     (define-key map (kbd "<home>") #'etaf-ncm--first-item)
     (define-key map (kbd "<end>") #'etaf-ncm--last-item)
@@ -88,6 +87,16 @@ It keeps Ebox's TAB focus cycling and RET activation, and replaces the
 scrolling keys with player commands: n/p switch tracks, SPC pauses, and
 j/k move the library selection.")
 
+(defvar etaf-ncm--wheel-maps
+  (list (cons 'etaf-ncm--model
+              (let ((map (make-sparse-keymap)))
+                (define-key map [wheel-up] #'etaf-ncm--wheel-up)
+                (define-key map [wheel-down] #'etaf-ncm--wheel-down)
+                map)))
+  "Wheel bindings that take precedence over the renderer's minor-mode map.
+Only wheel events are overridden, so TAB and focused RET activation still
+reach the renderer.  The alist is enabled only in an opened player buffer.")
+
 (defun etaf-ncm--current-model ()
   "Return the model of the current player buffer."
   (or etaf-ncm--model
@@ -122,26 +131,29 @@ j/k move the library selection.")
   "Return MODEL's lyric window as props for the lyrics View."
   (let* ((lyric (etaf-ncm--read model :lyric))
          (lines (plist-get lyric :lines))
-         (trans (plist-get lyric :trans))
+         (budget (etaf-ncm--read model :lyric-rows))
+         (trans (and (> budget 1) (plist-get lyric :trans)))
+         (size (if trans (/ budget 2) budget))
          (elapsed (etaf-ncm--clock model))
          (index (and lines (etaf-ncm--lyric-index lines elapsed)))
          (window (and lines
-                      (etaf-ncm--lyric-window lines index etaf-ncm--lyric-window-size)))
+                      (etaf-ncm--lyric-window lines index size)))
          (visible (cdr window)))
     (list :lines visible
           :current (and lines (car (nth index lines)))
           :position (and index (1+ index))
           :total (and lines (length lines))
-          :trans (delq nil (mapcar (lambda (line) (assq (car line) trans)) visible))
+          :trans (delq nil (mapcar (lambda (line)
+                                    (cl-assoc (car line) trans :test #'=)) visible))
           :loading (plist-get lyric :loading))))
 
 (defun etaf-ncm--queue-panel (model)
   "Return MODEL's queue entries around the playing track."
   (let* ((queue (etaf-ncm--read model :queue))
          (songs (etaf-ncm--list (plist-get queue :songs)))
-         (size 12)
+         (size (etaf-ncm--read model :queue-rows))
          (pos (or (plist-get queue :pos) 0))
-         (start (max 0 (min (- pos (/ size 2)) (max 0 (- (length songs) size))))))
+         (start (etaf-ncm--queue-window-start model)))
     (list :count (or (plist-get queue :count) 0)
           :pos pos
           :entries (cl-loop for song in (seq-subseq songs start
@@ -175,6 +187,51 @@ j/k move the library selection.")
   "Move the library selection up."
   (interactive)
   (etaf-ncm-move-selection (etaf-ncm--current-model) -1))
+
+(defun etaf-ncm--queue-hit-p (xy columns rows layout pane aside)
+  "Return non-nil when text-cell position XY hits the visible queue panel.
+COLUMNS and ROWS describe the event window; LAYOUT, PANE and ASIDE describe
+the player.  This geometry is independent of point and the selected window."
+  (and (eq aside 'queue)
+       (or (eq layout 'wide) (eq pane 'aside))
+       (consp xy) (numberp (car xy)) (numberp (cdr xy))
+       (<= (pcase layout
+             ('wide (max 0 (- columns (cadr etaf-ncm--aside-width))))
+             ('medium (cadr etaf-ncm--rail-width))
+             (_ 0))
+           (car xy))
+       (< (car xy) columns)
+       (<= 0 (cdr xy))
+       (< (cdr xy) (etaf-ncm--body-rows-for rows layout))))
+
+(defun etaf-ncm--wheel (event delta)
+  "Move the queue window or library selection by DELTA at EVENT's position."
+  (let* ((position (event-start event))
+         (window (posn-window position)))
+    (when (window-live-p window)
+      (with-current-buffer (window-buffer window)
+        (let* ((model (etaf-ncm--current-model))
+               (pixels (posn-x-y position))
+               (xy (and (consp pixels)
+                        (cons (/ (float (car pixels)) (window-font-width window))
+                              (/ (float (cdr pixels)) (window-font-height window))))))
+          (if (and (null (posn-area position))
+                   (etaf-ncm--queue-hit-p
+                    xy (window-body-width window) (window-body-height window)
+                    (etaf-ncm--read model :layout) (etaf-ncm--read model :pane)
+                    (etaf-ncm--read model :aside)))
+              (etaf-ncm--scroll-queue model delta)
+            (etaf-ncm-move-selection model delta)))))))
+
+(defun etaf-ncm--wheel-up (event)
+  "Scroll the queue or select the previous library row at EVENT."
+  (interactive "e")
+  (etaf-ncm--wheel event -1))
+
+(defun etaf-ncm--wheel-down (event)
+  "Scroll the queue or select the next library row at EVENT."
+  (interactive "e")
+  (etaf-ncm--wheel event 1))
 
 (defun etaf-ncm--first-item ()
   "Select the first row of the library."
@@ -257,7 +314,7 @@ In a wide layout, which shows both, this keeps the library list focused."
     (etaf-ncm-show-pane model (if showing 'list 'aside))))
 
 (defun etaf-ncm--toggle-repeat ()
-  "Turn repeat mode on or off."
+  "Turn list repeat (列表循环) on or off."
   (interactive)
   (let* ((model (etaf-ncm--current-model))
          (on (not (plist-get (etaf-ncm--view-status model) :repeat))))
@@ -330,7 +387,7 @@ In a wide layout, which shows both, this keeps the library list focused."
   (message
    (concat "j/k 或滚轮选择 · 单击选中 · 双击播放 · RET 播放 · SPC 暂停 · n/p 切歌 · a 加入队列 · s 搜索 · g 刷新"
            " · l 歌词/队列 · v 列表/面板 · 1-9 音乐库 · +/- 音量 · ,/. 快退快进"
-           " · f/F 喜欢 · r 重复 · z 随机 · T 深浅色 · q 关闭")))
+           " · 队列内滚轮翻动队列 · f/F 喜欢 · r 列表循环 · z 随机 · T 深浅色 · q 关闭")))
 
 ;;; ---------------------------------------------------------------------------
 ;;; Application Component and entry points
@@ -401,7 +458,7 @@ releases the polling timer and the session's pending backend requests."
         ;; window, which clipped the player bar's control row.
         :padding-bottom '(lh 1)
         :color (etaf-ncm-color :ink) :bgcolor (etaf-ncm-color :bg)
-    (flex :width 'stretch :flex-grow 1 :min-height '(lh 0)
+    (flex :width 'stretch :flex-grow 1 :flex-basis '(lh 0) :min-height '(lh 0)
           :align-items 'stretch
       (etaf-ncm--view-sidebar
        :if (eq (etaf-ncm--read session :layout) 'wide)
@@ -429,7 +486,7 @@ releases the polling timer and the session's pending backend requests."
          :loading (etaf-ncm--read session :loading)
          :compact (etaf-ncm--compact-layout-p session)
          :on-search on-search
-         :on-play-all on-play-library
+         :on-play-all (and (etaf-ncm--playable-origin session) on-play-library)
          :on-refresh on-refresh)
         (etaf-ncm--view-chips
          :if (eq (etaf-ncm--read session :layout) 'narrow)
@@ -444,8 +501,9 @@ releases the polling timer and the session's pending backend requests."
             (text (expr (or (etaf-ncm--read session :message) "")))))
         (etaf-ncm--view-list
          :entries (etaf-ncm--view-entries session)
-         :start (nth 1 (etaf-ncm--page-rows session))
-         :total (nth 2 (etaf-ncm--page-rows session))
+         :start (1+ (nth 1 (etaf-ncm--page-rows session)))
+         :total (etaf-ncm--read session :list-total)
+         :loaded (length (etaf-ncm--read session :rows))
          :compact (etaf-ncm--compact-layout-p session)
          :empty-note (if (etaf-ncm--read session :loading)
                          "正在加载…"
@@ -518,6 +576,9 @@ the backend.  A caller-provided MODEL keeps its library, queue and selection."
       (setq-local etaf-ncm--model model)
       (setq-local truncate-lines t)
       (setq-local mode-line-format nil)
+      (setq-local emulation-mode-map-alists
+                  (cons 'etaf-ncm--wheel-maps
+                        (remq 'etaf-ncm--wheel-maps emulation-mode-map-alists)))
       ;; The player owns every column it paints.  A sub-cell rounding
       ;; remainder must not surface as Emacs's truncation glyph, so keep the
       ;; truncation slot blank instead of advertising a cut line.
@@ -527,7 +588,8 @@ the backend.  A caller-provided MODEL keeps its library, queue and selection."
                     (set-display-table-slot table 'truncation ?\s)
                     table))
       (use-local-map etaf-ncm-mode-map))
-    ;; The layout, page size and viewport come from the window that will show
+    (pop-to-buffer buffer)
+    ;; The layout, page size and viewport come from the window that shows
     ;; the player, so the first paint already fits it.  The player adapts to
     ;; later resizes as well (see `etaf-ncm--sync-layout').
     (etaf-ncm--sync-layout model (selected-window))
@@ -538,7 +600,7 @@ the backend.  A caller-provided MODEL keeps its library, queue and selection."
                           :viewport-width))
     (etaf-mount buffer (etaf-ncm-view model)
                  (etaf-ncm--viewport-options (selected-window)))
-    (pop-to-buffer buffer)
+    (etaf-runtime-flush (etaf-runtime-for-buffer buffer))
     buffer))
 
 (defun etaf-ncm-close ()

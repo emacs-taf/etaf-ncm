@@ -4,6 +4,18 @@ All notable user-visible changes to ETAF NCM.
 
 ## Unreleased
 
+- Queue windows fit the panel height, show the visible range and backend total,
+  and let the wheel reach every loaded entry. Scrolling over the panel leaves
+  the library selection alone; playback changes centre the queue again.
+- Library loads request 1000 rows by default through `etaf-ncm-list-limit`,
+  retaining `etaf-ncm-fetch-limit` as a lower bound. Footers preserve backend
+  totals, label partial loads, and show one-based ranges across all loaded rows.
+- Playing a song in daily recommendations, liked songs or private FM queues
+  that library before jumping to the song. `播放全部` appears only where
+  whole-list playback is supported.
+- Repeat controls and help now say `列表循环`, matching the backend's list loop.
+- The lyric window fits the panel height, including translations, while keeping
+  the current line emphasized.
 - A press on the row that is already selected plays it, so starting a song no
   longer depends on a second click arriving inside a timing window.
 - Playback commands show their effect immediately: the play/pause state, the

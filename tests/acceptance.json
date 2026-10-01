@@ -43,12 +43,12 @@
     {
       "name": "etaf-ncm-tests-play-uses-the-selected-row",
       "file": "tests/etaf-ncm-tests.el",
-      "purpose": "Playing the selection sends that row's kind and id and reports the song it started."
+      "purpose": "Playing a song selection queues its current library, jumps to the selected full-list index, and reports the song it started."
     },
     {
       "name": "etaf-ncm-tests-play-accepts-rows-ids-and-keywords",
       "file": "tests/etaf-ncm-tests.el",
-      "purpose": "Play resolves song rows, bare ids and search keywords, sends a playlist row as a playlist, and rejects an unplayable row."
+      "purpose": "Song rows in a playable library preserve the library queue; bare ids, keywords and playlist rows retain their direct play targets."
     },
     {
       "name": "etaf-ncm-tests-add-to-queue-takes-songs-only",
@@ -58,17 +58,17 @@
     {
       "name": "etaf-ncm-tests-transport-commands-reach-the-backend",
       "file": "tests/etaf-ncm-tests.el",
-      "purpose": "Transport, volume, seek, shuffle, repeat, like and queue-jump commands each send their own request and message."
+      "purpose": "Transport, volume, seek, shuffle, list repeat, like and queue-jump commands send their existing requests; repeat reports 列表循环 on and off."
     },
     {
       "name": "etaf-ncm-tests-press-on-the-selected-row-plays-it",
       "file": "tests/etaf-ncm-tests.el",
-      "purpose": "A press on the already selected row starts playback without depending on a second press arriving inside a timing window."
+      "purpose": "Pressing the selected song row plays its library and jumps to the row without a timing window."
     },
     {
       "name": "etaf-ncm-tests-press-selects-another-row-before-playing",
       "file": "tests/etaf-ncm-tests.el",
-      "purpose": "A press on a different row selects it and asks for a second press; the following press plays it."
+      "purpose": "Pressing another row selects it; pressing it again plays its library then jumps to its loaded position."
     },
     {
       "name": "etaf-ncm-tests-transport-effect-is-visible-before-the-reply",
@@ -133,12 +133,67 @@
     {
       "name": "etaf-ncm-tests-open-and-close-own-a-buffer",
       "file": "tests/etaf-ncm-tests.el",
-      "purpose": "Opening installs the player keymap and hides the mode line, and closing kills the buffer."
+      "purpose": "Opening installs the player keymap, routes active wheel bindings above the renderer, hides the mode line, and closing kills the buffer."
     },
     {
       "name": "etaf-ncm-tests-default-client-runs-the-skill-command",
       "file": "tests/etaf-ncm-tests.el",
       "purpose": "The default client runs the skill script with the request translated into the right command line: a play request reaches the script as \"play <song id>\"."
+    },
+    {
+      "name": "etaf-ncm-tests-browse-limit-covers-long-libraries",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "Browse loads beyond 100 rows, preserves the backend total, and takes the maximum of list-limit, fetch-limit and three pages."
+    },
+    {
+      "name": "etaf-ncm-tests-library-total-survives-cache-and-refresh",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "A partial library displays loaded and true totals, preserves them through cache hits, updates totals even with identical rows, reports zero loaded rows honestly, and clears counts after a failed foreground reload."
+    },
+    {
+      "name": "etaf-ncm-tests-long-library-keys-show-one-based-ranges",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "Home, End, PageUp and PageDown navigate all 500 loaded rows and the footer shows one-based ranges with the true total."
+    },
+    {
+      "name": "etaf-ncm-tests-song-row-waits-for-library-before-jump",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "Daily, liked and FM song presses wait for successful whole-list playback before jumping to the captured full-list index and retain the library queue."
+    },
+    {
+      "name": "etaf-ncm-tests-song-row-failure-and-supersession",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "Failed or superseded list play and a stop command suppress stale jumps; a failed jump reports its backend error."
+    },
+    {
+      "name": "etaf-ncm-tests-other-libraries-play-rows-directly",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "Recent, search, playlist, album, artist, chart and podcast rows keep their individual play targets without a library jump."
+    },
+    {
+      "name": "etaf-ncm-tests-play-all-only-for-supported-origins",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "Wide and compact headers render 播放全部 only for daily, liked and FM origins."
+    },
+    {
+      "name": "etaf-ncm-tests-queue-wheel-scrolls-only-the-event-panel",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "Active wheel bindings in all layouts reach every loaded queue entry, use the event window, preserve library selection, display backend count, retain manual scrolling across unchanged polls, recenter on track advance, and select library rows outside the queue."
+    },
+    {
+      "name": "etaf-ncm-tests-panel-budgets-fit-resized-windows",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "Queue and lyric budgets shrink with the displayed window; translated lyrics fit their budget and retain the current line."
+    },
+    {
+      "name": "etaf-ncm-tests-superseded-library-keeps-visible-total",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "A new uncached library clears old rows and totals; a late foreground reply cannot overwrite a revisited cached library."
+    },
+    {
+      "name": "etaf-ncm-tests-queue-entries-click-and-tab-activate",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "Queue entries reached by wheel still jump through mouse activation and TAB/RET without changing library selection."
     }
   ]
 }

@@ -45,7 +45,8 @@ on.
 
 ## State ownership
 
-- Session (model): current library, rows, selection, page, message, error,
+- Session (model): current library, loaded rows, backend total, selection, page,
+  queue window and panel row budgets, message, error,
   pending generations, poll timer, `:theme`, `:aside`, `:layout` and `:pane`.
 - Backend state directory: login cookie, queue file, saved queues. The player
   reads the queue tracks from that file and takes the current index from the
@@ -61,7 +62,11 @@ model and is expressed by the view:
 - `etaf-ncm--sync-layout` measures the window showing the player buffer and
   resolves `etaf-ncm-wide-columns` / `etaf-ncm-medium-columns` into one of
   `wide`, `medium` or `narrow`. It writes `:layout`, the layout page count
-  (`:page-size`) and, on a wide frame, forces `:pane` back to `list`.
+  (`:page-size`), `:queue-rows` and `:lyric-rows`, and, on a wide frame, forces
+  `:pane` back to `list`. The panel budgets subtract the root padding, player
+  bar, compact pane switch, aside padding, tabs and each panel's own heading.
+  Lyrics reserve room for the cover and footer; translations share the budget.
+  Opening fits after choosing the display window, including a newly split one.
 - `etaf-ncm--window-size-change` is installed on `window-size-change-functions`
   once per session; resizing re-resolves the layout, and it ignores buffers
   without a model.
@@ -89,15 +94,47 @@ hold snapshots without keeping the player alive or accidentally mutating it.
 - A press on a row selects it; a press on the row that is already selected
   plays it.  The gesture does not consult a timing window, so a slow repaint
   cannot turn a double click into two selections.
+- A song row belonging to a playable origin (`:daily`, `:liked`, `:fm`) sends
+  `:play` for that origin, then `:jump` with its captured 1-based loaded-list
+  index from the successful callback. Reconciliation waits for the jump reply.
+  A failed list request never jumps; another play, skip, stop, queue jump or
+  disposal suppresses the pending continuation. Search, recent and list-of-lists
+  rows retain their individual targets. The header receives `on-play-all` only when the origin
+  kind is in the service's play-command table.
+- The queue projection uses `:queue-rows` and a zero-based `:queue-start`.
+  A nil stored start centres the loaded window on the playing entry. A wheel
+  gesture stores an explicit clamped start; unchanged queue replies preserve
+  it, and a new position or changed songs restores following playback. Counts
+  come from the backend, while the displayed range comes from loaded entries.
+  The wheel's event window and pixel position select the target. A pure
+  text-cell rectangle test uses the same body budget and the view's aside/rail
+  widths, and excludes a hidden pane and the player bar. An app-local emulation
+  map overrides only wheel events above the renderer's minor-mode bindings.
+  Other wheel positions keep moving the library selection. Queue entries
+  retain their press callback, focusable button role and normal TAB/RET bindings.
 - Transport commands publish their local effect before the backend answers: the
   play/pause state, the volume, the shuffle and repeat flags and the message
   line change immediately, and the reply reconciles them with measured facts.
   Only a command that can move the queue reloads it.
 - Every library list is cached under its section (or search keyword).  Opening
   a library shows the cached rows at once and refreshes the list in the
-  background; a mounted player warms the lists it has not seen yet, one at a
-  time, and refreshes `etaf-ncm-library-refresh-interval`-second-old entries
+  background. Cache entries keep both normalized rows and the backend total;
+  even an unchanged row list can publish a new total. A foreground reply must
+  match both the load generation and the current list key. A mounted player
+  warms the lists it has not seen yet, one at a time, and refreshes
+  `etaf-ncm-library-refresh-interval`-second-old entries
   while it is idle.  The background reply never moves the reader's selection.
+
+Browse requests take the maximum of `etaf-ncm-list-limit` (1000), the existing
+`etaf-ncm-fetch-limit` and three pages. The public snapshot preserves
+`:rows-total` as the loaded count and exposes `:list-total` as the reported
+total, falling back to the loaded count when absent. Selection and page bounds
+use only loaded rows; the footer uses one-based visible indices and explicitly
+labels a partial load on a second line, so the loaded count stays readable in
+compact panes. The list uses a flex spacer to keep this footer inside its own
+height; the player bar and pane tabs do not shrink when space is tight.
+List repeat (`列表循环`) uses the existing `:repeat` request, which controls
+mpv's `loop-playlist`.
 
 ## Polling policy
 

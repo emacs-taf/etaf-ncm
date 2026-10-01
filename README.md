@@ -15,7 +15,8 @@ the `netease-music` backend.
 - Search by song, with a playlist scope; results behave like any library.
 - Playback: play a row or a whole list, pause, skip, stop, volume, relative
   seek, shuffle, repeat, like and unlike.
-- Queue: the entries around the playing song, jump to any of them, append songs.
+- Queue: a window that follows the playing song, wheel through every loaded
+  entry, jump to any of them, append songs.
 - Lyric: LRC parsed into timed lines, current line highlighted, translation
   shown next to it when the backend has one.
 - Two palettes (dark and light) with one key, published as `:ui-*` theme tokens
@@ -60,7 +61,7 @@ skill and its login/queue state; `etaf-ncm-theme-mode` selects the palette.
   (while (plist-get (etaf-ncm-state player) :loading)
     (sit-for 0.05))
   (etaf-ncm-move-selection player 4)
-  (etaf-ncm-play player)                   ; plays the fifth row
+  (etaf-ncm-activate-selection player)     ; plays the fifth row
   (plist-get (etaf-ncm-state player) :status))
 ```
 
