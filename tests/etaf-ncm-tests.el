@@ -1167,5 +1167,34 @@ positioned Host has no batch-visible text span."
         (should (= (etaf-runtime-generation runtime) generation))
         (should-not (equal (etaf-ncm-tests--host-text 'ncm-elapsed) before))))))
 
+(ert-deftest etaf-ncm-tests-keys-reach-the-player-around-the-renderer-map ()
+  "The documented keys reach the player in a mounted buffer.
+The renderer installs its own minor-mode map, which outranks the major-mode
+map; the player overrides the colliding commands, so the real command loop,
+not just `etaf-ncm-mode-map', must find the player command."
+  (setq etaf-ncm-tests--requests nil)
+  (let ((app (etaf-ncm-tests--session)))
+    (etaf-ncm-tests--with-player app
+      (execute-kbd-macro (kbd "<next>"))
+      (let ((state (etaf-ncm-state app)))
+        (should (= (plist-get state :selection)
+                   (min (plist-get state :page-size)
+                        (1- (plist-get state :rows-total))))))
+      (execute-kbd-macro (kbd "<prior>"))
+      (should (zerop (plist-get (etaf-ncm-state app) :selection)))
+      (execute-kbd-macro (kbd "n"))
+      (should (etaf-ncm-tests--request :next))
+      (execute-kbd-macro (kbd "p"))
+      (should (etaf-ncm-tests--request :previous))
+      (execute-kbd-macro (kbd "SPC"))
+      (should (etaf-ncm-tests--request :toggle))
+      ;; RET prefers the renderer's focused Host and still plays the row the
+      ;; selection points at when point carries none.
+      (execute-kbd-macro (kbd "j"))
+      (setq etaf-ncm-tests--requests nil)
+      (execute-kbd-macro (kbd "RET"))
+      (should (or (etaf-ncm-tests--request :play)
+                  (etaf-ncm-tests--request :jump))))))
+
 (provide 'etaf-ncm-tests)
 ;;; etaf-ncm-tests.el ends here

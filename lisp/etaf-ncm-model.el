@@ -26,20 +26,20 @@
 
 (defconst etaf-ncm-sections
   '((推荐
-     (:daily "每日推荐" "◆")
-     (:fm "私人 FM" "≈")
-     (:liked "我喜欢的音乐" "♥︎"))
+     (:daily "每日推荐" star)
+     (:fm "私人 FM" radio)
+     (:liked "我喜欢的音乐" heart))
     (我的音乐
-     (:playlists "我的歌单" "≡")
-     (:albums "收藏专辑" "▣")
-     (:artists "收藏歌手" "☺︎"))
+     (:playlists "我的歌单" list)
+     (:albums "收藏专辑" disc)
+     (:artists "收藏歌手" account))
     (发现
-     (:charts "排行榜" "▲")
-     (:podcasts "播客" "◎")
-     (:recent "最近播放" "↺")))
+     (:charts "排行榜" chart)
+     (:podcasts "播客" mic)
+     (:recent "最近播放" clock)))
   "Sidebar groups shown by the player.
-Each group is (GROUP-NAME (SECTION LABEL GLYPH) ...); SECTION keys are accepted
-by `etaf-ncm-locate'.")
+Each group is (GROUP-NAME (SECTION LABEL ICON) ...); SECTION keys are accepted
+by `etaf-ncm-locate', and ICON names an entry of the shared SVG icon set.")
 
 (defconst etaf-ncm--section-subtitles
   '((:daily . "根据你的口味生成，每天更新")
@@ -1117,10 +1117,10 @@ second for the same second."
 
 (defconst etaf-ncm--reserved-lines 2
   "Lines the player bar keeps clear above and below itself.
-The bar reads as a floating surface: one empty line separates it from the
-library above and one closes the window below it (the view's bottom padding).
-The page size must leave both out of its row budget, or the bar's last row is
-pushed past the window edge.")
+The bar reads as a floating surface: one padding row separates it from the
+library above and one closes the window below it (the bar's own vertical
+padding).  The page size must leave both out of its row budget, or the bar's
+last row is pushed past the window edge.")
 
 (defun etaf-ncm--page-size-for (window &optional layout)
   "Return the library row count that fits WINDOW's height in LAYOUT.

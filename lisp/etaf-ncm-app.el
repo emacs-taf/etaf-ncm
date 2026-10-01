@@ -63,6 +63,7 @@
     (define-key map (kbd "s") #'etaf-ncm--search)
     (define-key map (kbd "/") #'etaf-ncm--search)
     (define-key map (kbd "g") #'etaf-ncm--refresh)
+    (define-key map (kbd "q") #'etaf-ncm-close)
     (define-key map (kbd "l") #'etaf-ncm--toggle-aside)
     (define-key map (kbd "v") #'etaf-ncm--toggle-pane)
     (define-key map (kbd "r") #'etaf-ncm--toggle-repeat)
@@ -87,15 +88,27 @@ It keeps Ebox's TAB focus cycling and RET activation, and replaces the
 scrolling keys with player commands: n/p switch tracks, SPC pauses, and
 j/k move the library selection.")
 
-(defvar etaf-ncm--wheel-maps
+(defvar etaf-ncm--command-maps
   (list (cons 'etaf-ncm--model
               (let ((map (make-sparse-keymap)))
                 (define-key map [wheel-up] #'etaf-ncm--wheel-up)
                 (define-key map [wheel-down] #'etaf-ncm--wheel-down)
+                ;; These collide with the renderer's own minor-mode map, which
+                ;; outranks the major-mode map in a mounted buffer.  The player
+                ;; overrides exactly its documented commands and leaves TAB,
+                ;; the remaining scrolling keys and mouse events to the
+                ;; renderer.
+                (define-key map (kbd "n") #'etaf-ncm--next-track)
+                (define-key map (kbd "p") #'etaf-ncm--previous-track)
+                (define-key map (kbd "SPC") #'etaf-ncm--toggle-playback)
+                (define-key map (kbd "<next>") #'etaf-ncm--next-page)
+                (define-key map (kbd "<prior>") #'etaf-ncm--previous-page)
+                (define-key map (kbd "RET") #'etaf-ncm--activate)
+                (define-key map (kbd "q") #'etaf-ncm-close)
                 map)))
-  "Wheel bindings that take precedence over the renderer's minor-mode map.
-Only wheel events are overridden, so TAB and focused RET activation still
-reach the renderer.  The alist is enabled only in an opened player buffer.")
+  "Command bindings that take precedence over the renderer's minor-mode map.
+The alist is enabled only in an opened player buffer; TAB still reaches the
+renderer's focus cycling.")
 
 (defun etaf-ncm--current-model ()
   "Return the model of the current player buffer."
@@ -128,7 +141,10 @@ reach the renderer.  The alist is enabled only in an opened player buffer.")
     (plist-put (copy-sequence status) :elapsed (etaf-ncm--clock model))))
 
 (defun etaf-ncm--lyric-panel (model)
-  "Return MODEL's lyric window as props for the lyrics View."
+  "Return MODEL's lyric window as props for the lyrics View.
+Each visible line is (SECONDS TEXT ORDINAL); the ordinal is its position in
+the parsed lyric, so the View keeps one stable key per line even when a real
+LRC repeats a timestamp."
   (let* ((lyric (etaf-ncm--read model :lyric))
          (lines (plist-get lyric :lines))
          (budget (etaf-ncm--read model :lyric-rows))
@@ -138,7 +154,10 @@ reach the renderer.  The alist is enabled only in an opened player buffer.")
          (index (and lines (etaf-ncm--lyric-index lines elapsed)))
          (window (and lines
                       (etaf-ncm--lyric-window lines index size)))
-         (visible (cdr window)))
+         (start (car window))
+         (visible (cl-loop for line in (cdr window)
+                           for ordinal from start
+                           collect (list (car line) (cdr line) ordinal))))
     (list :lines visible
           :current (and lines (car (nth index lines)))
           :position (and index (1+ index))
@@ -262,9 +281,14 @@ the player.  This geometry is independent of point and the selected window."
     (etaf-ncm-move-selection app (- (or (plist-get state :page-size) 10)))))
 
 (defun etaf-ncm--activate ()
-  "Play the selected library row."
+  "Activate the focused control, or play the selected library row.
+The renderer activates the Host under point, which is what a click or TAB
+leaves there; j/k only move the selection, so fall back to it."
   (interactive)
-  (etaf-ncm-activate-selection (etaf-ncm--current-model)))
+  (condition-case nil
+      (etaf-activate)
+    (user-error
+     (etaf-ncm-activate-selection (etaf-ncm--current-model)))))
 
 (defun etaf-ncm--toggle-playback ()
   "Pause or resume the current song."
@@ -469,7 +493,7 @@ releases the polling timer and the session's pending backend requests."
         ;; because their fallback font has larger metrics.  Keep the last line
         ;; clear so those extra pixels land in empty space instead of below the
         ;; window, which clipped the player bar's control row.
-        :padding-bottom '(lh 1)
+        :padding-bottom '(lh 0)
         :color (etaf-ncm-color :ink) :bgcolor (etaf-ncm-color :bg)
     (flex :width 'stretch :flex-grow 1 :flex-basis '(lh 0) :min-height '(lh 0)
           :align-items 'stretch
@@ -546,10 +570,6 @@ releases the polling timer and the session's pending backend requests."
      :aside (etaf-ncm--read session :aside)
      :on-pane on-show-pane
      :on-aside on-show-aside)
-    ;; One clear line separates the player bar from the library above; the
-    ;; root's bottom padding closes the window below it.  See
-    ;; `etaf-ncm--reserved-lines' for the row budget these two lines spend.
-    (box :width 'stretch :height '(lh 1))
     (etaf-ncm--view-player
      :compact (etaf-ncm--compact-layout-p session)
      :title (plist-get (etaf-ncm--view-status session) :title)
@@ -599,8 +619,8 @@ the backend.  A caller-provided MODEL keeps its library, queue and selection."
       (setq-local truncate-lines t)
       (setq-local mode-line-format nil)
       (setq-local emulation-mode-map-alists
-                  (cons 'etaf-ncm--wheel-maps
-                        (remq 'etaf-ncm--wheel-maps emulation-mode-map-alists)))
+                  (cons 'etaf-ncm--command-maps
+                        (remq 'etaf-ncm--command-maps emulation-mode-map-alists)))
       ;; The player owns every column it paints.  A sub-cell rounding
       ;; remainder must not surface as Emacs's truncation glyph, so keep the
       ;; truncation slot blank instead of advertising a cut line.

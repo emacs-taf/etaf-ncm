@@ -239,6 +239,11 @@
       "name": "etaf-ncm-tests-player-clock-retains-the-view",
       "file": "tests/etaf-ncm-tests.el",
       "purpose": "Playing seconds move the retained elapsed label and progress fill without advancing the ETAF View generation."
+    },
+    {
+      "name": "etaf-ncm-tests-keys-reach-the-player-around-the-renderer-map",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "The documented transport and page keys reach the player through the real command loop even though the renderer's minor-mode map binds the same keys, and RET falls back to the selected row."
     }
   ]
 }

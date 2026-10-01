@@ -9,6 +9,16 @@ All notable user-visible changes to ETAF NCM.
   red play/pause pill with the seek bar in the centre, and reported quality,
   lyrics, queue and volume on the right. Compact bars retain the controls in
   three rows without the cover or quality badge.
+- Bar controls stay inside their columns at every width: a control shrinks to
+  its content instead of filling the window, so the transport stays centred and
+  the tools stay at the right edge. The play/pause glyph spans the pill, so its
+  insets match on both sides.
+- The sidebar and the narrow chip strip draw the same shared SVG icons as the
+  player bar (`star`, `radio`, `disc`, `chart`, `mic` and `clock` joined the
+  set), instead of a mix of text glyphs.
+- `n`, `p`, `SPC`, `<next>`, `<prior>`, `q` and `RET` reach the player in a
+  mounted buffer even though the renderer binds them in its own minor-mode map.
+  `RET` activates the focused control and falls back to the selected row.
 - Bar controls use the shared `etaf-ui-icon' SVG set, so every icon shares one
   optical size and style and none of them changes the row height.
 - Click or drag the seek or volume bar to set the position or 0–130% volume,

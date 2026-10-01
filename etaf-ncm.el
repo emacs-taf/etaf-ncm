@@ -177,9 +177,10 @@
 ;; narrow layouts show that single pane.
 ;;
 ;; Variable: etaf-ncm-sections
-;; Sidebar groups and their libraries, as (GROUP-NAME (SECTION LABEL GLYPH) ...).
-;; Rebind it before mounting a session to show a different catalog of libraries;
-;; each SECTION must also be accepted by `etaf-ncm-locate'.
+;; Sidebar groups and their libraries, as (GROUP-NAME (SECTION LABEL ICON) ...).
+;; ICON names a glyph of the shared `etaf-ui-icon' SVG set; rebind the variable
+;; before mounting a session to show a different catalog of libraries, and keep
+;; each SECTION accepted by `etaf-ncm-locate'.
 ;;
 ;; Variable: etaf-ncm-buffer-name
 ;; Buffer `etaf-ncm-open' mounts the player into.

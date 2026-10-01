@@ -52,10 +52,6 @@ Ebox hover styles accept colours only, so this is the surface a pointer moves
 over, one step above the panel it sits on."
   (list :background-color (etaf-ncm-color :panel2)))
 
-(defun etaf-ncm--item-pointer ()
-  "Return the cursor a clickable item shows."
-  'hand)
-
 (defun etaf-ncm--view-duration (milliseconds)
   "Return MILLISECONDS as \"M:SS\", or an empty string."
   (etaf-ncm--format-duration milliseconds))
@@ -75,14 +71,14 @@ over, one step above the panel it sits on."
 ;;; Primitive Views
 ;;; ---------------------------------------------------------------------------
 
-(etaf-define-component etaf-ncm--view-nav-item (&key glyph label active badge on-press)
-  "Render one library entry with GLYPH, LABEL, BADGE and press callback.
+(etaf-define-component etaf-ncm--view-nav-item (&key icon label active badge on-press)
+  "Render one library entry with ICON, LABEL, BADGE and press callback.
 The whole two-line cell is the click target, but only the text row is painted,
 so a selected entry reads as one highlighted line."
   :view
   (flex :width 'stretch :height '(lh 2) :flex-direction 'column
         :role 'button :tab-index 0
-        :pointer (etaf-ncm--item-pointer)
+       
         :help-echo (or label "音乐库")
         :on-press on-press
     ;; A callbackless button here would block the cell's inherited keymap.
@@ -94,9 +90,8 @@ so a selected entry reads as one highlighted line."
           :font-weight (if active 'bold 'normal)
           :border-left (and active
                             (etaf-ncm--view-border 'left (etaf-ncm-color :accent)))
-      (box :width '(ch 3) :height '(lh 1) :text-align 'center
-           :color (if active (etaf-ncm-color :accent) (etaf-ncm-color :muted))
-        (text (expr (or glyph ""))))
+      (etaf-ui-icon :name (or icon 'music) :set 'svg :size 1.0 :min-width 3
+                    :color (if active (etaf-ncm-color :accent) (etaf-ncm-color :muted)))
       (box :flex-grow 1 :flex-basis '(px 0) :min-width '(ch 0) :height '(lh 1)
            :overflow 'hidden :font-weight (if active 'bold 'normal)
         (text (expr (or label ""))))
@@ -122,7 +117,7 @@ whose data did not change keep its rendered output."
                      (selected (etaf-ncm-color :ink))
                      (t (etaf-ncm-color :ink)))
         :font-weight (if (or playing selected) 'bold 'normal)
-        :pointer (etaf-ncm--item-pointer)
+       
         :hover-style (etaf-ncm--hover-surface)
         :help-echo (format "播放 %s" (or (plist-get row :name) "这一行"))
         :on-press (lambda () (funcall press index))
@@ -191,7 +186,7 @@ COMPACT renders the glyph-only rail a medium layout has room for."
         (text (expr (format "%s" (car group)))))
       (box :if (and (not compact) (not (eq group (car groups)))) :height '(lh 1))
       (etaf-ncm--view-nav-item :for (entry (cdr group)) :key (car entry)
-        :glyph (nth 2 entry)
+        :icon (nth 2 entry)
         :label (if compact "" (nth 1 entry))
         :active (eq (car entry) section)
         :on-press (lambda () (funcall on-locate (car entry)))))
@@ -221,14 +216,16 @@ header keeps showing the current library's name."
     (flex :for (entry (apply #'append (mapcar #'cdr groups))) :key (car entry)
       :height '(lh 1) :align-items 'center :padding '((lh 0) (ch 1))
       :role 'button :tab-index 0
-      :pointer (etaf-ncm--item-pointer)
+     
       :hover-style (etaf-ncm--hover-surface)
       :help-echo (or (nth 1 entry) "音乐库")
       :background-color (and (eq (car entry) section) (etaf-ncm-color :accent-soft))
       :color (if (eq (car entry) section) (etaf-ncm-color :accent) (etaf-ncm-color :dim))
       :on-press (lambda () (funcall on-locate (car entry)))
-      (box :height '(lh 1)
-        (text (expr (or (nth 2 entry) "")))))))
+      (etaf-ui-icon :name (or (nth 2 entry) 'music) :set 'svg :size 1.0 :min-width 3
+                    :color (if (eq (car entry) section)
+                               (etaf-ncm-color :accent)
+                             (etaf-ncm-color :dim))))))
 
 (etaf-define-component etaf-ncm--view-header
     (&key title subtitle query loading compact on-search on-play-all on-refresh)
@@ -256,7 +253,7 @@ COMPACT stacks the search field under the title, the shape a narrow frame needs.
                    :help-echo "播放整个列表" :on-press on-play-all))
     (flex :if (not compact) :width 'stretch :height '(lh 2)
           :gap '((lh 0) (ch 1)) :align-items 'center
-      (column :flex-grow 1 :flex-basis '(px 0) :min-width '(ch 0) :item-gap '(lh 0)
+      (column :flex-grow 1 :flex-basis '(px 0) :min-width '(ch 10) :item-gap '(lh 0)
         (text :font-weight 'bold (expr (or title "")))
         (box :height '(lh 1) :overflow 'hidden :color (etaf-ncm-color :muted)
              :font-size 12
@@ -282,7 +279,7 @@ COMPACT stacks the search field under the title, the shape a narrow frame needs.
                           (list 'queue "队列"))) :key (car tab)
       :height '(lh 1) :gap '((lh 0) (ch 1)) :align-items 'center
       :padding '((lh 0) (ch 1)) :role 'button :tab-index 0
-      :pointer (etaf-ncm--item-pointer)
+     
       :hover-style (etaf-ncm--hover-surface)
       :help-echo (nth 1 tab)
       :background-color (and (or (eq (car tab) pane)
@@ -348,7 +345,7 @@ ON-PRESS is called with a row's page index when that row is clicked."
         :align-items 'center
         :border-bottom (etaf-ncm--view-border 'bottom (etaf-ncm-color :line))
     (box :height '(lh 2) :padding '((lh 0) (ch 0)) :role 'button :tab-index 0
-         :pointer (etaf-ncm--item-pointer)
+        
          :hover-style (etaf-ncm--hover-surface)
          :help-echo "看歌词"
          :font-weight (if (eq aside 'lyrics) 'bold 'normal)
@@ -360,7 +357,7 @@ ON-PRESS is called with a row's page index when that row is clicked."
          :on-press (lambda () (funcall on-switch 'lyrics))
       (text "歌词"))
     (box :height '(lh 2) :role 'button :tab-index 0
-         :pointer (etaf-ncm--item-pointer)
+        
          :hover-style (etaf-ncm--hover-surface)
          :help-echo "看播放队列"
          :font-weight (if (eq aside 'queue) 'bold 'normal)
@@ -397,14 +394,16 @@ LINES is the visible slice of the parsed lyric and TRANS its translations."
       (text "这首歌没有歌词"))
     (flex :if lines :flex-direction 'column :width 'stretch :flex-grow 1
           :min-height '(lh 0) :gap '((lh 0) (px 0)) :overflow 'hidden
-      (column :for (line lines) :key (format "%s" (car line))
+      ;; The key is the line's ordinal, not its timestamp: a real LRC may
+      ;; repeat a timestamp and two lines must still keep distinct instances.
+      (column :for (line lines) :key (nth 2 line)
               :width 'stretch :item-gap '(lh 0)
         (box :height '(lh 1) :overflow 'hidden
              :color (if (equal (car line) current)
                         (etaf-ncm-color :accent)
                       (etaf-ncm-color :muted))
              :font-weight (if (equal (car line) current) 'bold 'normal)
-          (text (expr (or (cdr line) " "))))
+          (text (expr (or (cadr line) " "))))
         (box :if (etaf-ncm--translation-for trans (car line))
              :height '(lh 1) :overflow 'hidden
              :color (etaf-ncm-color :dim) :font-size 12
@@ -431,7 +430,7 @@ Each entry is (:index :name :right :current) from the player model."
       (text "队列是空的"))
     (flex :for (entry entries) :key (plist-get entry :index)
       :width 'stretch :height '(lh 1) :role 'button :tab-index 0
-      :pointer (etaf-ncm--item-pointer)
+     
       :help-echo (format "播放队列第 %s 首：%s"
                          (plist-get entry :index) (plist-get entry :name))
       :hover-style (etaf-ncm--hover-surface)
@@ -476,20 +475,21 @@ a compact one makes it the only visible pane so it fills the window."
     (etaf-ncm--view-queue :if (eq aside 'queue)
       :entries entries :pos pos :count count :on-jump on-jump)))
 
-(etaf-define-component etaf-ncm--view-control (&key icon glyph label help on-press active)
+(etaf-define-component etaf-ncm--view-control (&key icon glyph label help on-press active ref)
   "Render one compact player action.
 ICON names an `etaf-ui-icon' in the SVG style, so the control keeps one
 optical size and never changes the row height.  GLYPH is the plain-text
 alternative for controls that are words (词 ON) instead of pictures.  LABEL
 appends a small count or state next to the icon."
   :view
-  (flex :height '(lh 1) :align-items 'center :flex-shrink 0 :gap '((lh 0) (ch 1))
+  (flex :width 'max-content :height '(lh 1) :align-items 'center :flex-shrink 0
+        :gap '((lh 0) (ch 1))
     (etaf-ui-icon :if icon :name (or icon 'music) :set 'svg :size 1.0
                   :color (etaf-ncm-color (if active :accent :muted))
-                  :min-width 3 :help-echo help :on-press on-press)
+                  :min-width 3 :help-echo help :on-press on-press :ref ref)
     (box :if (and (not icon) glyph) :height '(lh 1) :role 'button :tab-index 0
          :color (etaf-ncm-color (if active :accent :muted))
-         :pointer (etaf-ncm--item-pointer) :hover-style (etaf-ncm--hover-surface)
+         :hover-style (etaf-ncm--hover-surface)
          :help-echo help :on-press on-press
       (text (expr (or glyph ""))))
     (box :if label :height '(lh 1) :color (etaf-ncm-color :muted)
@@ -501,11 +501,11 @@ appends a small count or state next to the icon."
   "Render the cover, one-line track identity and the small action row."
   :view
   (grid :width 'stretch :height (if compact '(lh 1) '(lh 3))
-        :grid-template-columns (if compact '((fr 1) (ch 16)) '((ch 6) (fr 1)))
+        :grid-template-columns (if compact '((fr 1) (ch 24)) '((ch 6) (fr 1)))
         :gap '((lh 0) (ch 1)) :align-items 'center
     (box :if (not compact) :id "ncm-cover" :ref 'ncm-cover :width '(ch 6) :height '(lh 3)
          :role 'button :tab-index 0
-         :pointer (etaf-ncm--item-pointer) :help-echo "显示歌词"
+         :help-echo "显示歌词"
          :on-press on-lyrics
       (etaf-ncm--view-cover :size '(ch 6) :height '(lh 3)))
     (box :if compact :height '(lh 1) :width 'stretch
@@ -526,12 +526,12 @@ appends a small count or state next to the icon."
                               (if (string-empty-p (or artist "")) ""
                                 (concat " - " artist)))))))
       (flex :height '(lh 1) :gap '((lh 0) (ch 1)) :align-items 'center
-        (etaf-ncm--view-control :icon 'plus :help "加入队列 (a)" :on-press on-add)
-        (etaf-ncm--view-control :icon 'heart :help "喜欢 / 取消喜欢 (f / F)" :on-press on-like)
-        (etaf-ncm--view-control :icon 'shuffle :help "随机播放 (z)"
+        (etaf-ncm--view-control :ref 'ncm-plus :icon 'plus :help "加入队列 (a)" :on-press on-add)
+        (etaf-ncm--view-control :ref 'ncm-like :icon 'heart :help "喜欢 / 取消喜欢 (f / F)" :on-press on-like)
+        (etaf-ncm--view-control :ref 'ncm-shuffle :icon 'shuffle :help "随机播放 (z)"
                                 :on-press on-shuffle :active shuffle)
-        (etaf-ncm--view-control :icon 'close :help "停止" :on-press on-stop)
-        (etaf-ncm--view-control :icon 'queue :help "显示播放列表" :on-press on-queue
+        (etaf-ncm--view-control :ref 'ncm-stop :icon 'close :help "停止" :on-press on-stop)
+        (etaf-ncm--view-control :ref 'ncm-queue :icon 'queue :help "显示播放列表" :on-press on-queue
                                 :label (format "%s" (or queue-count 0))))
       (box :if (not compact) :height '(lh 1) :width 'stretch
            :overflow 'hidden :color (etaf-ncm-color :dim)
@@ -543,24 +543,27 @@ appends a small count or state next to the icon."
 The play control is a one-line accent pill: a bigger glyph would paint outside
 its row and clip, which a terminal-cell layout cannot round away."
   :view
-  (flex :width 'stretch :height (if compact '(lh 1) '(lh 2))
-        :gap '((lh 0) (ch 3)) :align-items 'center :justify-content 'center
-    (etaf-ncm--view-control :icon 'heart :help "喜欢这首歌 (f)" :on-press on-like)
-    (etaf-ncm--view-control :icon 'previous :help "上一首 (p)" :on-press on-previous)
-    (box :id "ncm-play" :ref 'ncm-play :background-color (etaf-ncm-color :accent)
-         :color (etaf-ncm-color :bg)
+  (flex :height (if compact '(lh 1) '(lh 2))
+        :gap (if compact '((lh 0) (ch 1)) '((lh 0) (ch 3)))
+        :align-items 'center :justify-content 'center
+    (etaf-ncm--view-control :ref 'ncm-previous :icon 'previous :help "上一首 (p)" :on-press on-previous)
+    (box :id "ncm-play" :ref 'ncm-play :width (if compact '(ch 3) '(ch 4))
+         :height '(lh 1) :flex-shrink 0
+         :background-color (etaf-ncm-color :accent)
       (etaf-ui-icon :name (if (eq state 'playing) 'pause 'play) :set 'svg :size 0.9
-                    :color (etaf-ncm-color :bg)
+                    :color (etaf-ncm-color :ink)
+                    ;; Span the whole pill so the glyph centres with one inset on
+                    ;; both sides; a narrower icon leaves the right side heavier.
                     :min-width (if compact 3 4)
                     :help-echo "播放 / 暂停 (SPC)" :on-press on-toggle))
-    (etaf-ncm--view-control :icon 'next :help "下一首 (n)" :on-press on-next)
-    (etaf-ncm--view-control :icon 'repeat :help "列表循环 (r)" :on-press on-repeat :active repeat)))
+    (etaf-ncm--view-control :ref 'ncm-next :icon 'next :help "下一首 (n)" :on-press on-next)
+    (etaf-ncm--view-control :ref 'ncm-repeat :icon 'repeat :help "列表循环 (r)" :on-press on-repeat :active repeat)))
 
 (etaf-define-component etaf-ncm--view-progress
     (&key elapsed duration on-seek)
   "Render elapsed, a draggable progress range and the duration."
   :view
-  (flex :width 'stretch :height '(lh 1) :gap '((lh 0) (ch 1)) :align-items 'center
+  (flex :height '(lh 1) :gap '((lh 0) (ch 1)) :align-items 'center
     (box :width '(ch 5) :height '(lh 1) :text-align 'right
          :color (etaf-ncm-color :dim) :flex-shrink 0
       (text :ref 'ncm-elapsed :id "ncm-elapsed"
@@ -582,15 +585,15 @@ its row and clip, which a terminal-cell layout cannot round away."
 Controls sit in separated groups so the right edge reads as three ideas
 (quality badge, pane switches, volume) instead of one crowded line."
   :view
-  (flex :height '(lh 1) :align-items 'center
-        :justify-content 'end :gap '((lh 0) (ch 1))
+  (flex :height '(lh 1) :align-items 'center :flex-shrink 0
+        :justify-content 'end :gap (if compact '((lh 0) (ch 0.5)) '((lh 0) (ch 1)))
     (box :if (and quality (not compact)) :id "ncm-quality" :ref 'ncm-quality :height '(lh 1)
          :flex-shrink 0 :min-width '(ch 4) :max-width '(ch 10) :overflow 'hidden :help-echo quality
          :color (etaf-ncm-color :muted)
       (text (expr (format "[%s]" quality))))
     (box :if (and quality (not compact)) :width '(ch 1) :height '(lh 1) (text " "))
-    (etaf-ncm--view-control :icon 'lyrics :help "显示歌词 (l)" :on-press on-lyrics :active lyrics)
-    (etaf-ncm--view-control :icon 'queue :help "显示播放列表" :on-press on-queue)
+    (etaf-ncm--view-control :ref 'ncm-lyrics :icon 'lyrics :help "显示歌词 (l)" :on-press on-lyrics :active lyrics)
+    (etaf-ncm--view-control :ref 'ncm-queue-aside :icon 'queue :help "显示播放列表" :on-press on-queue)
     (box :width '(ch 1) :height '(lh 1) (text " "))
     (etaf-ui-icon :name (if (and (numberp volume) (zerop volume)) 'volume-mute 'volume)
                   :set 'svg :size 0.9 :color (etaf-ncm-color :muted) :min-width 2)
@@ -610,10 +613,14 @@ Controls sit in separated groups so the right edge reads as three ideas
           queue-count compact on-toggle on-next on-previous on-stop on-like on-add
           on-volume on-seek on-shuffle on-repeat
           on-lyrics on-queue)
-  "Render a native-style three-column bar, or three compact rows."
+  "Render a native-style three-column bar, or three compact rows.
+The bar box is border-box: one border row, three content rows and one padding
+row above and below, so its total footprint stays the six lines the page
+budget reserves."
   :view
-  (box :width 'stretch :height '(lh 3) :flex-shrink 0
-       :padding '((lh 0) (ch 2)) :background-color (etaf-ncm-color :panel)
+  (box :width 'stretch :height '(lh 6) :flex-shrink 0
+       :padding '((lh 1) (ch 2))
+       :background-color (etaf-ncm-color :panel)
        :border-top (etaf-ncm--view-border 'top (etaf-ncm-color :line))
     (grid :if (not compact) :width 'stretch :height '(lh 3)
           :grid-template-columns '((fr 1) (fr 1) (fr 1)) :gap '((lh 0) (ch 2))
@@ -637,9 +644,10 @@ Controls sit in separated groups so the right edge reads as three ideas
         (box :flex-grow 1 :flex-basis '(px 0) :min-width '(ch 0) :height '(lh 1)
           (etaf-ncm--view-transport :state state :repeat repeat :compact t :on-like on-like
                                   :on-previous on-previous :on-toggle on-toggle :on-next on-next :on-repeat on-repeat))
-        (etaf-ncm--view-player-tools :lyrics lyrics :volume volume :compact t
-                                   :on-lyrics on-lyrics :on-queue on-queue
-                                   :on-volume on-volume))
+        (flex :width '(ch 24) :height '(lh 1) :flex-shrink 0 :flex-direction 'row
+          (etaf-ncm--view-player-tools :lyrics lyrics :volume volume :compact t
+                                     :on-lyrics on-lyrics :on-queue on-queue
+                                     :on-volume on-volume)))
       (etaf-ncm--view-progress :elapsed elapsed :duration duration
                              :on-seek on-seek))))
 
