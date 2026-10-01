@@ -81,12 +81,13 @@ The whole two-line cell is the click target, but only the text row is painted,
 so a selected entry reads as one highlighted line."
   :view
   (flex :width 'stretch :height '(lh 2) :flex-direction 'column
+        :role 'button :tab-index 0
         :pointer (etaf-ncm--item-pointer)
         :help-echo (or label "音乐库")
         :on-press on-press
+    ;; A callbackless button here would block the cell's inherited keymap.
     (flex :width 'stretch :height '(lh 1) :gap '((lh 0) (ch 1))
           :align-items 'center :padding '((lh 0) (ch 2))
-          :role 'button :tab-index 0
           :hover-style (etaf-ncm--hover-surface)
           :background-color (and active (etaf-ncm-color :accent-soft))
           :color (if active (etaf-ncm-color :ink) (etaf-ncm-color :muted))

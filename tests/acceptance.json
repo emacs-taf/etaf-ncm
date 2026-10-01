@@ -171,6 +171,11 @@
       "purpose": "Recent, search, playlist, album, artist, chart and podcast rows keep their individual play targets without a library jump."
     },
     {
+      "name": "etaf-ncm-tests-sidebar-entry-click-switches-library",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "Sidebar labels and their blank cell rows switch libraries through mouse activation, and TAB/RET retains keyboard activation."
+    },
+    {
       "name": "etaf-ncm-tests-sidebar-selection-highlights-one-line",
       "file": "tests/etaf-ncm-tests.el",
       "purpose": "A selected sidebar library paints one text line, not its whole two-line click cell."

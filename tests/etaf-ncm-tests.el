@@ -906,13 +906,19 @@ line can hold a sidebar label."
           (setq found (match-beginning 0))))
       found)))
 
-(defun etaf-ncm-tests--line-position-below (position)
-  "Return the POSITION below POSITION on the next line with the same offset."
+(defun etaf-ncm-tests--sidebar-spacer-position (position)
+  "Return the sidebar cell below its label at POSITION, or nil.
+Stretch spaces occupy one character regardless of their display width, so
+locate the entry by its help text instead of a character offset."
   (save-excursion
-    (let ((offset (- position (line-beginning-position))))
-      (goto-char position)
+    (goto-char position)
+    (let ((help (get-char-property position 'help-echo)))
       (forward-line 1)
-      (+ (line-beginning-position) offset))))
+      (let ((end (line-end-position)))
+        (while (and (< (point) end)
+                    (not (equal (get-char-property (point) 'help-echo) help)))
+          (goto-char (next-single-property-change (point) 'help-echo nil end)))
+        (and (< (point) end) (point))))))
 
 (ert-deftest etaf-ncm-tests-sidebar-selection-highlights-one-line ()
   "The selected library entry paints its text row, not its whole two-line cell."
@@ -923,9 +929,11 @@ line can hold a sidebar label."
         (should label)
         (should (equal (etaf-ncm-tests--background label)
                        (etaf-ncm-color :accent-soft)))
-        (should-not (equal (etaf-ncm-tests--background
-                            (etaf-ncm-tests--line-position-below label))
-                           (etaf-ncm-color :accent-soft)))))))
+        (let ((spacer (etaf-ncm-tests--sidebar-spacer-position label)))
+          (should spacer)
+          (should (= (char-after spacer) ?\s))
+          (should-not (equal (etaf-ncm-tests--background spacer)
+                             (etaf-ncm-color :accent-soft))))))))
 
 (ert-deftest etaf-ncm-tests-sidebar-group-labels-leave-a-gap ()
   "A group label is separated from its first entry by a blank line."
@@ -948,6 +956,52 @@ line can hold a sidebar label."
     (etaf-ncm-tests--with-player app
       (should (= (plist-get (etaf-ncm-state app) :viewport-width)
                  (window-body-width (selected-window) t))))))
+
+
+(ert-deftest etaf-ncm-tests-sidebar-entry-click-switches-library ()
+  "Sidebar text and spacer clicks switch libraries, as does TAB/RET."
+  (let ((app (etaf-ncm-tests--session)))
+    (etaf-ncm-tests--with-player app
+      (etaf-ncm-tests--rendered-text)
+      (let ((label (etaf-ncm-tests--sidebar-label-position "私人 FM")))
+        (should label)
+        (goto-char label)
+        (let* ((window (selected-window))
+               (event (list 'mouse-1 (list window label '(1 . 1) 0)))
+               (command (key-binding (vector event))))
+          (should (commandp command))
+          (funcall command event)
+          (etaf-ncm-tests--rendered-text)
+          (should (eq (plist-get (etaf-ncm-state app) :section) :fm))))
+      ;; Exercise the native press/release route on both lines of the cell.
+      (dolist (target '(("每日推荐" :daily nil) ("私人 FM" :fm t)))
+        (let ((position (etaf-ncm-tests--sidebar-label-position (car target))))
+          (should position)
+          (when (nth 2 target)
+            (setq position (etaf-ncm-tests--sidebar-spacer-position position))
+            (should position))
+          (goto-char position)
+          (let* ((window (selected-window))
+                 (press (list 'down-mouse-1 (list window position '(1 . 1) 0)))
+                 (release (list 'mouse-1 (list window position '(1 . 1) 1)))
+                 (command (key-binding (vector press)))
+                 (unread-command-events (list release)))
+            (should (commandp command))
+            (should (eq command (lookup-key (get-text-property position 'keymap)
+                                           [down-mouse-1])))
+            (funcall command press)
+            (etaf-ncm-tests--rendered-text)
+            (should (eq (plist-get (etaf-ncm-state app) :section) (nth 1 target))))))
+      (goto-char (point-min))
+      (let (found)
+        (dotimes (_ 100)
+          (unless found
+            (call-interactively (key-binding (kbd "TAB")))
+            (setq found (equal (get-char-property (point) 'help-echo) "每日推荐"))))
+        (should found)
+        (call-interactively (key-binding (kbd "RET")))
+        (etaf-ncm-tests--rendered-text)
+        (should (eq (plist-get (etaf-ncm-state app) :section) :daily))))))
 
 (provide 'etaf-ncm-tests)
 ;;; etaf-ncm-tests.el ends here
