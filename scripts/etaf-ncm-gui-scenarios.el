@@ -383,18 +383,22 @@ closed."
                                     (eq (plist-get (etaf-ncm-gui--state context) :aside) 'lyrics)))))
      (etaf-ncm-gui--action
       "pane-toggle"
-      (lambda (context) (etaf-ncm-gui--key context "v"))
       (lambda (context)
-        (ignore context)
-        (list (etaf-ncm-gui--assert "v switches the pane"
-                                    (eq (plist-get (etaf-ncm-gui--state context) :pane) 'aside)))))
+        (etaf-gui-verifier-context-put
+         context 'pane-before (plist-get (etaf-ncm-gui--state context) :pane))
+        (etaf-ncm-gui--key context "v"))
+      (lambda (context)
+        (let ((before (etaf-gui-verifier-context-get context 'pane-before)))
+          (list (etaf-ncm-gui--assert "v switches the pane"
+                                      (not (eq (plist-get (etaf-ncm-gui--state context) :pane)
+                                               before)))))))
      (etaf-ncm-gui--action
       "pane-toggle-back"
       (lambda (context) (etaf-ncm-gui--key context "v"))
       (lambda (context)
-        (ignore context)
-        (list (etaf-ncm-gui--assert "v returns the list"
-                                    (eq (plist-get (etaf-ncm-gui--state context) :pane) 'list)))))
+        (list (etaf-ncm-gui--assert "v returns the pane"
+                                    (eq (plist-get (etaf-ncm-gui--state context) :pane)
+                                        (etaf-gui-verifier-context-get context 'pane-before))))))
      (etaf-ncm-gui--action
       "refresh"
       (lambda (context)
