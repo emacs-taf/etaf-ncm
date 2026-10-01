@@ -551,6 +551,8 @@ its row and clip, which a terminal-cell layout cannot round away."
     (etaf-ncm--view-control :ref 'ncm-previous :icon 'previous :help "上一首 (p)" :on-press on-previous)
     (box :id "ncm-play" :ref 'ncm-play :width (if compact '(ch 3) '(ch 4))
          :height '(lh 1) :flex-shrink 0
+         :role 'button :tab-index 0
+         :help-echo "播放 / 暂停 (SPC)" :on-press on-toggle
          :background-color (etaf-ncm-color :accent)
       (etaf-ui-icon :name (if (eq state 'playing) 'pause 'play) :set 'svg :size 0.9
                     :color (etaf-ncm-color :ink)
