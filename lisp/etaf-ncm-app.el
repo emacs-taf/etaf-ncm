@@ -431,15 +431,19 @@ releases the polling timer and the session's pending backend requests."
              (on-previous (lambda () (etaf-ncm-previous-track session)))
              (on-stop (lambda () (etaf-ncm-stop session)))
              (on-like (lambda () (etaf-ncm-like session)))
-             (on-volume (lambda (delta)
-                          (etaf-ncm-set-volume
-                           session
-                           (max 0 (min 130 (+ (or (plist-get (etaf-ncm--view-status session)
-                                                             :volume)
-                                                  0)
-                                              delta))))))
-             (on-seek (lambda (seconds) (etaf-ncm-seek session seconds)))
-             (on-seek-drag (lambda (gesture) (etaf-ncm--drag-seek session gesture)))
+             (on-add (lambda ()
+                       (when-let* ((row (etaf-ncm--selected-row session)))
+                         (etaf-ncm-add-to-queue session row))))
+             (on-lyrics (lambda ()
+                          (etaf-batch
+                            (etaf-ncm--write session :aside 'lyrics)
+                            (etaf-ncm-show-pane session 'aside))))
+             (on-queue (lambda ()
+                         (etaf-batch
+                           (etaf-ncm--write session :aside 'queue)
+                           (etaf-ncm-show-pane session 'aside))))
+             (on-volume (lambda (percent) (etaf-ncm-set-volume session percent)))
+             (on-seek (lambda (seconds) (etaf-ncm-seek-to session seconds)))
              (on-shuffle (lambda ()
                            (etaf-ncm-set-shuffle
                             session
@@ -542,10 +546,16 @@ releases the polling timer and the session's pending backend requests."
      :aside (etaf-ncm--read session :aside)
      :on-pane on-show-pane
      :on-aside on-show-aside)
+    ;; One clear line separates the player bar from the library above; the
+    ;; root's bottom padding closes the window below it.  See
+    ;; `etaf-ncm--reserved-lines' for the row budget these two lines spend.
+    (box :width 'stretch :height '(lh 1))
     (etaf-ncm--view-player
      :compact (etaf-ncm--compact-layout-p session)
      :title (plist-get (etaf-ncm--view-status session) :title)
      :artist (plist-get (etaf-ncm--view-status session) :artist)
+     :vip (plist-get (etaf-ncm--view-status session) :vip)
+     :quality (plist-get (etaf-ncm--view-status session) :quality)
      :state (plist-get (etaf-ncm--view-status session) :state)
      :elapsed (plist-get (etaf-ncm--view-status session) :elapsed)
      :duration (plist-get (etaf-ncm--view-status session) :duration)
@@ -553,16 +563,19 @@ releases the polling timer and the session's pending backend requests."
      :shuffle (plist-get (etaf-ncm--view-status session) :shuffle)
      :repeat (plist-get (etaf-ncm--view-status session) :repeat)
      :message (etaf-ncm--read session :message)
-     :queue-pos (plist-get (etaf-ncm--view-status session) :queue-pos)
+     :lyrics (and (eq (etaf-ncm--read session :aside) 'lyrics)
+                  (etaf-ncm--aside-shown-p session))
      :queue-count (plist-get (etaf-ncm--view-status session) :queue-count)
      :on-toggle on-toggle
      :on-next on-next
      :on-previous on-previous
      :on-stop on-stop
      :on-like on-like
+     :on-add on-add
+     :on-lyrics on-lyrics
+     :on-queue on-queue
      :on-volume on-volume
      :on-seek on-seek
-     :on-seek-drag on-seek-drag
      :on-shuffle on-shuffle
      :on-repeat on-repeat)))
 

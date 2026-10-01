@@ -212,15 +212,18 @@ Display goes through `etaf-ncm--publish-clock'."
   (setf (plist-get app :clock) seconds))
 
 (defun etaf-ncm--ratio (value total)
-  "Return VALUE/TOTAL clamped to a nonzero fraction."
+  "Return VALUE/TOTAL clamped to the closed interval from zero to one."
   (let ((total (if (and (numberp total) (> total 0)) total 1)))
-    (max 0.001 (min 1.0 (/ (float (or value 0)) total)))))
+    (max 0.0 (min 1.0 (/ (float (or value 0)) total)))))
 
 (defconst etaf-ncm--clock-host 'ncm-elapsed
   "Retained Host that shows the played position on the player bar.")
 
 (defconst etaf-ncm--meter-host 'ncm-meter
   "Retained Host that fills the player bar's progress meter.")
+
+(defconst etaf-ncm--thumb-host 'ncm-thumb
+  "Retained Host that marks the played position.")
 
 (defconst etaf-ncm--reply-volatile-keys '(:elapsed :as-of)
   "Status fields that move with every backend reply, not with the track.")
@@ -235,6 +238,10 @@ Display goes through `etaf-ncm--publish-clock'."
   (let ((duration (or (plist-get (etaf-ncm--read app :status) :duration) 0)))
     (* 100.0 (etaf-ncm--ratio seconds duration))))
 
+(defun etaf-ncm--meter-width (ratio)
+  "Return the fractional filled width at RATIO."
+  (list '% (* 100.0 (etaf-ncm--ratio ratio 1))))
+
 (defun etaf-ncm--clock-line (app)
   "Return the lyric line index APP shows for its displayed position, or nil."
   (let* ((lyric (etaf-ncm--read app :lyric))
@@ -242,25 +249,17 @@ Display goes through `etaf-ncm--publish-clock'."
     (and lines (etaf-ncm--lyric-index lines (etaf-ncm--clock app)))))
 
 (defun etaf-ncm--update-clock-hosts (app seconds)
-  "Replace APP's retained clock label and meter with SECONDS.
-Both replacements commit as one Ebox publication, so a playing second costs one
-retained update instead of a whole-view render.  Return non-nil when the update
-committed, and nil when the session has no mounted view or the update declined,
-so the caller republishes instead."
-  (let ((runtime (etaf-ncm--runtime app)))
-    (when runtime
-      (condition-case nil
-          (progn
-            (ebox-call-with-update-batch
-             (lambda ()
-               (etaf-runtime-update-host-content
-                runtime etaf-ncm--clock-host (etaf-ncm--format-seconds seconds))
-               (etaf-runtime-update-host-geometry
-                runtime etaf-ncm--meter-host
-                :width (list '% (etaf-ncm--meter-percent app seconds))))
-             (etaf-runtime-buffer runtime))
-            t)
-        (error nil)))))
+  "Replace APP's elapsed label and progress fill with SECONDS.
+Both writes go through ETAF's retained Host boundary, so a playing second
+publishes without a View publication or layout work.  Return nil when APP has
+no mounted Runtime; the caller then republishes instead."
+  (when-let* ((runtime (etaf-ncm--runtime app)))
+    (etaf-runtime-update-host-contents
+     runtime (list (cons etaf-ncm--clock-host (etaf-ncm--format-seconds seconds))))
+    (etaf-runtime-update-host-geometries
+     runtime (list (cons etaf-ncm--meter-host
+                        (list :width (list '% (round (etaf-ncm--meter-percent app seconds)))))))
+    t))
 
 (defun etaf-ncm--republish-clock (app seconds)
   "Publish APP's whole view with SECONDS as the displayed position.
@@ -346,9 +345,9 @@ backend failure, so nothing reaches the caller of a player action."
       "")))
 
 (defun etaf-ncm--format-seconds (seconds)
-  "Return SECONDS as \"M:SS\" or \"0:00\"."
+  "Return SECONDS as \"MM:SS\" or \"00:00\"."
   (let ((seconds (if (numberp seconds) (max 0 (round seconds)) 0)))
-    (format "%d:%02d" (/ seconds 60) (% seconds 60))))
+    (format "%02d:%02d" (/ seconds 60) (% seconds 60))))
 
 (defun etaf-ncm--truthy-string-p (value)
   "Return non-nil when VALUE is the backend's \"true\"."
@@ -855,28 +854,17 @@ out-of-range INDEX signals `etaf-ncm-error'."
       (signal 'etaf-ncm-error (list (format "没有第 %s 行" index))))
     (etaf-ncm--press-row app (list :row row :index index))))
 
-(defun etaf-ncm--drag-seek (app gesture)
-  "Seek APP to the position a drag GESTURE points at on the progress bar.
-Ebox reports the gesture with the mouse event, so the target is the fraction of
-the bar the pointer sits on."
-  (when (eq (plist-get gesture :phase) 'end)
-    (let* ((event (plist-get gesture :event))
-           (position (and event (posn-point (event-end event))))
-           (buffer (plist-get app :buffer))
-           (host (plist-get gesture :host-ref))
-           (bounds (and buffer host (ebox-host-ref-bounds buffer host)))
-           (status (etaf-ncm--read app :status))
-           (duration (or (plist-get status :duration) 0))
-           (elapsed (etaf-ncm--clock app)))
-      (when (and position bounds (consp bounds)
-                 (numberp (car bounds)) (numberp (cdr bounds))
-                 (> (cdr bounds) (car bounds)) (> duration 0))
-        (let* ((ratio (/ (float (- position (car bounds)))
-                         (- (cdr bounds) (car bounds))))
-               (target (max 0 (min duration (* ratio duration)))))
-          (etaf-ncm--set-clock app target)
-          (etaf-ncm--republish-clock app target)
-          (etaf-ncm-seek app (round (- target elapsed))))))))
+(defun etaf-ncm-seek-to (app seconds)
+  "Seek APP to the absolute position SECONDS.
+The player bar's range component reports absolute positions, while the backend
+seeks by offset: show the target immediately, then ask for the difference."
+  (unless (numberp seconds)
+    (signal 'etaf-ncm-error (list (format "进度目标必须是秒数：%S" seconds))))
+  (let* ((current (etaf-ncm--clock app))
+         (target (max 0 seconds)))
+    (etaf-ncm--set-clock app target)
+    (etaf-ncm--republish-clock app target)
+    (etaf-ncm-seek app (round (- target current)))))
 
 (defun etaf-ncm--target (app item)
   "Return the backend play target for ITEM inside APP."
@@ -997,6 +985,27 @@ reply that carries new playback facts publishes `:status'."
                         (not (equal song-id (plist-get previous :song-id))))))
       (etaf-ncm--request-queue app))))
 
+(defun etaf-ncm--status-flag (value)
+  "Read a boolean or numeric status flag VALUE supplied by the backend."
+  (or (eq value t) (and (numberp value) (> value 0))
+      (and (stringp value) (member (downcase value) '("true" "1" "yes")))))
+
+(defun etaf-ncm--status-quality (data)
+  "Return DATA's supplied quality label, or nil when no hint was reported."
+  (let ((quality (string-trim (etaf-ncm--string (plist-get data :quality))))
+        (bitrate (plist-get data :bitrate))
+        (hint (string-trim (etaf-ncm--string (plist-get data :vip_hint)))))
+    (cond ((or (etaf-ncm--status-flag (plist-get data :lossless))
+               (member (downcase quality) '("lossless" "flac" "无损"))) "无损")
+          ((not (string-empty-p quality)) quality)
+          ((and bitrate (not (string-empty-p (etaf-ncm--string bitrate))))
+           (let ((number (etaf-ncm--parse-number bitrate)))
+             (if number
+                 (format "%g kbps" (if (> number 1000) (/ number 1000.0) number))
+               (etaf-ncm--string bitrate))))
+          ((not (string-empty-p hint)) hint)
+          ((etaf-ncm--status-flag (plist-get data :vip)) "VIP"))))
+
 (defun etaf-ncm--normalize-status (data)
   "Return the backend playback DATA as the player's status plist."
   (let* ((position (etaf-ncm--string (plist-get data :queue_pos)))
@@ -1008,6 +1017,8 @@ reply that carries new playback facts publishes `:status'."
           :elapsed (or (etaf-ncm--parse-number (plist-get data :elapsed)) 0)
           :duration (or (etaf-ncm--parse-number (plist-get data :duration)) 0)
           :volume (or (etaf-ncm--parse-number (plist-get data :volume)) 0)
+          :vip (and (etaf-ncm--status-flag (plist-get data :vip)) t)
+          :quality (etaf-ncm--status-quality data)
           :queue-pos (or (etaf-ncm--parse-number (car parts)) 0)
           :queue-count (or (etaf-ncm--parse-number (cadr parts)) 0)
           :shuffle (etaf-ncm--truthy-string-p (plist-get data :shuffle))
@@ -1104,20 +1115,18 @@ second for the same second."
 ;;; Keyboard navigation and panels
 ;;; ---------------------------------------------------------------------------
 
-(defconst etaf-ncm--reserved-lines 1
-  "Lines the page size leaves to the view's own bottom padding.
-Rows that show symbol glyphs render a little taller than the frame's line
-height, because their fallback font has larger metrics than the layout's
-`(lh N)' boxes assume.  The view keeps its last line clear for those pixels
-(see the root flex's `:padding-bottom'), so the page size must leave that line
-out of its row budget; without either half the player bar's control row is
-clipped at the bottom of the window.")
+(defconst etaf-ncm--reserved-lines 2
+  "Lines the player bar keeps clear above and below itself.
+The bar reads as a floating surface: one empty line separates it from the
+library above and one closes the window below it (the view's bottom padding).
+The page size must leave both out of its row budget, or the bar's last row is
+pushed past the window edge.")
 
 (defun etaf-ncm--page-size-for (window &optional layout)
   "Return the library row count that fits WINDOW's height in LAYOUT.
 LAYOUT is the layout the rows are rendered in: `narrow' and `medium' spend lines
 on chips and pane tabs, while `wide' and an unknown LAYOUT subtract less chrome.
-One extra line stays clear; see `etaf-ncm--reserved-lines'."
+Extra lines stay clear; see `etaf-ncm--reserved-lines'."
   (let* ((height (if (and window (window-live-p window))
                      (window-body-height window)
                    (frame-height)))
@@ -1226,8 +1235,8 @@ rejected repaint, is left alone."
     (when (and runtime width height mounted (> width mounted))
       (condition-case nil
           (progn
-            (ebox-rerender-buffer-with-context buffer (max 1 (1- width)) height)
-            (ebox-rerender-buffer-with-context buffer width height)
+            (etaf-runtime-refit runtime (max 1 (1- width)) height)
+            (etaf-runtime-refit runtime width height)
             (setf (plist-get app :mounted-width) width))
         (error nil)))))
 

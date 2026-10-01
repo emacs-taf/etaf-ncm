@@ -528,11 +528,14 @@ The background reply must not move the reader's selection."
            collect (list :id index :name (format "%s%03d" (or prefix "长列表") index)
                          :artist "歌手" :album "专辑" :ms 180000)))
 
+(defvar etaf-ncm-tests--poll-interval 3600
+  "Playback polling interval used by mounted acceptance sessions.")
+
 (defmacro etaf-ncm-tests--with-player (app &rest body)
   "Open APP in an isolated buffer and a roomy window while running BODY."
   (declare (indent 1) (debug t))
   `(let ((etaf-ncm-buffer-name (generate-new-buffer-name " *ncm-acceptance*"))
-         (etaf-ncm-status-interval 3600)
+         (etaf-ncm-status-interval etaf-ncm-tests--poll-interval)
          (display-buffer-overriding-action '((display-buffer-same-window)))
          (frame (selected-frame))
          (width (frame-width))
@@ -1002,6 +1005,167 @@ locate the entry by its help text instead of a character offset."
         (call-interactively (key-binding (kbd "RET")))
         (etaf-ncm-tests--rendered-text)
         (should (eq (plist-get (etaf-ncm-state app) :section) :daily))))))
+
+(defun etaf-ncm-tests--host-pixels (host)
+  "Return HOST's painted (LEFT WIDTH) through the public retained bounds."
+  (let* ((runtime (etaf-runtime-for-buffer (current-buffer)))
+         (bounds (etaf-host-ref-bounds runtime host)))
+    (should bounds)
+    (let ((start (car bounds)) (end (cdr bounds)))
+      (list (ebox-string-pixel-width
+             (buffer-substring (save-excursion (goto-char start) (line-beginning-position)) start))
+            (ebox-string-pixel-width (buffer-substring start end))))))
+
+(defun etaf-ncm-tests--host-text (host)
+  "Return HOST's painted text in the mounted player."
+  (let* ((runtime (etaf-runtime-for-buffer (current-buffer)))
+         (bounds (etaf-host-ref-bounds runtime host)))
+    (should bounds)
+    (buffer-substring-no-properties (car bounds) (cdr bounds))))
+
+(defun etaf-ncm-tests--slider-gesture (host phase ratio)
+  "Dispatch a slider PHASE at RATIO of HOST's travel in the mounted player."
+  (pcase-let* ((`(,left ,width) (etaf-ncm-tests--host-pixels host))
+               (x (+ left (* ratio width))))
+    (etaf-dispatch-event
+     (etaf-runtime-for-buffer (current-buffer)) host 'drag
+     (list :phase phase :host-ref host :window (selected-window)
+           :buffer (current-buffer) :position (cons x 0)) t)))
+
+(defun etaf-ncm-tests--press-help (help)
+  "Activate the mounted control whose help text is HELP."
+  (let* ((runtime (etaf-runtime-for-buffer (current-buffer)))
+         (entry (cl-find-if
+                 (lambda (entry) (equal (plist-get (cdr entry) :help-echo) help))
+                 (etaf-runtime-host-props-entries runtime))))
+    (should entry)
+    (etaf-dispatch-event runtime (car entry) 'press)))
+
+(ert-deftest etaf-ncm-tests-player-volume-drag-and-reply ()
+  "Click/drag sets the pointed volume optimistically and reconciles its reply."
+  (let* ((etaf-ncm-tests--requests nil)
+         pending
+         (app (etaf-ncm-tests--session
+               (lambda (request callback)
+                 (if (eq (plist-get request :op) :volume)
+                     (progn (push request etaf-ncm-tests--requests)
+                            (setq pending callback))
+                   (etaf-ncm-tests--client request callback))))))
+    (etaf-ncm-tests--with-player app
+      (etaf-ncm-tests--rendered-text)
+      (dolist (sample '((0.5 65) (0.8 104) (-1 0) (2 130)))
+        (setq etaf-ncm-tests--requests nil)
+        (etaf-ncm-tests--slider-gesture 'ncm-volume 'start 0.1)
+        (etaf-ncm-tests--slider-gesture 'ncm-volume 'move (car sample))
+        (should-not (etaf-ncm-tests--request :volume))
+        (etaf-ncm-tests--slider-gesture 'ncm-volume 'end (car sample))
+        (should (= (plist-get (etaf-ncm-tests--request :volume) :value) (cadr sample)))
+        (should (= (plist-get (plist-get (etaf-ncm-state app) :status) :volume) (cadr sample)))
+        (etaf-ncm-tests--rendered-text)
+        (funcall pending '(:ok (:ok t)))
+        (etaf-ncm-tests--rendered-text)
+        (should (= (plist-get (plist-get (etaf-ncm-state app) :status) :volume) 55)))
+      (setq etaf-ncm-tests--requests nil)
+      (etaf-ncm-tests--slider-gesture 'ncm-volume 'start 0.8)
+      (etaf-ncm-tests--slider-gesture 'ncm-volume 'cancel 0.8)
+      (should-not (etaf-ncm-tests--request :volume)))))
+
+(ert-deftest etaf-ncm-tests-player-progress-range-seeks-by-pointer ()
+  "The progress range follows status and seeks to the pointed position."
+  (let* ((etaf-ncm-tests--status (etaf-ncm-tests--fixture "status"))
+         (app (etaf-ncm-tests--session)))
+    (setq etaf-ncm-tests--status (plist-put etaf-ncm-tests--status :duration "100"))
+    (etaf-ncm-tests--with-player app
+      (dolist (elapsed '(0 25 75 100))
+        (setq etaf-ncm-tests--status (plist-put etaf-ncm-tests--status :elapsed elapsed))
+        (etaf-ncm-refresh app)
+        (etaf-ncm-tests--rendered-text)
+        (should (etaf-host-ref-bounds (etaf-runtime-for-buffer (current-buffer))
+                                      'ncm-seek)))
+      (let ((etaf-ncm-tests--requests nil))
+        (etaf-ncm-tests--slider-gesture 'ncm-seek 'end 0.5)
+        (should (= (plist-get (etaf-ncm-tests--request :seek) :seconds) -50))))))
+
+(ert-deftest etaf-ncm-tests-player-quality-and-compact-layouts ()
+  "Only reported quality is badged; compact bars retain transport without it."
+  (let* ((base (etaf-ncm-tests--fixture "status"))
+         (etaf-ncm-tests--status base)
+         (app (etaf-ncm-tests--session)))
+    (etaf-ncm-tests--with-player app
+      (etaf-ncm-tests--rendered-text)
+      (let ((runtime (etaf-runtime-for-buffer (current-buffer))))
+        (should-not (etaf-host-ref-bounds runtime 'ncm-quality))
+        (dolist (sample '(((:lossless t :vip t) "无损")
+                          ((:quality "lossless") "无损")
+                          ((:bitrate "320000") "320 kbps")
+                          ((:vip_hint "VIP 专享") "VIP 专享")))
+          (setq etaf-ncm-tests--status (append (car sample) base))
+          (etaf-ncm-refresh app)
+          (etaf-ncm-tests--rendered-text)
+          (let ((bounds (etaf-host-ref-bounds runtime 'ncm-quality)))
+            (should bounds)
+            (should (string-match-p (regexp-quote (cadr sample))
+                                    (buffer-substring-no-properties (car bounds) (cdr bounds))))))
+        (dolist (sample '((90 medium) (64 narrow) (180 wide)))
+          (set-frame-size (selected-frame) (car sample) 48)
+          (etaf-ncm-refresh app)
+          (etaf-ncm-tests--rendered-text)
+          (should (eq (plist-get (etaf-ncm-state app) :layout) (cadr sample)))
+          (should (etaf-host-ref-bounds runtime 'ncm-play))
+          (should (etaf-host-ref-bounds runtime 'ncm-seek))
+          (should (etaf-host-ref-bounds runtime 'ncm-volume))
+          (should (eq (and (etaf-host-ref-bounds runtime 'ncm-cover) t)
+                      (eq (cadr sample) 'wide)))
+          (should (eq (and (etaf-host-ref-bounds runtime 'ncm-quality) t)
+                      (eq (cadr sample) 'wide))))))))
+
+(ert-deftest etaf-ncm-tests-player-pane-buttons-preserve-state ()
+  "Cover, lyric and queue controls reveal their pane without resetting selection."
+  (let ((app (etaf-ncm-tests--session)))
+    (etaf-ncm-tests--with-player app
+      (etaf-ncm-move-selection app 3)
+      (etaf-ncm-tests--rendered-text)
+      (let ((selected (plist-get (etaf-ncm-state app) :selection)))
+        (should (= selected 3))
+        (etaf-ncm-tests--press-help "显示播放列表")
+        (should (eq (plist-get (etaf-ncm-state app) :aside) 'queue))
+        (etaf-dispatch-event (etaf-runtime-for-buffer (current-buffer)) 'ncm-cover 'press)
+        (should (eq (plist-get (etaf-ncm-state app) :aside) 'lyrics))
+        (set-frame-size (selected-frame) 64 48)
+        (etaf-ncm-refresh app)
+        (etaf-ncm-tests--rendered-text)
+        (etaf-ncm-tests--press-help "显示播放列表")
+        (should (eq (plist-get (etaf-ncm-state app) :pane) 'aside))
+        (etaf-ncm-tests--rendered-text)
+        (etaf-ncm-tests--press-help "显示歌词 (l)")
+        (should (eq (plist-get (etaf-ncm-state app) :aside) 'lyrics))
+        (should (eq (plist-get (etaf-ncm-state app) :pane) 'aside))
+        (should (equal (plist-get (etaf-ncm-state app) :selection) selected))))))
+
+(ert-deftest etaf-ncm-tests-player-clock-retains-the-view ()
+  "Playing seconds update the elapsed Host without publishing a View.
+The painted progress width moves through the same retained geometry update;
+that pixel half is asserted by the graphical range check because an absolutely
+positioned Host has no batch-visible text span."
+  (let* ((etaf-ncm-tests--poll-interval 1)
+         (calls 0)
+         (app (etaf-ncm-tests--session
+               (lambda (request callback)
+                 (if (eq (plist-get request :op) :status)
+                     (funcall callback
+                              (list :ok (append (list :elapsed (number-to-string (+ 80 (* 10 (cl-incf calls)))))
+                                                (etaf-ncm-tests--fixture "status"))))
+                   (etaf-ncm-tests--client request callback))))))
+    (etaf-ncm-tests--with-player app
+      (etaf-ncm-tests--rendered-text)
+      (let* ((runtime (etaf-runtime-for-buffer (current-buffer)))
+             (generation (etaf-runtime-generation runtime))
+             (before (etaf-ncm-tests--host-text 'ncm-elapsed)))
+        (with-timeout (5 (ert-fail "Playback polling did not complete"))
+          (while (< calls 3) (sleep-for 0.06)))
+        (etaf-ncm-tests--rendered-text)
+        (should (= (etaf-runtime-generation runtime) generation))
+        (should-not (equal (etaf-ncm-tests--host-text 'ncm-elapsed) before))))))
 
 (provide 'etaf-ncm-tests)
 ;;; etaf-ncm-tests.el ends here

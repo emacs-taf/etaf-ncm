@@ -54,7 +54,9 @@ is revived by its next mount.
 | `RET` | Play the selected row |
 | `Home` / `End` | Jump to the first / last loaded row of the library |
 | `PageUp` / `PageDown` | Move the selection by one page |
-| drag the progress bar | Seek to the position under the pointer |
+| click or drag the progress bar | Seek to the position under the pointer |
+| click or drag the volume slider | Set volume at the pointer, from 0 to 130% |
+| click the cover / `词` / queue control | Show lyrics / lyrics / the queue, preserving the current selection and queue window |
 | `SPC` | Pause or resume |
 | `n` / `p` | Next / previous queue entry |
 | `a` | Append the selected song to the queue |
@@ -89,8 +91,9 @@ frame behaves like a phone instead of squeezing three columns into it:
 | `etaf-ncm-medium-columns` (72) up to that width | `medium` | Glyph-only library rail, one pane at a time |
 | Narrower than `etaf-ncm-medium-columns` | `narrow` | Library chips under the header, one full-width pane |
 
-In `medium` and `narrow` the header gains pane tabs and the player bar becomes
-two lines, so the library loses a few rows: the page count follows the layout.
+In `medium` and `narrow` the header gains pane tabs and the player bar stacks
+into three lines, dropping its cover and quality badge while keeping the track,
+transport, pane controls, progress and volume. The page count follows the layout.
 `v` switches between the list and the side panel there, `l` shows the lyric or
 queue panel, and `etaf-ncm-show-pane` does the same from Lisp. `etaf-ncm-state`
 reports the current `:layout` and `:pane`.
@@ -128,6 +131,24 @@ size. Raise the limit and press
 retain their totals while refreshing.
 
 ## Playback and the queue
+
+The wide player bar follows the native client's arrangement. On the left, a
+cover placeholder opens the lyrics; a reported VIP badge precedes the title
+and artist on one line. Small actions below add the selected song (`+`, `a`),
+like the playing song (`♡`, `f`; `F` unlikes), toggle shuffle, stop, and open the
+queue beside its count. The message below these actions reports command feedback.
+The centre has like, previous, a prominent red play/pause pill, next and list
+repeat. Elapsed time, a thin seek bar and duration sit under that cluster. The
+bar's controls and icons are `etaf-ui-icon' SVGs: one optical size, one style,
+and no glyph can change the row height.
+
+On the right, quality appears only when playback status reports it: `无损` for
+lossless, otherwise the supplied quality, bitrate or VIP hint. `词 ON/OFF`
+indicates whether the lyrics are visible; pressing it opens that pane. The
+queue control opens the queue. The speaker, slider and percentage show volume.
+Clicking or releasing a drag on either slider selects the value under the
+pointer. Volume changes appear immediately, then reconcile with the backend's
+reply. The existing volume and seek keys still work; no new key is required.
 
 Every playback action is a backend command; the player reports what it sent in
 the message line and then re-reads playback truth, so the displayed state never
@@ -239,6 +260,13 @@ leaves the player usable and `g` retries. Only invalid player operations, such
 as an unknown library, a blank search keyword or a row without a playable
 target, signal `etaf-ncm-error`; the entry Commentary lists those cases.
 
+Playback status may include `:vip`, `:lossless`, `:quality`, `:bitrate` and
+`:vip_hint`. Flags accept booleans, positive numbers, or `"true"` / `"1"` /
+`"yes"`. Bitrate numbers above 1000 are interpreted as bits per second and
+displayed as kbps; a textual bitrate hint is preserved. Missing hints produce
+no quality badge. These fields describe the playing song, independently of
+the selected library row.
+
 `etaf-ncm-make-client` builds the default client: pass `:skill-directory`,
 `:state-directory`, `:node-program` or `:timeout` to point it at a different
 checkout, state directory, Node.js binary or request budget.
@@ -248,9 +276,9 @@ checkout, state directory, Node.js binary or request budget.
 While a song is playing the player ticks once per `etaf-ncm-status-interval`
 (one second by default), advancing the local clock for a smooth progress bar and
 asking the backend for playback truth. A tick never overlaps the previous
-request. The elapsed label and the progress meter are updated in place, so a
-playing second does not republish the view; a tick that moves the lyric line
-does. While nothing is playing it checks every `etaf-ncm-idle-poll-interval`
+request. The elapsed label and the progress fill are updated in place through
+ETAF's retained Host updates, so a playing second does not republish the view;
+a tick that moves the lyric line does. While nothing is playing it checks every `etaf-ncm-idle-poll-interval`
 (fifteen seconds). A lyric is fetched only when the playing song id changes, and
 the queue list is read from the backend's queue state file rather than
 re-downloaded.

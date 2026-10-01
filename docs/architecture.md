@@ -136,6 +136,32 @@ height; the player bar and pane tabs do not shrink when space is tight.
 List repeat (`列表循环`) uses the existing `:repeat` request, which controls
 mpv's `loop-playlist`.
 
+## Player bar composition
+
+The wide bar is a three-column grid. The left column reuses the cover Component
+and groups the status VIP flag, title/artist, small actions, queue count and
+command message. The centre stacks a single transport cluster over the seek
+line. The right column groups a status-derived quality badge, lyric visibility,
+queue access and volume. Compact layouts compose the same parts into three
+rows, omitting the cover and quality badge. A symbol font is resolved once per
+transport instance for the filled play/pause circle, with a Unicode fallback.
+Bottom padding reserves room for the symbol fonts' taller metrics; the panel
+and list budgets use the same reservation.
+
+All action and gesture callbacks belong to the app's `:bindings`. Child Views
+receive those stable functions and never allocate a render-time callback.
+The cover and lyric action reveal the lyric pane; queue access reveals the
+queue pane without changing either library selection or the stored queue window.
+Status normalization preserves supplied VIP and quality hints; it never infers
+the playing song's quality from the currently selected row.
+
+Seek and volume are `etaf-range' Components: the pointer-to-ratio conversion
+uses the host's painted pixels through ETAF's public measurement and Host-bound
+APIs, and never leaves the app. A click and a released drag commit the pointed
+value; motion reports a live value and cancellation commits nothing. Volume
+routes through the existing optimistic command and reply reconciliation path,
+retaining the 0–130 range.
+
 ## Polling policy
 
 - Playing: one tick per `etaf-ncm-status-interval` (1 s). The tick advances the
@@ -150,6 +176,14 @@ mpv's `loop-playlist`.
   because the panel's current line moves with it.  `etaf-ncm-state` merges the
   clock back into the reported `:status`, which keeps the public snapshot shape
   unchanged.
+- The progress bar is an `etaf-range': a flow track paints the rail and gives
+  the row its measurable width, and an absolutely positioned fill overlay above
+  it carries the played fraction. A playing second updates the elapsed label
+  (`etaf-runtime-update-host-contents') and the fill's width percentage
+  (`etaf-runtime-update-host-geometries'), both ETAF public retained updates:
+  no View publication, no per-tick layout pass, and an absolutely positioned
+  Host is the one shape Ebox accepts a width update on. The next ordinary View
+  publication supplies the same clock geometry.
 - Idle: one check per `etaf-ncm-idle-poll-interval` (15 s).
 - A lyric is fetched only when the playing song id changes.
 - The queue list is read from the backend's queue file, not re-downloaded.
@@ -214,12 +248,13 @@ timeout, and unmounting deletes the processes.
 
 - The layout is a column flex root: header, body (list + aside) and a full-width
   player bar; the compact layouts drop the sidebar for a library rail or a chip
-  strip, tab the panes and give the player bar a second line.
+  strip, tab the panes and stack the player bar into three lines.
 - `row`/`column` are flow containers; participation properties
   (`:flex-grow`, `:flex-basis`) require a flex or grid parent, and `:flex-basis`
   units follow the parent's main axis (lh/vh/% in a column, px/ch in a row).
 - Song rows use a grid so columns align; the list is paginated to the window
   instead of scrolled, because Ebox has no programmatic scroll API and every row
   must stay reachable by keyboard.
-- Progress and volume meters are boxes with fractional widths rather than
-  block-character text, which keeps them smooth at any window width.
+- Progress and volume keep the played fraction as a percentage width on the
+  fill overlay, so the bar never rounds the ratio to a count of blocks and a
+  retained update can replace it without a layout pass.

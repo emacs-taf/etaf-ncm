@@ -4,6 +4,20 @@ All notable user-visible changes to ETAF NCM.
 
 ## Unreleased
 
+- The bottom player bar follows the native client's layout and keeps one clear
+  line above and below itself: cover, VIP/title and track actions on the left, a
+  red play/pause pill with the seek bar in the centre, and reported quality,
+  lyrics, queue and volume on the right. Compact bars retain the controls in
+  three rows without the cover or quality badge.
+- Bar controls use the shared `etaf-ui-icon' SVG set, so every icon shares one
+  optical size and style and none of them changes the row height.
+- Click or drag the seek or volume bar to set the position or 0–130% volume,
+  with immediate feedback and backend reconciliation; the seek and volume bars
+  are the shared `etaf-range' Component and never round the ratio to whole
+  blocks. Cover, lyric and queue controls reveal their panes without resetting
+  the library or queue window.
+- While a song plays, the elapsed label and progress fill move through ETAF's
+  retained Host updates instead of republishing the view every second.
 - The player background reaches the window edge: the mount viewport uses the window
   body width in pixels, the buffer's default face follows the palette and the
   truncation slot stays blank, so a sub-cell remainder no longer shows as a gap.

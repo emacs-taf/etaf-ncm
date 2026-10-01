@@ -79,6 +79,8 @@
 ;; into), `:loading', `:error' and `:message'.  The snapshot copies
 ;; every value, so mutating it never changes the player; use it to render
 ;; outside ETAF or to assert behavior in tests.
+;; `:status' includes normalized `:vip' and `:quality' when reported by the
+;; backend; missing quality is nil. These describe the playing song.
 ;; `:rows-total' counts loaded library rows; `:list-total' keeps the backend's
 ;; total when reported and otherwise equals the loaded count.  `:queue-rows'
 ;; and `:lyric-rows' are panel line budgets (translations use lyric lines too);
