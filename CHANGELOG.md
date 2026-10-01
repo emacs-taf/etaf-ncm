@@ -4,6 +4,12 @@ All notable user-visible changes to ETAF NCM.
 
 ## Unreleased
 
+- The player background reaches the window edge: the mount viewport uses the window
+  body width in pixels, the buffer's default face follows the palette and the
+  truncation slot stays blank, so a sub-cell remainder no longer shows as a gap.
+- A selected sidebar entry highlights only its text line instead of its whole
+  two-line click cell.
+- Sidebar group labels keep a blank line between the label and the first entry.
 - Queue windows fit the panel height, show the visible range and backend total,
   and let the wheel reach every loaded entry. Scrolling over the panel leaves
   the library selection alone; playback changes centre the queue again.

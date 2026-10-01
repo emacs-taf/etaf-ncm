@@ -171,6 +171,21 @@
       "purpose": "Recent, search, playlist, album, artist, chart and podcast rows keep their individual play targets without a library jump."
     },
     {
+      "name": "etaf-ncm-tests-sidebar-selection-highlights-one-line",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "A selected sidebar library paints one text line, not its whole two-line click cell."
+    },
+    {
+      "name": "etaf-ncm-tests-sidebar-group-labels-leave-a-gap",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "A sidebar group label keeps a blank line between itself and its first entry."
+    },
+    {
+      "name": "etaf-ncm-tests-viewport-width-uses-pixels",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "The mount viewport uses the window body width in pixels so the background reaches the window edge."
+    },
+    {
       "name": "etaf-ncm-tests-play-all-only-for-supported-origins",
       "file": "tests/etaf-ncm-tests.el",
       "purpose": "Wide and compact headers render 播放全部 only for daily, liked and FM origins."

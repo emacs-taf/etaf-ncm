@@ -76,29 +76,33 @@ over, one step above the panel it sits on."
 ;;; ---------------------------------------------------------------------------
 
 (etaf-define-component etaf-ncm--view-nav-item (&key glyph label active badge on-press)
-  "Render one library entry with GLYPH, LABEL, BADGE and press callback."
+  "Render one library entry with GLYPH, LABEL, BADGE and press callback.
+The whole two-line cell is the click target, but only the text row is painted,
+so a selected entry reads as one highlighted line."
   :view
-  (flex :width 'stretch :height '(lh 2) :gap '((lh 0) (ch 1))
-        :align-items 'center :padding '((lh 0) (ch 2))
-        :role 'button :tab-index 0
-        :background-color (and active (etaf-ncm-color :accent-soft))
-        :color (if active (etaf-ncm-color :ink) (etaf-ncm-color :muted))
-        :font-weight (if active 'bold 'normal)
-        :border-left (and active
-                          (etaf-ncm--view-border 'left (etaf-ncm-color :accent)))
+  (flex :width 'stretch :height '(lh 2) :flex-direction 'column
         :pointer (etaf-ncm--item-pointer)
         :help-echo (or label "音乐库")
-        :hover-style (etaf-ncm--hover-surface)
         :on-press on-press
-    (box :width '(ch 3) :height '(lh 1) :text-align 'center
-         :color (if active (etaf-ncm-color :accent) (etaf-ncm-color :muted))
-      (text (expr (or glyph ""))))
-    (box :flex-grow 1 :flex-basis '(px 0) :min-width '(ch 0) :height '(lh 1)
-         :overflow 'hidden :font-weight (if active 'bold 'normal)
-      (text (expr (or label ""))))
-    (box :if badge :width '(ch 5) :height '(lh 1) :text-align 'right
-         :font-weight 'normal :color (etaf-ncm-color :dim)
-      (text (expr badge)))))
+    (flex :width 'stretch :height '(lh 1) :gap '((lh 0) (ch 1))
+          :align-items 'center :padding '((lh 0) (ch 2))
+          :role 'button :tab-index 0
+          :hover-style (etaf-ncm--hover-surface)
+          :background-color (and active (etaf-ncm-color :accent-soft))
+          :color (if active (etaf-ncm-color :ink) (etaf-ncm-color :muted))
+          :font-weight (if active 'bold 'normal)
+          :border-left (and active
+                            (etaf-ncm--view-border 'left (etaf-ncm-color :accent)))
+      (box :width '(ch 3) :height '(lh 1) :text-align 'center
+           :color (if active (etaf-ncm-color :accent) (etaf-ncm-color :muted))
+        (text (expr (or glyph ""))))
+      (box :flex-grow 1 :flex-basis '(px 0) :min-width '(ch 0) :height '(lh 1)
+           :overflow 'hidden :font-weight (if active 'bold 'normal)
+        (text (expr (or label ""))))
+      (box :if badge :width '(ch 5) :height '(lh 1) :text-align 'right
+           :font-weight 'normal :color (etaf-ncm-color :dim)
+        (text (expr badge))))
+    (box :height '(lh 1))))
 
 (etaf-define-component etaf-ncm--view-row
     (&key index row selected playing compact press)
@@ -198,12 +202,15 @@ COMPACT renders the glyph-only rail a medium layout has room for."
       (box :if (not compact) :height '(lh 1) :color (etaf-ncm-color :dim)
         (text "NCM")))
     (column :for (group groups) :key (car group) :width 'stretch :item-gap '(lh 0)
-      ;; A group gets one blank line above it, and its name reads as a label of
-      ;; its own: smaller, dim, aligned with the entry glyphs below.
+      ;; A group reads as a section: a blank line, a small bold label, one more
+      ;; blank line and then its entries, so the label cannot be mistaken for
+      ;; the first entry.
       (box :if (and (not compact) (not (eq group (car groups)))) :height '(lh 1))
       (box :if (and (not compact) (not (eq group (car groups)))) :height '(lh 1)
-           :padding '((lh 0) (ch 2)) :color (etaf-ncm-color :dim)
+           :padding '((lh 0) (ch 2)) :font-size 12 :font-weight 'bold
+           :color (etaf-ncm-color :muted)
         (text (expr (format "%s" (car group)))))
+      (box :if (and (not compact) (not (eq group (car groups)))) :height '(lh 1))
       (etaf-ncm--view-nav-item :for (entry (cdr group)) :key (car entry)
         :glyph (nth 2 entry)
         :label (if compact "" (nth 1 entry))

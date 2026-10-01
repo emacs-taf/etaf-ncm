@@ -1137,13 +1137,12 @@ One extra line stays clear; see `etaf-ncm--reserved-lines'."
 (defun etaf-ncm--viewport-options (&optional window)
   "Return mount viewport options sized for WINDOW, or nil when it is dead.
 A mount without them paints at Ebox's default size, which clips the player bar
-until the first resize."
+until the first resize.  The width is the window's body width in pixels, not a
+whole number of cells, so the player's background reaches the window edge
+instead of stopping one sub-cell short of it.  The player also blanks the
+truncation slot, so a remaining sub-cell cannot surface as a truncation glyph."
   (when (and window (window-live-p window))
-    ;; Size to a whole number of character cells: a raw pixel body width can
-    ;; leave a sub-cell remainder that makes the last rendered column overflow
-    ;; the window and draw Emacs's line-truncation glyph.
-    (list :viewport-width (* (window-body-width window)
-                             (window-font-width window))
+    (list :viewport-width (window-body-width window t)
           :viewport-height (window-body-height window))))
 
 (defun etaf-ncm--layout-for (columns)
@@ -1357,7 +1356,8 @@ rows), `:visible' (the rows on the current page), `:selection', `:window-start',
 loaded count), `:queue-rows', `:queue-start' (zero-based loaded window start),
 `:lyric-rows' (display lines including translations), `:status', `:queue',
 `:lyric', `:lyric-line', `:aside',
-`:layout', `:pane', `:theme', `:account', `:loading', `:error' and `:message'."
+`:layout', `:pane', `:viewport-width' (the pixel canvas the player paints),
+`:theme', `:account', `:loading', `:error' and `:message'."
   (let* ((rows (etaf-ncm--read app :rows))
          (page (etaf-ncm--page-rows app))
          (status (plist-put (copy-sequence (or (etaf-ncm--read app :status) nil))
@@ -1375,6 +1375,7 @@ loaded count), `:queue-rows', `:queue-start' (zero-based loaded window start),
           :window-start (nth 1 page)
           :selection (etaf-ncm--read app :selection)
           :page-size (etaf-ncm--read app :page-size)
+          :viewport-width (plist-get app :mounted-width)
           :rows-total (length rows)
           :list-total (etaf-ncm--read app :list-total)
           :queue-rows (etaf-ncm--read app :queue-rows)

@@ -75,7 +75,8 @@
 ;; `:visible', `:window-start', `:selection', `:page-size', `:rows-total',
 ;; `:list-total', `:queue-rows', `:queue-start', `:lyric-rows',
 ;; `:status', `:queue', `:lyric', `:lyric-line', `:aside', `:theme', `:account',
-;; `:layout', `:pane', `:loading', `:error' and `:message'.  The snapshot copies
+;; `:layout', `:pane', `:viewport-width' (the pixel canvas the player mounts
+;; into), `:loading', `:error' and `:message'.  The snapshot copies
 ;; every value, so mutating it never changes the player; use it to render
 ;; outside ETAF or to assert behavior in tests.
 ;; `:rows-total' counts loaded library rows; `:list-total' keeps the backend's

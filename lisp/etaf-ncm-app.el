@@ -370,7 +370,16 @@ In a wide layout, which shows both, this keeps the library list focused."
     (etaf-ncm--write model :message
                      (format "外观：%s" (if (eq etaf-ncm-theme-mode 'dark)
                                            "深色"
-                                         "浅色")))))
+                                         "浅色")))
+    (when-let* ((buffer (plist-get model :buffer)))
+      (with-current-buffer buffer (etaf-ncm--remap-canvas-face)))))
+
+(defun etaf-ncm--remap-canvas-face ()
+  "Paint this buffer's unpainted cells with the palette background.
+Ebox paints whole character cells, so a window body that is not a whole number
+of cells keeps a sub-cell remainder at its right or bottom edge.  Remapping the
+default face shows the player background there instead of the frame's."
+  (face-remap-set-base 'default (list :background (etaf-ncm-color :bg))))
 
 (defun etaf-ncm--locate-index (index)
   "Show the sidebar library at 1-based position INDEX."
@@ -587,6 +596,7 @@ the backend.  A caller-provided MODEL keeps its library, queue and selection."
                                                   (make-display-table)))))
                     (set-display-table-slot table 'truncation ?\s)
                     table))
+      (etaf-ncm--remap-canvas-face)
       (use-local-map etaf-ncm-mode-map))
     (pop-to-buffer buffer)
     ;; The layout, page size and viewport come from the window that shows

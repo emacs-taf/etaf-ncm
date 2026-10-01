@@ -883,5 +883,71 @@ The synthetic wheel event carries pixels, just like an Emacs mouse event."
           (should (= (plist-get (etaf-ncm-tests--request :jump) :index) index))
           (should (= (plist-get (etaf-ncm-state app) :selection) 0)))))))
 
+
+(defun etaf-ncm-tests--background (position)
+  "Return POSITION's effective face background, honoring Ebox's face list."
+  (let ((face (get-char-property position 'face)))
+    (cond ((and (consp face) (keywordp (car face))) (plist-get face :background))
+          ((listp face)
+           (cl-loop for spec in face
+                    when (and (consp spec) (plist-get spec :background))
+                    return (plist-get spec :background))))))
+
+(defun etaf-ncm-tests--sidebar-label-position (label)
+  "Return the sidebar position of LABEL in the mounted player, or nil.
+The sidebar's own items start at the line's left edge; the header repeats the
+current library's name further right, so only the first twelve characters of a
+line can hold a sidebar label."
+  (save-excursion
+    (goto-char (point-min))
+    (let (found)
+      (while (and (not found) (search-forward label nil t))
+        (when (< (- (match-beginning 0) (line-beginning-position)) 12)
+          (setq found (match-beginning 0))))
+      found)))
+
+(defun etaf-ncm-tests--line-position-below (position)
+  "Return the POSITION below POSITION on the next line with the same offset."
+  (save-excursion
+    (let ((offset (- position (line-beginning-position))))
+      (goto-char position)
+      (forward-line 1)
+      (+ (line-beginning-position) offset))))
+
+(ert-deftest etaf-ncm-tests-sidebar-selection-highlights-one-line ()
+  "The selected library entry paints its text row, not its whole two-line cell."
+  (let ((app (etaf-ncm-tests--session)))
+    (etaf-ncm-tests--with-player app
+      (etaf-ncm-tests--rendered-text)
+      (let ((label (etaf-ncm-tests--sidebar-label-position "每日推荐")))
+        (should label)
+        (should (equal (etaf-ncm-tests--background label)
+                       (etaf-ncm-color :accent-soft)))
+        (should-not (equal (etaf-ncm-tests--background
+                            (etaf-ncm-tests--line-position-below label))
+                           (etaf-ncm-color :accent-soft)))))))
+
+(ert-deftest etaf-ncm-tests-sidebar-group-labels-leave-a-gap ()
+  "A group label is separated from its first entry by a blank line."
+  (let ((app (etaf-ncm-tests--session)))
+    (etaf-ncm-tests--with-player app
+      (etaf-ncm-tests--rendered-text)
+      (let ((label-line (progn (goto-char (point-min))
+                               (search-forward "我的音乐" nil t)
+                               (line-number-at-pos)))
+            (item-line (progn (goto-char (point-min))
+                              (search-forward "我的歌单" nil t)
+                              (line-number-at-pos))))
+        (should label-line)
+        (should item-line)
+        (should (= 2 (- item-line label-line)))))))
+
+(ert-deftest etaf-ncm-tests-viewport-width-uses-pixels ()
+  "The mounted canvas is the window body width in pixels, not whole cells."
+  (let ((app (etaf-ncm-tests--session)))
+    (etaf-ncm-tests--with-player app
+      (should (= (plist-get (etaf-ncm-state app) :viewport-width)
+                 (window-body-width (selected-window) t))))))
+
 (provide 'etaf-ncm-tests)
 ;;; etaf-ncm-tests.el ends here
