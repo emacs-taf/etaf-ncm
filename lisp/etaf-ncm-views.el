@@ -170,6 +170,7 @@ update replaces this one Host instead of republishing the view."
     (box :height '(% 35)
          :width (list '% (* 100.0 (etaf-ncm--ratio ratio 1)))
          :flex-shrink 0 :min-width '(px 1)
+         :ref 'ncm-meter :id "ncm-meter"
          :bgcolor (or color (etaf-ncm-color :accent)))
     (box :height '(% 35) :flex-grow 1
          :flex-basis '(px 0) :min-width '(px 0)
@@ -513,6 +514,7 @@ controls into three lines, which is the shape a narrow frame can hold."
     (flex :width 'stretch :height '(lh 1) :gap '((lh 0) (ch 1)) :align-items 'center
       (box :width '(ch 6) :height '(lh 1) :text-align 'right
            :color (etaf-ncm-color :dim) :flex-shrink 0
+           :ref 'ncm-elapsed :id "ncm-elapsed"
         (text (expr (etaf-ncm--format-seconds elapsed))))
       (box :flex-grow 1 :flex-basis '(px 0) :min-width '(ch 0) :height '(lh 1)
            :role 'button :tab-index 0 :padding '((lh 0) (ch 1))

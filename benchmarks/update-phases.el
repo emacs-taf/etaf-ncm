@@ -76,7 +76,9 @@
              (etaf-ncm-tests--requests nil))
         (unwind-protect
             (progn
-              (with-current-buffer buffer (setq-local truncate-lines t))
+              (with-current-buffer buffer
+                (plist-put app :buffer buffer)
+                (setq-local truncate-lines t))
               (etaf-mount buffer (etaf-ncm-view app)
                           (list :viewport-width 1386 :viewport-height 51))
               (etaf-runtime-flush (etaf-runtime-for-buffer buffer))
@@ -86,7 +88,7 @@
                 (when (fboundp symbol) (etaf-ncm-benchmark--advise symbol)))
               (setq etaf-ncm-benchmark--counts nil)
               (let ((t0 (float-time)))
-                (etaf-ncm--write app :clock 42)
+                (etaf-ncm--publish-clock app 42)
                 (etaf-runtime-flush (etaf-runtime-for-buffer buffer))
                 (princ (format "one clock update: %d ms total\n"
                                (round (* 1000 (- (float-time) t0))))))

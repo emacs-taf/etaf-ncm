@@ -438,5 +438,75 @@ silently doing nothing against the real backend."
       (when (get-buffer etaf-ncm-buffer-name)
         (kill-buffer etaf-ncm-buffer-name)))))
 
+(ert-deftest etaf-ncm-tests-press-on-the-selected-row-plays-it ()
+  "A press on the already selected row starts playback.
+The gesture must not depend on a second press arriving inside a timing window:
+publishing a selection can delay it past any fixed window."
+  (setq etaf-ncm-tests--requests nil)
+  (let ((app (etaf-ncm-tests--session)))
+    (etaf-ncm-refresh app)
+    (etaf-ncm-move-selection app 2)
+    (should-not (etaf-ncm-tests--request :play))
+    (etaf-ncm-press-row app 3)
+    (should (equal (plist-get (etaf-ncm-tests--request :play) :target)
+                   '(:kind :song :id 3)))))
+
+(ert-deftest etaf-ncm-tests-press-selects-another-row-before-playing ()
+  "A press on a different row selects it; the next press plays it."
+  (setq etaf-ncm-tests--requests nil)
+  (let ((app (etaf-ncm-tests--session)))
+    (etaf-ncm-refresh app)
+    (etaf-ncm-press-row app 4)
+    (should (= (plist-get (etaf-ncm-state app) :selection) 3))
+    (should-not (etaf-ncm-tests--request :play))
+    (should (string-match-p "再点一次播放"
+                            (or (plist-get (etaf-ncm-state app) :message) "")))
+    (etaf-ncm-press-row app 4)
+    (should (equal (plist-get (etaf-ncm-tests--request :play) :target)
+                   '(:kind :song :id 4)))))
+
+(ert-deftest etaf-ncm-tests-transport-effect-is-visible-before-the-reply ()
+  "Pausing flips the displayed state before the backend answers."
+  (setq etaf-ncm-tests--requests nil)
+  (let* (app
+         seen
+         (client (lambda (request callback)
+                   (when (eq (plist-get request :op) :toggle)
+                     (push (plist-get (plist-get (etaf-ncm-state app) :status) :state)
+                           seen))
+                   (etaf-ncm-tests--client request callback))))
+    (setq app (etaf-ncm-tests--session client))
+    (etaf-ncm-refresh app)
+    (should (eq (plist-get (plist-get (etaf-ncm-state app) :status) :state) 'playing))
+    (etaf-ncm-toggle-playback app)
+    (should (equal seen '(paused)))))
+
+(ert-deftest etaf-ncm-tests-locate-shows-cached-rows-before-the-refresh ()
+  "Revisiting a library shows its cached rows and refreshes in the background.
+The background reply must not move the reader's selection."
+  (setq etaf-ncm-tests--requests nil)
+  (let* (app
+         deferred
+         defer-p
+         (client (lambda (request callback)
+                   (if defer-p
+                       (push (cons request callback) deferred)
+                     (etaf-ncm-tests--client request callback)))))
+    (setq app (etaf-ncm-tests--session client))
+    (etaf-ncm-refresh app)
+    (etaf-ncm-locate app :playlists)
+    (should (= (plist-get (etaf-ncm-state app) :rows-total) 36))
+    (setq defer-p t)
+    (etaf-ncm-locate app :daily)
+    (let ((state (etaf-ncm-state app)))
+      (should (= (plist-get state :rows-total) 12))
+      (should-not (plist-get state :loading))
+      (should (equal (plist-get state :title) "每日推荐")))
+    (etaf-ncm-move-selection app 4)
+    (funcall (cdr (car deferred))
+             (list :ok (etaf-ncm-tests--fixture "daily")))
+    (should (= (plist-get (etaf-ncm-state app) :selection) 4))
+    (should (= (plist-get (etaf-ncm-state app) :rows-total) 12))))
+
 (provide 'etaf-ncm-tests)
 ;;; etaf-ncm-tests.el ends here

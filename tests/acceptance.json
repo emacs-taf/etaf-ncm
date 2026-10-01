@@ -61,6 +61,26 @@
       "purpose": "Transport, volume, seek, shuffle, repeat, like and queue-jump commands each send their own request and message."
     },
     {
+      "name": "etaf-ncm-tests-press-on-the-selected-row-plays-it",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "A press on the already selected row starts playback without depending on a second press arriving inside a timing window."
+    },
+    {
+      "name": "etaf-ncm-tests-press-selects-another-row-before-playing",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "A press on a different row selects it and asks for a second press; the following press plays it."
+    },
+    {
+      "name": "etaf-ncm-tests-transport-effect-is-visible-before-the-reply",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "Pausing flips the displayed playback state before the backend answers, so a transport command shows its effect immediately."
+    },
+    {
+      "name": "etaf-ncm-tests-locate-shows-cached-rows-before-the-refresh",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "Revisiting a library shows its cached rows at once, refreshes in the background, and keeps the reader's selection."
+    },
+    {
       "name": "etaf-ncm-tests-selection-keeps-its-page",
       "file": "tests/etaf-ncm-tests.el",
       "purpose": "Selection clamps at both ends, scrolls the page to stay visible, and an empty library plays nothing."

@@ -114,9 +114,13 @@ played, and songs can be queued.
 
 Every playback action is a backend command; the player reports what it sent in
 the message line and then re-reads playback truth, so the displayed state never
-comes from the player's own guess. A song plays directly; a playlist, album,
-artist, chart, podcast or episode is resolved by the backend into its playable
-songs.
+stays a guess. Transport commands show their effect immediately and reconcile
+with the reply; a command that can move the queue reloads it.
+
+A press selects a row and a press on the selected row plays it: a double click
+therefore starts the song even when the first repaint took a moment. A song
+plays directly; a playlist, album, artist, chart, podcast or episode is
+resolved by the backend into its playable songs.
 
 The queue panel shows the entries around the playing position together with the
 total count, which is the same list `netease-music queue` prints. Jumping to an
@@ -160,6 +164,12 @@ and asserting against it is safe. Requests are asynchronous: an action returns
 after sending its request, and the reply updates the state. Loading carries a
 generation counter, so a reply from a superseded library or search is dropped
 instead of overwriting the newer result.
+
+`etaf-ncm-press-row` performs the list gesture a click uses:
+`(etaf-ncm-press-row player 3)` selects the third row, and pressing it again
+plays it. Transport commands show their effect immediately and reconcile with
+the backend reply, so `etaf-ncm-state` right after `etaf-ncm-toggle-playback`
+already reports the new playback state.
 
 To embed the player in a larger layout, mount the view yourself:
 
@@ -210,10 +220,19 @@ checkout, state directory, Node.js binary or request budget.
 While a song is playing the player ticks once per `etaf-ncm-status-interval`
 (one second by default), advancing the local clock for a smooth progress bar and
 asking the backend for playback truth. A tick never overlaps the previous
-request. While nothing is playing it checks every
-`etaf-ncm-idle-poll-interval` (fifteen seconds). A lyric is fetched only when
-the playing song id changes, and the queue list is read from the backend's queue
-state file rather than re-downloaded.
+request. The elapsed label and the progress meter are updated in place, so a
+playing second does not republish the view; a tick that moves the lyric line
+does. While nothing is playing it checks every `etaf-ncm-idle-poll-interval`
+(fifteen seconds). A lyric is fetched only when the playing song id changes, and
+the queue list is read from the backend's queue state file rather than
+re-downloaded.
+
+Library lists are cached per section and refreshed in the background: opening a
+library shows the cached rows immediately, a mounted player warms the lists it
+has not seen yet, and a list older than `etaf-ncm-library-refresh-interval`
+(five minutes) is refreshed while the player is idle. Set
+`etaf-ncm-prefetch-libraries` to nil to leave the cache to the visited
+libraries only.
 
 Unmounting cancels the timer and drops late replies, so a closed player costs
 nothing. A long-running Emacs that keeps a player mounted only pays the poll it

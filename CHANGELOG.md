@@ -2,6 +2,20 @@
 
 All notable user-visible changes to ETAF NCM.
 
+## Unreleased
+
+- A press on the row that is already selected plays it, so starting a song no
+  longer depends on a second click arriving inside a timing window.
+- Playback commands show their effect immediately: the play/pause state, the
+  volume, the shuffle and repeat flags and the message line change before the
+  backend answers, and the reply reconciles them.
+- Library switches use a cached list when one exists and refresh it in the
+  background; a mounted player warms the lists it has not seen yet, and
+  `etaf-ncm-library-refresh-interval` (five minutes) keeps cached lists fresh.
+  `etaf-ncm-prefetch-libraries` turns the background warming off.
+- A playing second updates the elapsed label and the progress meter in place
+  instead of republishing the whole view.
+
 ## 0.1.0
 
 First release.

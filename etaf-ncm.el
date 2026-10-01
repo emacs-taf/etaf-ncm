@@ -149,6 +149,12 @@
 ;; Function: etaf-ncm-activate-selection (app)
 ;; Play the row APP's selection points at, doing nothing on an empty library.
 ;;
+;; Function: etaf-ncm-press-row (app index)
+;; Press library row INDEX (counting from 1): select it, or play it when it is
+;; the selected row or was pressed twice in quick succession.  This is the
+;; gesture a click on a list row performs, which a programmatic caller can use
+;; to follow the same sentence.  An out-of-range INDEX signals `etaf-ncm-error'.
+;;
 ;; Function: etaf-ncm-toggle-aside (app)
 ;; Switch APP's side panel between the lyric and the queue.
 ;;

@@ -2,28 +2,18 @@
 
 ;;; Commentary:
 ;; An update is a ref write plus the runtime flush that publishes it, so this
-;; benchmark measures both: a selection write (the list repaints) and a clock
-;; write (only the player bar and the lyric line repaint).  Run it with the
-;; framework byte-compiled, which is what an installed checkout uses:
+;; benchmark measures both a selection write (the list repaints) and a clock
+;; tick (the player bar repaints).  Run it with the framework byte-compiled,
+;; which is what an installed checkout uses:
 ;;
 ;;   emacs -Q --batch -L . -L lisp -L tests -L ../../etaf -L ../../etaf-ui \
 ;;         -L ../../ebox -L ../../ecss -l benchmarks/update-cost.el
 ;;
-;; Reference numbers (2026-09-30, Apple silicon, byte-compiled framework):
-;; a selection write costs about 250 ms and a clock write about 100 ms,
-;; independent of the viewport, on a twelve-row fixture.  The cost is the whole
-;; tree being laid out again on every update; see `docs/architecture.md'.
-;;
-;; Measured caveat (2026-09-30): the mount viewport is honored here -- the root
-;; layout footprint is 1387 px and the player bar 1383 px at
-;; :viewport-width 1386 -- but batch font metrics still squeeze the wide player
-;; bar: its six-pixel clock label is shrunk to two pixels, so the label wraps
-;; across two partial slots ("0:" then "42") and a one-second tick can leave the
-;; visible text unchanged.  Character line lengths are not column counts
-;; (trailing filler is trimmed), so do not read them as width.  Treat these
-;; numbers as the app's cramped player-bar shape until the batch metric mismatch
-;; (pixel font sizes against a one-pixel frame char width) is resolved or the
-;; benchmark runs on a real frame.
+;; A selection write still republishes the whole view, which is what keeps the
+;; list highlight honest.  A clock tick does not: the elapsed label and the
+;; progress meter are retained Hosts, so a playing second commits one batched
+;; retained update.  A tick that crosses a lyric line republishes the view,
+;; because the panel's current line moves with it.
 
 ;;; Code:
 (load "tests/etaf-ncm-tests.el")
@@ -35,6 +25,7 @@
          (etaf-ncm-tests--requests nil))
     (unwind-protect
         (progn
+          (plist-put app :buffer buffer)
           (with-current-buffer buffer (setq-local truncate-lines t))
           (etaf-mount buffer (etaf-ncm-view app)
                       (list :viewport-width width :viewport-height height))
@@ -48,7 +39,7 @@
                      (t0 (float-time)))
                 (if (eq kind 'selection)
                     (etaf-ncm-move-selection app 1)
-                  (etaf-ncm--write app :clock (+ 30 index)))
+                  (etaf-ncm--publish-clock app (+ 6.2 (* index 0.2))))
                 (etaf-runtime-flush (etaf-runtime-for-buffer buffer))
                 (push (round (* 1000 (- (float-time) t0))) costs)))
             (format "%-8s viewport=%sx%s rows=%s page=%s ms=%S"

@@ -84,6 +84,21 @@ makes close-and-reopen keep the library, selection and queue.
 Reading a session (`etaf-ncm-state`) always returns copies. Callers can therefore
 hold snapshots without keeping the player alive or accidentally mutating it.
 
+## Interaction feedback
+
+- A press on a row selects it; a press on the row that is already selected
+  plays it.  The gesture does not consult a timing window, so a slow repaint
+  cannot turn a double click into two selections.
+- Transport commands publish their local effect before the backend answers: the
+  play/pause state, the volume, the shuffle and repeat flags and the message
+  line change immediately, and the reply reconciles them with measured facts.
+  Only a command that can move the queue reloads it.
+- Every library list is cached under its section (or search keyword).  Opening
+  a library shows the cached rows at once and refreshes the list in the
+  background; a mounted player warms the lists it has not seen yet, one at a
+  time, and refreshes `etaf-ncm-library-refresh-interval`-second-old entries
+  while it is idle.  The background reply never moves the reader's selection.
+
 ## Polling policy
 
 - Playing: one tick per `etaf-ncm-status-interval` (1 s). The tick advances the
@@ -91,9 +106,11 @@ hold snapshots without keeping the player alive or accidentally mutating it.
   never overlaps the previous request (`:status-in-flight`).  While a request is
   on its way the tick leaves the clock alone: the reply is the truth and a local
   guess would repaint the view for the same second.
-- The moving position lives in its own `:clock` ref while `:status` keeps the
-  playback facts, so a playing second invalidates the player bar and the lyric
-  line instead of every view that reads the status.  `etaf-ncm-state` merges the
+- The moving position lives in the session's `:clock` slot, not in a reactive
+  source: a playing second replaces the elapsed label and the progress meter
+  through their retained Hosts, so it commits one batched Ebox publication
+  instead of repainting the view.  A tick that crosses a lyric line republishes,
+  because the panel's current line moves with it.  `etaf-ncm-state` merges the
   clock back into the reported `:status`, which keeps the public snapshot shape
   unchanged.
 - Idle: one check per `etaf-ncm-idle-poll-interval` (15 s).
@@ -110,15 +127,17 @@ whether a change to the player is affordable:
 
 - Count layout passes per write: advise `ebox--render-layout-in-context` with a
   counter, perform one ref write, and read the count.  A `:status` write used to
-  cause 19 to 40 passes; a `:clock` write still causes about 19.
+  cause 19 to 40 passes; a retained clock tick causes none, because it replaces
+  two Hosts in one batched Ebox publication.
 - Sample the process CPU while the demo plays.  Paused playback is the baseline
-  (0 %) and every playing second is the whole cost, so a change that halves the
-  write rate halves the load.
+  (0 %) and every playing second is the retained clock update, so a change that
+  removes a whole-view repaint from the tick shows up directly.
 
 - Run `emacs -Q --batch -L . -L lisp -L tests -L ../../etaf -L ../../etaf-ui
   -L ../../ebox -L ../../ecss -l benchmarks/update-cost.el` for the same numbers
-  as a benchmark: a selection write costs about 250 ms and a clock write about
-  100 ms with a byte-compiled framework, independent of the viewport.
+  as a benchmark: a selection write republishes the whole view (about 250 ms at
+  twelve rows with a byte-compiled framework), while a clock tick inside one
+  lyric line commits a retained update (about 25 ms).
 
 `benchmarks/update-phases.el` splits one update into its phases.  Its reading is
 that the tree walks are cheap (about 5 ms for 5587 child enumerations) while
