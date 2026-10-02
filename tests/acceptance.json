@@ -66,6 +66,11 @@
       "purpose": "The playing song's heart follows the liked-song id table, and liking a song keeps the session table in step."
     },
     {
+      "name": "etaf-ncm-tests-like-button-toggles-the-heart",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "A press on a liked heart sends an unlike and turns it hollow; a second press sends a like again."
+    },
+    {
       "name": "etaf-ncm-tests-toggle-starts-the-selected-song-when-nothing-is-loaded",
       "file": "tests/etaf-ncm-tests.el",
       "purpose": "SPC with an empty queue plays the selected row instead of toggling a queue that has nothing to toggle."

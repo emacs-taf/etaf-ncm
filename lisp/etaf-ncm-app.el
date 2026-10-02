@@ -454,7 +454,12 @@ releases the polling timer and the session's pending backend requests."
              (on-next (lambda () (etaf-ncm-next-track session)))
              (on-previous (lambda () (etaf-ncm-previous-track session)))
              (on-stop (lambda () (etaf-ncm-stop session)))
-             (on-like (lambda () (etaf-ncm-like session)))
+             (on-like (lambda ()
+                        ;; The heart is a toggle: a press on a liked song
+                        ;; removes the like.
+                        (etaf-ncm-like session
+                                       (plist-get (etaf-ncm--view-status session)
+                                                  :liked))))
              (on-add (lambda ()
                        (when-let* ((row (etaf-ncm--selected-row session)))
                          (etaf-ncm-add-to-queue session row))))

@@ -495,6 +495,23 @@ display rule must not turn it into a playground-style pane."
       (when (get-buffer etaf-ncm-buffer-name)
         (kill-buffer etaf-ncm-buffer-name)))))
 
+(ert-deftest etaf-ncm-tests-like-button-toggles-the-heart ()
+  "A press on a liked heart removes the like; a second press adds it back."
+  (let ((etaf-ncm-tests--requests nil)
+        (etaf-ncm-tests--status nil))
+    (let ((app (etaf-ncm-tests--session)))
+      (etaf-ncm-tests--with-player app
+        (etaf-ncm-tests--rendered-text)
+        ;; The fixture status plays song 1, which the liked-ids fixture lists.
+        (should (eq (plist-get (plist-get (etaf-ncm-state app) :status) :liked) t))
+        (etaf-ncm-tests--press-help "喜欢 / 取消喜欢 (f / F)")
+        (should (etaf-ncm-tests--request :unlike))
+        (should-not (plist-get (plist-get (etaf-ncm-state app) :status) :liked))
+        (setq etaf-ncm-tests--requests nil)
+        (etaf-ncm-tests--press-help "喜欢 / 取消喜欢 (f / F)")
+        (should (etaf-ncm-tests--request :like))
+        (should (eq (plist-get (plist-get (etaf-ncm-state app) :status) :liked) t))))))
+
 (ert-deftest etaf-ncm-tests-press-on-the-selected-row-plays-it ()
   "A press on the already selected row starts playback.
 The gesture must not depend on a second press arriving inside a timing window:
