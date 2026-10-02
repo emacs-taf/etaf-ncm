@@ -488,6 +488,9 @@ releases the polling timer and the session's pending backend requests."
        (etaf-ncm--dispose session))))
   :view
   (flex :flex-direction 'column :width '(vw 100) :height '(vh 100)
+        ;; One clear line above the chrome keeps the header off the window
+        ;; edge; the layout budget already reserves the root padding.
+        :padding-top '(lh 1)
         ;; Rows that show symbol glyphs (the state dot, the transport icons, the
         ;; sidebar glyphs) render a little taller than the frame's line height
         ;; because their fallback font has larger metrics.  Keep the last line
