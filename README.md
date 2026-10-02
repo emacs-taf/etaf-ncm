@@ -6,7 +6,19 @@ libraries, a paginated song list, a panel with the synchronized lyric or the
 queue, and a playback bar. mpv keeps playing; the player is the interface over
 the `netease-music` backend.
 
-![The player mounted in a dark palette](examples/etaf-ncm.png)
+The player at a wide frame:
+
+![The player at a wide frame](examples/etaf-ncm-wide.png)
+
+At a medium frame the sidebar becomes an icon rail and the side pane turns
+into tabs:
+
+![The player at a medium frame](examples/etaf-ncm-medium.png)
+
+At a narrow frame the libraries become a chip strip and the panes stack under
+tabs:
+
+![The player at a narrow frame](examples/etaf-ncm-narrow.png)
 
 ## Capabilities
 
