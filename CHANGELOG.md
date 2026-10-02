@@ -70,8 +70,6 @@ All notable user-visible changes to ETAF NCM.
   background; a mounted player warms the lists it has not seen yet, and
   `etaf-ncm-library-refresh-interval` (five minutes) keeps cached lists fresh.
   `etaf-ncm-prefetch-libraries` turns the background warming off.
-- A playing second updates the elapsed label and the progress meter in place
-  instead of republishing the whole view.
 - A list update re-renders only the rows whose data changed: the view passes
   stable callbacks instead of a fresh closure per row.
 

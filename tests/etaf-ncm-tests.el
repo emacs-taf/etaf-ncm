@@ -1172,11 +1172,13 @@ through a retained width update without publishing a new View."
     (etaf-ncm-tests--with-player app
       (etaf-ncm-tests--rendered-text)
       (let* ((runtime (etaf-runtime-for-buffer (current-buffer)))
+             (generation (etaf-runtime-generation runtime))
              (before (etaf-ncm-tests--host-text 'ncm-elapsed))
              (meter-before (etaf-host-ref-bounds runtime 'ncm-meter)))
         (with-timeout (5 (ert-fail "Playback polling did not complete"))
           (while (< calls 3) (sleep-for 0.06)))
         (etaf-ncm-tests--rendered-text)
+        (should (= (etaf-runtime-generation runtime) generation))
         (should-not (equal (etaf-ncm-tests--host-text 'ncm-elapsed) before))
         (let ((meter-after (etaf-host-ref-bounds runtime 'ncm-meter)))
           (should (and meter-before meter-after

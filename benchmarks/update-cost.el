@@ -12,8 +12,10 @@
 ;; A selection write still republishes the whole view, which is what keeps the
 ;; list highlight honest.  A clock tick does not: the elapsed label and the
 ;; progress meter are retained Hosts, so a playing second commits one batched
-;; retained update.  A tick that crosses a lyric line republishes the view,
-;; because the panel's current line moves with it.
+;; retained update.  Each clock write advances the displayed second, so the
+;; measurement covers a real text change instead of a repeated string.  A tick
+;; that crosses a lyric line republishes the view, because the panel's current
+;; line moves with it.
 
 ;;; Code:
 (load "tests/etaf-ncm-tests.el")
@@ -39,7 +41,7 @@
                      (t0 (float-time)))
                 (if (eq kind 'selection)
                     (etaf-ncm-move-selection app 1)
-                  (etaf-ncm--publish-clock app (+ 6.2 (* index 0.2))))
+                  (etaf-ncm--publish-clock app (+ 61.4 index)))
                 (etaf-runtime-flush (etaf-runtime-for-buffer buffer))
                 (push (round (* 1000 (- (float-time) t0))) costs)))
             (format "%-8s viewport=%sx%s rows=%s page=%s ms=%S"
