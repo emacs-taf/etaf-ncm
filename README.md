@@ -40,11 +40,54 @@ tabs:
 
 ## Prerequisites
 
-Emacs 29.1 or newer, the `etaf`, `etaf-ui`, `ebox` and `ecss` repositories on
-`load-path`, and the `netease-music` backend skill with Node.js and mpv signed
-in to the account.
+| Requirement | Why | Check |
+| --- | --- | --- |
+| Emacs 29.1 or newer | the ETAF runtime | `emacs --version` |
+| Node.js | runs the backend scripts | `command -v node` |
+| mpv | plays the audio | `command -v mpv` |
+| `etaf`, `etaf-ui`, `ebox`, `ecss` | the framework; each repository's root entry must be on `load-path` | every checkout is readable |
+| `netease-music` backend | library, playback, lyric and login | `netease-music check` or its `scripts/` directory exists |
+
+The player is the interface only: the backend owns the account, the queue file
+and mpv.  Install and sign in to the backend first, then the Emacs package.
 
 ## Installation
+
+### 1. System tools
+
+```sh
+brew install node mpv            # macOS; Debian: apt install nodejs mpv
+```
+
+`python3` and `qrencode` are optional and only used by the QR login; the SMS
+login needs neither.
+
+### 2. The `netease-music` backend
+
+When the skill directory is already on the machine (for example
+`~/.pi/agent/shared/skills/netease-music` from a Pi checkout), put its CLI on
+`PATH` and run its self-check:
+
+```sh
+/path/to/netease-music/scripts/install-cli.sh   # links ~/.local/bin/netease-music
+export PATH="$HOME/.local/bin:$PATH"            # or call it through pi-skill
+netease-music check                             # dependencies + login state
+```
+
+Log in once; the cookie stays local to this machine:
+
+```sh
+netease-music login --sms <phone>               # sends a code, then
+netease-music login --sms <phone> --sms-code <code>
+# or scan a QR code with the NetEase Cloud Music app:
+netease-music login
+```
+
+The login, queue and saved queues live in the skill's state directory
+(`~/.pi/agent/local/skills/netease-music` by default).  A standalone install
+can point the skill at its own directory with `NETEASE_MUSIC_STATE_DIR`.
+
+### 3. The Emacs package
 
 ```elisp
 (add-to-list 'load-path "/path/to/etaf")
@@ -57,9 +100,39 @@ in to the account.
 (global-set-key (kbd "C-c m") #'etaf-ncm-open)
 ```
 
-`M-x etaf-ncm-open` mounts the player; `M-x etaf-ncm-close` closes it.
-`etaf-ncm-skill-directory` and `etaf-ncm-state-directory` point at the backend
-skill and its login/queue state; `etaf-ncm-theme-mode` selects the palette.
+When the backend is not in the default location, point the app at it:
+
+```elisp
+(setq etaf-ncm-skill-directory "/path/to/netease-music"
+      etaf-ncm-state-directory "~/.local/state/netease-music")
+```
+
+`M-x etaf-ncm-open` mounts the player in the selected window; `M-x
+etaf-ncm-close` closes it.  `etaf-ncm-theme-mode` (`dark` or `light`) selects
+the palette, and `etaf-ncm-refresh` (or `g` in the player) reloads the
+library, playback truth, queue and account.
+
+### Quick start for an agent
+
+A non-interactive path to a working player (the login itself needs the user's
+phone or QR scan once):
+
+```sh
+command -v node mpv || brew install node mpv
+SKILL="${ETAF_NCM_SKILL_DIR:-$HOME/.pi/agent/shared/skills/netease-music}"
+test -x "$SKILL/scripts/netease-music.sh" || {
+  echo "netease-music backend not found: $SKILL" >&2; exit 1; }
+"$SKILL/scripts/netease-music.sh" check || "$SKILL/scripts/netease-music.sh" login
+```
+
+```elisp
+;; After adding the five repositories to `load-path':
+(require 'etaf-ncm)
+(etaf-ncm-open)                  ; real backend; returns the player buffer
+```
+
+A missing script, mpv or login leaves the player mounted with the backend
+error in its message line; `g` retries after the backend is fixed.
 
 ## Minimal example
 
