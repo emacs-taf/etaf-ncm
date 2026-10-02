@@ -124,7 +124,10 @@ hold snapshots without keeping the player alive or accidentally mutating it.
   match both the load generation and the current list key. A mounted player
   warms the lists it has not seen yet, one at a time, and refreshes
   `etaf-ncm-library-refresh-interval`-second-old entries
-  while it is idle.  The background reply never moves the reader's selection.
+  while it is idle.  The refresh pauses while the player's buffer is not on
+  screen, backs off after a failure and stops when the backend needs a human
+  (an expired login), resuming after the next successful load.  The background
+  reply never moves the reader's selection.
 
 Browse requests take the maximum of `etaf-ncm-list-limit` (1000), the existing
 `etaf-ncm-fetch-limit` and three pages. The public snapshot preserves

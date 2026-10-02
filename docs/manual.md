@@ -289,7 +289,9 @@ library shows the cached rows immediately, a mounted player warms the lists it
 has not seen yet, and a list older than `etaf-ncm-library-refresh-interval`
 (five minutes) is refreshed while the player is idle. Set
 `etaf-ncm-prefetch-libraries` to nil to leave the cache to the visited
-libraries only.
+libraries only.  The refresh pauses while the player's buffer is not on screen,
+backs off after a failure and stops when the backend needs a human (an expired
+login), resuming after the next successful load.
 
 Unmounting cancels the timer and drops late replies, so a closed player costs
 nothing. A long-running Emacs that keeps a player mounted only pays the poll it

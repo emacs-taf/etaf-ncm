@@ -409,12 +409,15 @@ The callback is skipped when the request was cancelled."
 
 (defun etaf-ncm--failure (data errors)
   "Return an (:error ...) result built from backend DATA and ERRORS."
-  (let ((message (or (plist-get data :error)
-                     (plist-get data :conclusion)
-                     (plist-get data :message)
-                     "Backend request failed"))
-        (hint (or (plist-get data :hint) (string-trim errors))))
+  (let* ((code (plist-get data :error))
+         (message (or (plist-get data :message)
+                      (plist-get data :conclusion)
+                      code
+                      "Backend request failed"))
+         (hint (or (plist-get data :hint) (string-trim errors))))
     (append (list :error (if (stringp message) message (format "%s" message)))
+            (when (and code (stringp code) (not (string-equal code message)))
+              (list :code code))
             (when (and hint (not (string-empty-p hint))) (list :hint hint)))))
 
 (defun etaf-ncm--decode (output)

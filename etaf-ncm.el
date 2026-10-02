@@ -215,6 +215,19 @@
 ;; the maximum of this value, `etaf-ncm-fetch-limit' and three visible pages.
 ;; Backend totals stay distinct from loaded counts when the reply is partial.
 ;;
+;; Variable: etaf-ncm-library-refresh-interval
+;; Seconds after which a cached library list is refreshed in the background,
+;; default 300.
+;; A cached list is shown at once when a library is opened and then compared
+;; with a fresh reply; this interval decides when the idle refresh is due.
+;;
+;; Variable: etaf-ncm-prefetch-libraries
+;; Whether a mounted player warms and refreshes library lists while idle,
+;; default t.
+;; One list at a time is loaded in the background, so opening a library that
+;; was never visited can paint from the cache; nil keeps the cache to the
+;; libraries the listener actually opens.
+;;
 ;; Variable: etaf-ncm-status-interval
 ;; Seconds between playback ticks while a song is playing.
 ;; Each tick advances the local clock for a smooth progress bar and asks the

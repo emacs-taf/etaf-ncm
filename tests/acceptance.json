@@ -254,6 +254,16 @@
       "name": "etaf-ncm-tests-keys-reach-the-player-around-the-renderer-map",
       "file": "tests/etaf-ncm-tests.el",
       "purpose": "The documented transport and page keys reach the player through the real command loop even though the renderer's minor-mode map binds the same keys, and RET falls back to the selected row."
+    },
+    {
+      "name": "etaf-ncm-tests-refresh-pauses-while-hidden",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "A player whose buffer no window shows pauses background library refreshes, and showing it again resumes them."
+    },
+    {
+      "name": "etaf-ncm-tests-library-failure-pauses-refresh",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "A background library refresh failing with an auth error pauses the warmer until a foreground load succeeds."
     }
   ]
 }

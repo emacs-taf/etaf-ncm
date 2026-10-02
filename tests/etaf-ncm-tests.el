@@ -1244,5 +1244,84 @@ not just `etaf-ncm-mode-map', must find the player command."
       (should (or (etaf-ncm-tests--request :play)
                   (etaf-ncm-tests--request :jump))))))
 
+(defun etaf-ncm-tests--wait (predicate &optional timeout)
+  "Wait until PREDICATE is non-nil for at most TIMEOUT seconds."
+  (let ((deadline (+ (float-time) (or timeout 10))))
+    (while (and (not (funcall predicate)) (< (float-time) deadline))
+      (accept-process-output nil 0.05))
+    (funcall predicate)))
+
+(defun etaf-ncm-tests--request-count (op &optional resource)
+  "Return how many recorded requests used OP, optionally for RESOURCE."
+  (cl-count-if (lambda (request)
+                 (and (eq (plist-get request :op) op)
+                      (or (null resource)
+                          (eq (plist-get request :resource) resource))))
+               etaf-ncm-tests--requests))
+
+(ert-deftest etaf-ncm-tests-refresh-pauses-while-hidden ()
+  "A player no window shows pauses its background library refresh."
+  (setq etaf-ncm-tests--requests nil)
+  (let* ((etaf-ncm-status-interval 0.05)
+         (etaf-ncm-library-refresh-interval 0.05)
+         (app (etaf-ncm-tests--session)))
+    (unwind-protect
+        (let* ((buffer (etaf-ncm-open app))
+               (other (get-buffer-create " *etaf-ncm-tests-other*")))
+          (etaf-ncm-refresh app)
+          (should (etaf-ncm-tests--wait
+                   (lambda () (> (etaf-ncm-tests--request-count :browse :fm) 0))))
+          ;; 藏起来：后台刷新停下（等一拍再比快照，避免把在途请求算进来）。
+          (set-window-buffer (get-buffer-window buffer t) other)
+          (accept-process-output nil 0.2)
+          (let ((before (etaf-ncm-tests--request-count :browse)))
+            (accept-process-output nil 0.5)
+            (should (= before (etaf-ncm-tests--request-count :browse)))
+            ;; 重新显示：刷新恢复。
+            (set-window-buffer (get-buffer-window other t) buffer)
+            (should (etaf-ncm-tests--wait
+                     (lambda () (> (etaf-ncm-tests--request-count :browse) before))))))
+      (etaf-ncm-close))))
+
+(ert-deftest etaf-ncm-tests-library-failure-pauses-refresh ()
+  "A library refresh that needs a human pauses the warmer until a load succeeds."
+  (setq etaf-ncm-tests--requests nil)
+  (let* ((etaf-ncm-status-interval 0.05)
+         (etaf-ncm-library-refresh-interval 0.05)
+         (fail-auth t)
+         (app nil)
+         (client (lambda (request callback)
+                   ;; 失败分支自己记账：脚本客户端只会记成功的请求。
+                   (if (and fail-auth
+                            (eq (plist-get request :op) :browse)
+                            (eq (plist-get request :resource) :fm))
+                       (progn
+                         (push request etaf-ncm-tests--requests)
+                         (funcall callback
+                                  (list :error "登录已过期"
+                                        :hint "pi-skill netease-music login"
+                                        :code "auth")))
+                     (etaf-ncm-tests--client request callback)))))
+    (setq app (etaf-ncm-tests--session client))
+    (unwind-protect
+        (progn
+          (etaf-ncm-open app)
+          (etaf-ncm-refresh app)
+          (should (etaf-ncm-tests--wait
+                   (lambda () (> (etaf-ncm-tests--request-count :browse :fm) 0))))
+          ;; 暂停后不再有任何后台刷新（快照比较，不清理账目）。
+          (accept-process-output nil 0.2)
+          (let ((before (etaf-ncm-tests--request-count :browse)))
+            (accept-process-output nil 0.5)
+            (should (= before (etaf-ncm-tests--request-count :browse))))
+          ;; 前台加载成功解除暂停：刷新恢复。
+          (let ((before (etaf-ncm-tests--request-count :browse :fm)))
+            (setq fail-auth nil)
+            (etaf-ncm-locate app :charts)
+            (should (etaf-ncm-tests--wait
+                     (lambda ()
+                       (> (etaf-ncm-tests--request-count :browse :fm) before))))))
+      (etaf-ncm-close))))
+
 (provide 'etaf-ncm-tests)
 ;;; etaf-ncm-tests.el ends here

@@ -302,17 +302,18 @@ so the player bar updates in place instead of republishing the whole view."
 
 (cl-defun etaf-ncm--call (model request &key on-ok on-error)
   "Send REQUEST for MODEL, routing a failure into the visible status line.
-ON-OK receives the reply data and ON-ERROR the failure message.  A client that
+ON-OK receives the reply data; ON-ERROR the failure message, its hint and the
+backend's error code.  A client that
 signals while turning the request into a command is reported like any other
 backend failure, so nothing reaches the caller of a player action."
   (let ((delivered nil)
-        (fail (lambda (message hint)
+        (fail (lambda (message hint code)
                 (etaf-ncm--write model :error message)
                 (etaf-ncm--write model :message
                                  (if (and hint (not (string-empty-p hint)))
                                      (format "%s（%s）" message hint)
                                    message))
-                (when on-error (funcall on-error message hint)))))
+                (when on-error (funcall on-error message hint code)))))
     (condition-case error
         (etaf-ncm-client-call
          (etaf-ncm--client model) request
@@ -323,10 +324,11 @@ backend failure, so nothing reaches the caller of a player action."
                  (etaf-ncm--write model :error nil)
                  (when on-ok (funcall on-ok (cadr result))))
              (funcall fail (or (cadr result) "请求失败")
-                      (plist-get (cddr result) :hint)))))
+                      (plist-get (cddr result) :hint)
+                      (plist-get (cddr result) :code)))))
       (error (if delivered
                  (signal (car error) (cdr error))
-               (funcall fail (error-message-string error) nil))))))
+               (funcall fail (error-message-string error) nil nil))))))
 
 (defun etaf-ncm--note (model text)
   "Show TEXT as the player's status line message."
@@ -481,6 +483,7 @@ reader is already looking at."
                      (total (or (etaf-ncm--parse-number (plist-get data :total))
                                 (length rows))))
                 (etaf-ncm--store-list app key rows total)
+                (etaf-list-cache-note-success (plist-get app :list-cache))
                 (if background
                     (progn
                       (etaf-list-cache-set-busy (plist-get app :list-cache) nil)
@@ -502,7 +505,8 @@ reader is already looking at."
                       (etaf-ncm--note app (format "%s · %d 项"
                                                   (etaf-ncm--read app :title)
                                                   (length rows))))))))
-     :on-error (lambda (message _hint)
+     :on-error (lambda (message _hint code)
+                 (etaf-list-cache-note-failure (plist-get app :list-cache) code)
                  (if background
                      (etaf-list-cache-set-busy (plist-get app :list-cache) nil)
                    (when (and (= generation (etaf-ncm--read app :generation))
@@ -512,6 +516,15 @@ reader is already looking at."
                      (etaf-ncm--write app :list-total 0)
                      (etaf-ncm--note app message)))))))
 
+(defun etaf-ncm--cache-visible-p (app)
+  "Return non-nil when APP's buffer can be seen, or the session is headless.
+A mounted player that no window shows pauses its background library refresh:
+nobody is looking at it, so the network can wait until it is shown again."
+  (let ((buffer (plist-get app :buffer)))
+    (or (null buffer)
+        (and (buffer-live-p buffer)
+             (get-buffer-window buffer t)))))
+
 (defun etaf-ncm--background-list (app now)
   "Return the (KEY . REQUEST) APP should refresh in the background, or nil.
 The stalest cached list is refreshed first; when every sidebar list is still
@@ -519,6 +532,7 @@ fresh, one not-yet-cached list is warmed so opening it can use the cache.
 `etaf-list-cache' owns that order, the freshness interval and the quiet period
 after the session starts; this function only maps a section to its request."
   (when (and etaf-ncm-prefetch-libraries
+             (etaf-ncm--cache-visible-p app)
              (not (etaf-ncm--read app :loading)))
     (let* ((sections (mapcar #'car (apply #'append (mapcar #'cdr etaf-ncm-sections))))
            (pairs (mapcar (lambda (section) (cons (list :browse section) section))
@@ -754,7 +768,7 @@ previous state back, and the reply reconciles it with measured facts."
      app (lambda (status) (plist-put status :liked (not unlike))))
     (etaf-ncm--call app (list :op (if unlike :unlike :like))
                     :on-ok (lambda (_data) (etaf-ncm--request-status app))
-                    :on-error (lambda (_message)
+                    :on-error (lambda (_message _hint _code)
                                 (etaf-ncm--optimistic-status
                                  app (lambda (status)
                                        (plist-put status :liked previous)))))))
@@ -978,7 +992,7 @@ the progress bar run one backend latency behind the song."
                     (plist-get app :last-tick) now)
               (etaf-ncm--apply-status
                app (plist-put status :elapsed (+ elapsed trip)))))
-   :on-error (lambda (_message _hint)
+   :on-error (lambda (_message _hint _code)
                (setf (plist-get app :status-in-flight) nil
                      (plist-get app :polled-at) (float-time)))))
 
@@ -1092,7 +1106,7 @@ reply that carries new playback facts publishes `:status'."
                                      :lines (etaf-ncm-parse-lyric (plist-get data :lyric))
                                      :trans (etaf-ncm-parse-lyric (plist-get data :trans))
                                      :loading nil))))
-   :on-error (lambda (_message _hint)
+   :on-error (lambda (_message _hint _code)
                (when (equal song-id (plist-get (etaf-ncm--read app :lyric) :id))
                  (etaf-ncm--write app :lyric
                                   (list :id song-id :lines nil :trans nil :loading nil))))))
