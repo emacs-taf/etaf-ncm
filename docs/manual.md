@@ -33,8 +33,9 @@ M-x etaf-ncm-open
 ```
 
 The player mounts in `etaf-ncm-buffer-name` (default `*ETAF 网易云音乐*`), hides
-its mode line, installs `etaf-ncm-mode-map` and takes the window selection. The
-buffer is a normal Ebox buffer: `TAB` cycles focus through the interactive
+its mode line, installs `etaf-ncm-mode-map` and fills the selected window
+instead of letting a display rule split the frame; it takes the window
+selection. The buffer is a normal Ebox buffer: `TAB` cycles focus through the interactive
 controls and `RET` activates the focused one. `M-x etaf-ncm-close` unmounts the
 player and kills the buffer; the session behind it stays usable, so reopening
 with the same session keeps its library, selection and queue.

@@ -37,9 +37,11 @@
 ;; MODEL defaults to a session from `etaf-ncm-create', so the player opens on the
 ;; daily recommendation with the account, playback status and queue of the
 ;; backend.  A caller-provided MODEL keeps its library, selection and queue, and
-;; is revived when it was displayed before.  The buffer gets `etaf-ncm-mode-map'
-;; and hides its mode line; closing the buffer releases the session's polling and
-;; pending requests, so a later `etaf-ncm-open' with the same MODEL works again.
+;; is revived when it was displayed before.  The app fills the selected window
+;; instead of letting a display rule split the frame.  The buffer gets
+;; `etaf-ncm-mode-map' and hides its mode line; closing the buffer releases the
+;; session's polling and pending requests, so a later `etaf-ncm-open' with the
+;; same MODEL works again.
 ;;
 ;; Function: etaf-ncm-close ()
 ;;;###autoload (autoload 'etaf-ncm-close "etaf-ncm" nil t)

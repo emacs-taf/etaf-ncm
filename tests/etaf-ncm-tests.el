@@ -446,6 +446,33 @@ silently doing nothing against the real backend."
       (when (get-buffer etaf-ncm-buffer-name)
         (kill-buffer etaf-ncm-buffer-name)))))
 
+(ert-deftest etaf-ncm-tests-open-fills-the-selected-window ()
+  "Opening the player replaces the selected window instead of splitting it.
+A native text app owns the whole window it was opened from; a general
+display rule must not turn it into a playground-style pane."
+  (let ((etaf-ncm-buffer-name " *etaf-ncm-tests-window*")
+        (app (etaf-ncm-tests--session))
+        (frame (selected-frame))
+        (width (frame-width))
+        (height (frame-height)))
+    (unwind-protect
+        (save-window-excursion
+          (delete-other-windows)
+          (set-frame-size frame 120 40)
+          (let ((windows (length (window-list)))
+                (selected (selected-window)))
+            (unwind-protect
+                (progn
+                  (etaf-ncm-open app)
+                  (should (= (length (window-list)) windows))
+                  (should (eq (selected-window) selected))
+                  (should (eq (window-buffer selected)
+                              (get-buffer etaf-ncm-buffer-name))))
+              (etaf-ncm-close))))
+      (set-frame-size frame width height)
+      (when (get-buffer etaf-ncm-buffer-name)
+        (kill-buffer etaf-ncm-buffer-name)))))
+
 (ert-deftest etaf-ncm-tests-press-on-the-selected-row-plays-it ()
   "A press on the already selected row starts playback.
 The gesture must not depend on a second press arriving inside a timing window:

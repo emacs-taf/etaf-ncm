@@ -632,7 +632,11 @@ the backend.  A caller-provided MODEL keeps its library, queue and selection."
                     table))
       (etaf-ncm--remap-canvas-face)
       (use-local-map etaf-ncm-mode-map))
-    (pop-to-buffer buffer)
+    ;; A native text app owns the window it was opened from: a general
+    ;; `display-buffer' rule must not split the frame into a playground-style
+    ;; pane, so open in the selected window and let the app fill it.
+    (let ((display-buffer-overriding-action '((display-buffer-same-window))))
+      (pop-to-buffer buffer))
     ;; The layout, page size and viewport come from the window that shows
     ;; the player, so the first paint already fits it.  The player adapts to
     ;; later resizes as well (see `etaf-ncm--sync-layout').
