@@ -70,6 +70,7 @@
                  (if (eq resource :playlists) "search-playlists" "search")))
        (:lyric (etaf-ncm-tests--fixture "lyric"))
        (:session (etaf-ncm-tests--fixture "session"))
+       (:liked-ids (etaf-ncm-tests--fixture "liked-ids"))
        (:status (or etaf-ncm-tests--status (etaf-ncm-tests--fixture "status")))
        (:queue (append (etaf-ncm-tests--fixture "queue")
                        (list :songs (plist-get (etaf-ncm-tests--fixture "queue-tracks")
@@ -249,6 +250,27 @@
     (should (etaf-ncm-tests--request :unlike))
     (etaf-ncm-jump-queue app 3)
     (should (= (plist-get (etaf-ncm-tests--request :jump) :index) 3))))
+
+(ert-deftest etaf-ncm-tests-liked-table-decides-the-heart ()
+  "The playing song's heart follows the liked-song id table.
+The backend status carries no like field, so the table decides it once it
+arrived, and liking a song keeps the session table in step."
+  (let ((etaf-ncm-tests--requests nil)
+        (etaf-ncm-tests--status nil))
+    (let ((app (etaf-ncm-tests--session)))
+      (etaf-ncm-refresh app)
+      (should (eq (plist-get (plist-get (etaf-ncm-state app) :status) :liked) t))
+      ;; A song outside the table shows the hollow heart.
+      (setq etaf-ncm-tests--status
+            (append (list :song_id "2" :title "曲目 2")
+                    (etaf-ncm-tests--fixture "status")))
+      (etaf-ncm-refresh app)
+      (should-not (plist-get (plist-get (etaf-ncm-state app) :status) :liked))
+      ;; Liking it adds it to the session table and survives the next status.
+      (etaf-ncm-like app)
+      (should (eq (plist-get (plist-get (etaf-ncm-state app) :status) :liked) t))
+      (etaf-ncm-refresh app)
+      (should (eq (plist-get (plist-get (etaf-ncm-state app) :status) :liked) t)))))
 
 (ert-deftest etaf-ncm-tests-selection-keeps-its-page ()
   "Selection clamps at both ends and scrolls the page to stay visible."
@@ -1110,6 +1132,71 @@ locate the entry by its help text instead of a character offset."
       (etaf-ncm-tests--slider-gesture 'ncm-volume 'start 0.8)
       (etaf-ncm-tests--slider-gesture 'ncm-volume 'cancel 0.8)
       (should-not (etaf-ncm-tests--request :volume)))))
+
+(ert-deftest etaf-ncm-tests-stale-status-keeps-the-pointed-volume ()
+  "A status reply older than the volume command cannot move the number back.
+The reply left the backend before the command; the follow-up status that the
+reply triggers is the first one allowed to reconcile the value."
+  (let* ((etaf-ncm-tests--requests nil)
+         (etaf-ncm-tests--status nil)
+         hold pending-status pending-volume
+         (app (etaf-ncm-tests--session
+              (lambda (request callback)
+                (pcase (plist-get request :op)
+                  (:status (if hold
+                               (progn (push request etaf-ncm-tests--requests)
+                                      (setq pending-status callback))
+                             (etaf-ncm-tests--client request callback)))
+                  (:volume (progn (push request etaf-ncm-tests--requests)
+                                  (setq pending-volume callback)))
+                  (_ (etaf-ncm-tests--client request callback)))))))
+    (etaf-ncm-tests--with-player app
+      (etaf-ncm-tests--rendered-text)
+      ;; Hold the next status request in flight, then point the volume.
+      (setq hold t)
+      (etaf-ncm-refresh app)
+      (etaf-ncm-set-volume app 80)
+      (should (= (plist-get (plist-get (etaf-ncm-state app) :status) :volume) 80))
+      ;; The old status arrives after the command: the number must stay put.
+      (funcall pending-status (list :ok (etaf-ncm-tests--fixture "status")))
+      (etaf-ncm-tests--rendered-text)
+      (should (= (plist-get (plist-get (etaf-ncm-state app) :status) :volume) 80))
+      ;; The command reply asks for fresh truth; the backend now reports 80.
+      (setq hold nil
+            etaf-ncm-tests--status
+            (plist-put (etaf-ncm-tests--fixture "status") :volume "80"))
+      (funcall pending-volume (list :ok (list :ok t)))
+      (etaf-ncm-tests--rendered-text)
+      (should (= (plist-get (plist-get (etaf-ncm-state app) :status) :volume) 80)))))
+
+(ert-deftest etaf-ncm-tests-stale-status-keeps-the-pointed-position ()
+  "A status reply older than a seek keeps the clicked position on the bar.
+The clicked target is one second away from the reported one, which the seek
+guard alone would accept as settled."
+  (let* ((etaf-ncm-tests--requests nil)
+         (etaf-ncm-tests--status nil)
+         hold pending-status
+         (app (etaf-ncm-tests--session
+               (lambda (request callback)
+                 (pcase (plist-get request :op)
+                   (:status (if (and hold (not pending-status))
+                                (progn (push request etaf-ncm-tests--requests)
+                                       (setq pending-status callback))
+                              (etaf-ncm-tests--client request callback)))
+                   (_ (etaf-ncm-tests--client request callback)))))))
+    (etaf-ncm-tests--with-player app
+      (etaf-ncm-tests--rendered-text)
+      (setq hold t)
+      (etaf-ncm-refresh app)
+      ;; Point at about 42.8s of the 180s track: the relative seek rounds to
+      ;; one second, so a guard built from the rounded offset would hold 43.8
+      ;; instead of the pointed target.
+      (etaf-ncm-tests--slider-gesture 'ncm-seek 'end (/ 42.8 180.0))
+      (funcall pending-status (list :ok (etaf-ncm-tests--fixture "status")))
+      (etaf-ncm-tests--rendered-text)
+      (let ((elapsed (plist-get (plist-get (etaf-ncm-state app) :status) :elapsed)))
+        (should (> elapsed 42.0))
+        (should (< elapsed 43.4))))))
 
 (ert-deftest etaf-ncm-tests-player-progress-range-seeks-by-pointer ()
   "The progress range follows status and seeks to the pointed position."

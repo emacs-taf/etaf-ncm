@@ -142,12 +142,21 @@ complete headless player for tests and other Lisp callers."
           :disposed nil
           :status-in-flight nil
           :polled-at 0
+          ;; The fields the last command published optimistically; a status
+          ;; reply older than the command must not move them back.
+          :optimistic-at nil
+          :optimistic-keys nil
           :last-tick (float-time)
           :timer nil
           :last-press nil
           :play-generation 0
           :list-cache (etaf-list-cache-create :grace 3)
           :list-key nil
+          ;; Liked-song ids: the backend status carries no like field, so the
+          ;; player compares the playing song against this table.
+          :liked-ids (make-hash-table :test 'eql)
+          :liked-ids-loaded nil
+          :liked-ids-at 0
           :section (etaf-ref :daily :name 'etaf-ncm-section)
           :title (etaf-ref "每日推荐" :name 'etaf-ncm-title)
           :subtitle (etaf-ref "根据你的口味生成，每天更新" :name 'etaf-ncm-subtitle)
@@ -762,13 +771,25 @@ the progress bar jumps back and forth around the click."
   "Like the song playing in APP, or unlike it when UNLIKE is non-nil.
 The heart flips before the backend answers; a failed request puts the
 previous state back, and the reply reconciles it with measured facts."
-  (let ((previous (plist-get (or (etaf-ncm--read app :status) (list)) :liked)))
+  (let* ((status (etaf-ncm--read app :status))
+         (song-id (plist-get status :song-id))
+         (previous (plist-get status :liked)))
     (etaf-ncm--note app (if unlike "已取消喜欢" "已加入我喜欢的音乐"))
+    (when (and song-id (plist-get app :liked-ids-loaded))
+      (if unlike
+          (remhash song-id (plist-get app :liked-ids))
+        (puthash song-id t (plist-get app :liked-ids))))
+    (setf (plist-get app :optimistic-at) (float-time)
+          (plist-get app :optimistic-keys) '(:liked))
     (etaf-ncm--optimistic-status
      app (lambda (status) (plist-put status :liked (not unlike))))
     (etaf-ncm--call app (list :op (if unlike :unlike :like))
                     :on-ok (lambda (_data) (etaf-ncm--request-status app))
                     :on-error (lambda (_message _hint _code)
+                                (when (and song-id (plist-get app :liked-ids-loaded))
+                                  (if unlike
+                                      (puthash song-id t (plist-get app :liked-ids))
+                                    (remhash song-id (plist-get app :liked-ids))))
                                 (etaf-ncm--optimistic-status
                                  app (lambda (status)
                                        (plist-put status :liked previous)))))))
@@ -822,6 +843,17 @@ reply then replaces that guess with measured facts."
             (plist-put status :repeat (plist-get request :on)))))
     (_ nil)))
 
+(defun etaf-ncm--optimistic-status-keys (request)
+  "Return the status fields REQUEST shows before its reply arrives."
+  (pcase (plist-get request :op)
+    ((or :toggle :stop) '(:state))
+    (:play '(:state :song-id :elapsed))
+    (:volume '(:volume))
+    (:shuffle '(:shuffle))
+    (:repeat '(:repeat))
+    (:seek '(:elapsed))
+    (_ nil)))
+
 (defun etaf-ncm--command (app request message &optional on-ok)
   "Send REQUEST for APP, showing MESSAGE and its local effect immediately.
 The backend reply reconciles the optimistic state; only a command that can
@@ -829,6 +861,8 @@ move the queue reloads it.  ON-OK, when given, continues a command sequence
 instead of reconciling an intermediate playback state."
   (when (memq (plist-get request :op) '(:next :previous :stop :jump))
     (cl-incf (plist-get app :play-generation)))
+  (setf (plist-get app :optimistic-at) (float-time)
+        (plist-get app :optimistic-keys) (etaf-ncm--optimistic-status-keys request))
   (etaf-batch
     (etaf-ncm--note app message)
     (etaf-ncm--optimistic-command app request))
@@ -897,7 +931,13 @@ seeks by offset: show the target immediately, then ask for the difference."
       (plist-put app :seek-commit (cons target (float-time)))
       (etaf-ncm--set-clock app target)
       (etaf-ncm--republish-clock app target)
-      (etaf-ncm-seek app (round (- target current))))))
+      ;; Hold the exact pointed target: the relative command rounds to whole
+      ;; seconds, which would leave the guard one second off it.
+      (etaf-ncm--write app :seek-guard (cons (+ (float-time) 3.0) target))
+      (etaf-ncm--command app (list :op :seek :seconds (round (- target current)))
+                         (format "进度 %s%ss"
+                                 (if (< target current) "-" "+")
+                                 (abs (round (- target current))))))))
 
 (defun etaf-ncm--target (app item)
   "Return the backend play target for ITEM inside APP."
@@ -960,8 +1000,38 @@ refreshes the list the view already shows, so the reader's position is kept."
       (setf (plist-get app :list-key) key)
       (etaf-ncm--load app key (etaf-ncm--browse-request app section) nil t)))
   (etaf-ncm--request-status app)
+  (etaf-ncm--request-liked-ids app)
   (etaf-ncm--request-queue app)
   (etaf-ncm--request-account app))
+
+(defun etaf-ncm--request-liked-ids (app)
+  "Load APP's liked-song id table when it is missing or old.
+The backend status carries no like field, so the table is what lets the
+player show a filled heart for a song in the liked library."
+  (when (or (not (plist-get app :liked-ids-loaded))
+            (> (- (float-time) (or (plist-get app :liked-ids-at) 0))
+               etaf-ncm-library-refresh-interval))
+    (etaf-ncm--call
+     app (list :op :liked-ids)
+     :on-ok (lambda (data)
+              (let ((table (make-hash-table :test 'eql)))
+                (dolist (id (etaf-ncm--list (plist-get data :ids)))
+                  (let ((number (etaf-ncm--parse-number id)))
+                    (when number (puthash number t table))))
+                (setf (plist-get app :liked-ids) table
+                      (plist-get app :liked-ids-loaded) t
+                      (plist-get app :liked-ids-at) (float-time))
+                (etaf-ncm--reflect-liked app))))))
+
+(defun etaf-ncm--reflect-liked (app)
+  "Refresh APP's displayed like state from its liked-id table."
+  (let* ((status (etaf-ncm--read app :status))
+         (song-id (plist-get status :song-id)))
+    (when (and status song-id)
+      (let ((liked (and (gethash song-id (plist-get app :liked-ids)) t)))
+        (unless (equal liked (plist-get status :liked))
+          (etaf-ncm--write app :status
+                           (plist-put (copy-sequence status) :liked liked)))))))
 
 (defun etaf-ncm--request-account (app)
   "Load APP's account display name."
@@ -980,31 +1050,46 @@ round trip is added back before publishing it: without that the lyric line and
 the progress bar run one backend latency behind the song."
   (setf (plist-get app :status-in-flight) t
         (plist-get app :requested-at) (float-time))
-  (etaf-ncm--call
-   app (list :op :status)
-   :on-ok (lambda (data)
-            (let* ((now (float-time))
-                   (trip (- now (or (plist-get app :requested-at) now)))
-                   (status (etaf-ncm--normalize-status data))
-                   (elapsed (or (plist-get status :elapsed) 0)))
-              (setf (plist-get app :status-in-flight) nil
-                    (plist-get app :polled-at) now
-                    (plist-get app :last-tick) now)
-              (etaf-ncm--apply-status
-               app (plist-put status :elapsed (+ elapsed trip)))))
-   :on-error (lambda (_message _hint _code)
-               (setf (plist-get app :status-in-flight) nil
-                     (plist-get app :polled-at) (float-time)))))
+  (let ((requested-at (plist-get app :requested-at)))
+    (etaf-ncm--call
+     app (list :op :status)
+     :on-ok (lambda (data)
+              (let* ((now (float-time))
+                     (trip (- now (or requested-at now)))
+                     (status (etaf-ncm--normalize-status data))
+                     (elapsed (or (plist-get status :elapsed) 0)))
+                (setf (plist-get app :status-in-flight) nil
+                      (plist-get app :polled-at) now
+                      (plist-get app :last-tick) now)
+                (etaf-ncm--apply-status
+                 app (plist-put status :elapsed (+ elapsed trip))
+                 requested-at)))
+     :on-error (lambda (_message _hint _code)
+                 (setf (plist-get app :status-in-flight) nil
+                       (plist-get app :polled-at) (float-time))))))
 
-(defun etaf-ncm--apply-status (app status)
+(defun etaf-ncm--apply-status (app status &optional requested-at)
   "Publish STATUS and fetch the lyric when the song changed.
 A reply that only moves the position is displayed through
 `etaf-ncm--publish-clock', so a playing second does not republish the view; a
-reply that carries new playback facts publishes `:status'."
+reply that carries new playback facts publishes `:status'.  A reply that left
+the backend before the user's last command keeps that command's display for
+the fields it changed, so the bar does not jump back and forth.  REQUESTED-AT
+is when the answered status request was sent."
   (let* ((previous (etaf-ncm--read app :status))
          (song-id (plist-get status :song-id))
          (lyric (etaf-ncm--read app :lyric))
          (elapsed (or (plist-get status :elapsed) 0)))
+    ;; A status reply older than the user's last command still describes the
+    ;; old playback facts.  Keep the command's optimistic display for the
+    ;; fields it changed until its own follow-up status confirms them.
+    (when (and requested-at
+               (let ((optimistic-at (plist-get app :optimistic-at)))
+                 (and optimistic-at (< requested-at optimistic-at))))
+      (dolist (key (plist-get app :optimistic-keys))
+        (setq status (plist-put status key (plist-get previous key)))
+        (when (eq key :elapsed)
+          (setq elapsed (or (plist-get previous :elapsed) elapsed)))))
     ;; A seek that mpv has not applied yet must not drag the bar back: keep
     ;; showing the requested target until the backend reaches it or the guard
     ;; expires.
@@ -1012,18 +1097,23 @@ reply that carries new playback facts publishes `:status'."
       (when guard
         (let ((until (car guard)) (target (cdr guard)))
           (cond ((and (< (float-time) until)
-                      (> (abs (- (or elapsed 0) target)) 1))
+                      (> (abs (- (or elapsed 0) target)) 0.6))
                  (setq elapsed target)
                  (setq status (plist-put status :elapsed target)))
                 ((or (>= (float-time) until)
-                     (<= (abs (- (or elapsed 0) target)) 1))
+                     (<= (abs (- (or elapsed 0) target)) 0.6))
                  (etaf-ncm--write app :seek-guard nil))))))
-    ;; The backend status carries no like state; carry the one this session
-    ;; knows into the same-song comparison and keep it for the new status.
+    ;; The backend status carries no like state: the session's liked-id table
+    ;; decides it once it arrived, and the same-song fallback covers the
+    ;; window before that.
     (setq status (plist-put status :liked
-                            (and previous
-                                 (equal song-id (plist-get previous :song-id))
-                                 (plist-get previous :liked))))
+                            (cond ((plist-get app :liked-ids-loaded)
+                                   (and song-id
+                                        (gethash song-id (plist-get app :liked-ids))
+                                        t))
+                                  (previous
+                                   (and (equal song-id (plist-get previous :song-id))
+                                        (plist-get previous :liked))))))
     (if (etaf-ncm--status-steady-p previous status)
         (etaf-ncm--publish-clock app elapsed)
       (etaf-ncm--set-clock app elapsed)

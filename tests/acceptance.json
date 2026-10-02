@@ -61,6 +61,11 @@
       "purpose": "Transport, volume, seek, shuffle, list repeat, like and queue-jump commands send their existing requests; repeat reports 列表循环 on and off."
     },
     {
+      "name": "etaf-ncm-tests-liked-table-decides-the-heart",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "The playing song's heart follows the liked-song id table, and liking a song keeps the session table in step."
+    },
+    {
       "name": "etaf-ncm-tests-toggle-starts-the-selected-song-when-nothing-is-loaded",
       "file": "tests/etaf-ncm-tests.el",
       "purpose": "SPC with an empty queue plays the selected row instead of toggling a queue that has nothing to toggle."
@@ -229,6 +234,16 @@
       "name": "etaf-ncm-tests-player-volume-drag-and-reply",
       "file": "tests/etaf-ncm-tests.el",
       "purpose": "Volume gestures publish the pointer value, show the new range immediately, reconcile the backend reply, clamp endpoints and ignore cancellation."
+    },
+    {
+      "name": "etaf-ncm-tests-stale-status-keeps-the-pointed-volume",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "A status reply older than the volume command keeps the pointed volume instead of snapping the percentage back."
+    },
+    {
+      "name": "etaf-ncm-tests-stale-status-keeps-the-pointed-position",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "A status reply older than a seek keeps the clicked position instead of snapping the progress bar back."
     },
     {
       "name": "etaf-ncm-tests-player-progress-range-seeks-by-pointer",

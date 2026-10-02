@@ -272,7 +272,8 @@
 ;; REQUEST is a plist starting with `:op' (`:browse', `:search', `:lyric',
 ;; `:session', `:status', `:queue', `:play', `:add', `:jump', `:volume',
 ;; `:seek', `:pause', `:resume', `:toggle', `:next', `:previous', `:stop',
-;; `:like', `:unlike', `:shuffle', `:repeat', `:queue-save' or `:queue-load').
+;; `:like', `:unlike', `:liked-ids', `:shuffle', `:repeat', `:queue-save' or
+;; `:queue-load').
 ;; CALLBACK receives `(:ok DATA)' on success and `(:error MESSAGE :hint HINT)' on
 ;; failure, at most once.  A client that cannot answer calls it neither; a
 ;; session that is disposed by `etaf-ncm-cancel' drops late replies.

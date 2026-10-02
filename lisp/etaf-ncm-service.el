@@ -101,7 +101,8 @@ REQUEST is a plist whose `:op' selects one backend operation:
   :jump         (:op :jump :index 12)          play queue entry by index
   :volume       (:op :volume :value 60)        read the volume when VALUE is nil
   :seek         (:op :seek :seconds -10)       relative seek
-  :pause :resume :toggle :next :previous :stop :like :unlike
+  :like :unlike
+  :liked-ids    (:op :liked-ids)               ids of every liked song
   :shuffle      (:op :shuffle :on t)
   :repeat       (:op :repeat :on nil)
   :queue-save   (:op :queue-save :name \"晚上\")
@@ -205,7 +206,7 @@ the rest are the arguments.  Signal `etaf-ncm-error' for an unknown request."
          (node (etaf-ncm--client-node-program client))
          (op (plist-get request :op)))
     (pcase op
-      ((or :browse :search :lyric :session)
+      ((or :browse :search :lyric :session :liked-ids)
        (cons (etaf-ncm--program node api)
              (cons api (etaf-ncm--api-arguments request))))
       (:status
@@ -263,6 +264,7 @@ the rest are the arguments.  Signal `etaf-ncm-error' for an unknown request."
        (unless id (signal 'etaf-ncm-error '("Lyric needs a song id")))
        (list "lyric" (etaf-ncm--id id) "--trans")))
     (:session (list "session"))
+    (:liked-ids (list "liked-ids"))
     (_ (signal 'etaf-ncm-error (list (format "Unknown request: %S" request))))))
 
 (defun etaf-ncm--script-arguments (request)
