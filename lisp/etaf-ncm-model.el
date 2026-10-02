@@ -190,6 +190,7 @@ complete headless player for tests and other Lisp callers."
           :query (etaf-ref "" :name 'etaf-ncm-query)
           :mode (etaf-ref 'browse :name 'etaf-ncm-mode)
           :layout (etaf-ref 'wide :name 'etaf-ncm-layout)
+          :columns (etaf-ref nil :name 'etaf-ncm-columns)
           :pane (etaf-ref 'list :name 'etaf-ncm-pane)
           :loading (etaf-ref nil :name 'etaf-ncm-loading)
           :error (etaf-ref nil :name 'etaf-ncm-error)
@@ -1361,6 +1362,7 @@ the wide layout, because it has no viewport to adapt to."
     (etaf-batch
       (when (eq layout 'wide)
         (etaf-ncm--write app :pane 'list))
+      (etaf-ncm--write app :columns (etaf-ncm--window-columns window))
       (etaf-ncm--write app :layout layout)
       (etaf-ncm--write app :page-size size)
       (etaf-ncm--write app :queue-rows queue-rows)

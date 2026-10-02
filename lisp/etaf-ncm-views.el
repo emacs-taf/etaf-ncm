@@ -101,29 +101,37 @@ so a selected entry reads as one highlighted line."
     (box :height '(lh 1))))
 
 (etaf-define-component etaf-ncm--view-row
-    (&key index row selected playing compact press)
-  "Render library ROW number INDEX, marked SELECTED and PLAYING as appropriate.
-COMPACT drops the album column, which a narrow frame cannot show.  PRESS is
-called with INDEX when the row is clicked; keeping it stable is what lets a row
-whose data did not change keep its rendered output."
+    (&key index row playing selection compact press)
+  "Render library ROW number INDEX, highlighted when SELECTION names it.
+SELECTION is the player's reactive selection source; the row reads it inside
+its Host paint bindings, so moving the highlight publishes retained paint
+instead of rebuilding the list.  COMPACT drops the album column, which a narrow
+frame cannot show.  PRESS is called with INDEX when the row is clicked;
+keeping it stable is what lets a row whose data did not change keep its
+rendered output."
   :view
   (grid :width 'stretch :height '(lh 1) :role 'button :tab-index 0
         :grid-template-columns (if compact etaf-ncm--row-columns-compact
                                  etaf-ncm--row-columns)
         :gap '((lh 0) (ch 1)) :align-items 'center :padding '((lh 0) (ch 1))
-        :background-color (cond (playing (etaf-ncm-color :accent-soft))
-                                (selected (etaf-ncm-color :panel2)))
-        :color (cond (playing (etaf-ncm-color :accent))
-                     (selected (etaf-ncm-color :ink))
-                     (t (etaf-ncm-color :ink)))
-        :font-weight (if (or playing selected) 'bold 'normal)
+        ;; The unselected row paints the list background explicitly: a retained
+        ;; paint binding needs a declared value, and an absent background
+        ;; cannot acquire a prepared slot.
+        :background-color (let ((selected (eq (1- index) (etaf-value selection))))
+                            (cond (playing (etaf-ncm-color :accent-soft))
+                                  (selected (etaf-ncm-color :panel2))
+                                  (t (etaf-ncm-color :bg))))
+        :color (if playing (etaf-ncm-color :accent) (etaf-ncm-color :ink))
+        :font-weight (let ((selected (eq (1- index) (etaf-value selection))))
+                       (if (or playing selected) 'bold 'normal))
        
         :hover-style (etaf-ncm--hover-surface)
         :help-echo (format "播放 %s" (or (plist-get row :name) "这一行"))
         :on-press (lambda () (funcall press index))
     (box :height '(lh 1) :justify-self 'end
-         :color (cond (selected (etaf-ncm-color :muted))
-                      (t (etaf-ncm-color :dim)))
+         :color (if (eq (1- index) (etaf-value selection))
+                    (etaf-ncm-color :muted)
+                  (etaf-ncm-color :dim))
       ;; A glyph marker would fall back to a taller symbol font and grow the
       ;; row; the shared SVG icon keeps the row at one line height.
       (etaf-ui-icon :if playing :name 'play :set 'svg :size 1.0 :min-width 2
@@ -273,8 +281,19 @@ COMPACT stacks the search field under the title, the shape a narrow frame needs.
       (etaf-button :label (if loading "正在加载" "换一批") :variant 'ghost
                    :on-press on-refresh))))
 
-(etaf-define-component etaf-ncm--view-pane-tabs (&key pane aside on-pane on-aside)
-  "Render the list/lyrics/queue switch a compact layout uses."
+(defun etaf-ncm--pane-tab-source (key pane-list lyrics queue)
+  "Return KEY's reactive active source among the pane switch flags."
+  (pcase key
+    ('list pane-list)
+    ('lyrics lyrics)
+    (_ queue)))
+
+(etaf-define-component etaf-ncm--view-pane-tabs
+    (&key pane-list lyrics queue on-pane on-aside)
+  "Render the list/lyrics/queue switch a compact layout uses.
+PANE-LIST, LYRICS and QUEUE are reactive sources; each tab reads them inside
+its Host bindings, so switching a pane publishes retained paint instead of
+rebuilding the view."
   :view
   (flex :width 'stretch :height '(lh 2) :gap '((lh 0) (ch 2))
         :flex-shrink 0 :align-items 'center :padding '((lh 0) (ch 2))
@@ -288,14 +307,16 @@ COMPACT stacks the search field under the title, the shape a narrow frame needs.
      
       :hover-style (etaf-ncm--hover-surface)
       :help-echo (nth 1 tab)
-      :background-color (and (or (eq (car tab) pane)
-                                 (and (eq pane 'aside) (eq (car tab) aside)))
-                             (etaf-ncm-color :accent-soft))
-      :color (if (or (eq (car tab) pane)
-                     (and (eq pane 'aside) (eq (car tab) aside)))
+      :background-color (if (etaf-value (etaf-ncm--pane-tab-source
+                                         (car tab) pane-list lyrics queue))
+                            (etaf-ncm-color :accent-soft))
+      :color (if (etaf-value (etaf-ncm--pane-tab-source
+                              (car tab) pane-list lyrics queue))
                  (etaf-ncm-color :accent)
                (etaf-ncm-color :muted))
-      :font-weight (if (eq (car tab) pane) 'bold 'normal)
+      :font-weight (if (etaf-value (etaf-ncm--pane-tab-source
+                                    (car tab) pane-list lyrics queue))
+                       'bold 'normal)
       :on-press (if (eq (car tab) 'list)
                     (lambda () (funcall on-pane 'list))
                   (lambda () (funcall on-aside (car tab))))
@@ -304,14 +325,20 @@ COMPACT stacks the search field under the title, the shape a narrow frame needs.
     (box :flex-grow 1 :flex-basis '(px 0) :min-width '(ch 0)
          :height '(lh 1) :text-align 'right :color (etaf-ncm-color :dim)
          :font-size 12 :overflow 'hidden
-      (text (expr (if (eq pane 'aside)
-                      (if (eq aside 'lyrics) "l 歌词/队列" "l 切换面板")
-                    "j/k 或滚轮选择 · 双击播放"))))))
+      (text (expr (let ((list-p (etaf-value pane-list))
+                        (lyrics-p (etaf-value lyrics))
+                        (queue-p (etaf-value queue)))
+                    (cond (list-p "j/k 或滚轮选择 · 双击播放")
+                          (queue-p "l 切换面板")
+                          (lyrics-p "l 歌词/队列")
+                          (t "l 切换面板"))))))))
 
 (etaf-define-component etaf-ncm--view-list
-    (&key entries start total loaded compact empty-note on-press)
+    (&key entries start total loaded compact selection empty-note on-press)
   "Render the visible library ENTRIES and a page footer.
-ON-PRESS is called with a row's page index when that row is clicked."
+SELECTION is the player's reactive selection source, passed down so each row
+can read it inside its own Host paint bindings.  ON-PRESS is called with a
+row's page index when that row is clicked."
   :view
   (flex :flex-direction 'column :width 'stretch :flex-grow 1 :flex-basis '(lh 0)
         :min-height '(lh 0) :gap '((lh 0) (px 0)) :overflow 'hidden
@@ -319,7 +346,7 @@ ON-PRESS is called with a row's page index when that row is clicked."
     (etaf-ncm--view-row :for (entry entries) :key (plist-get entry :index)
       :index (plist-get entry :index)
       :row (plist-get entry :row)
-      :selected (plist-get entry :selected)
+      :selection selection
       :playing (plist-get entry :playing)
       :compact compact
       :press on-press)
@@ -340,12 +367,43 @@ ON-PRESS is called with a row's page index when that row is clicked."
       (box :if (< loaded total) :height '(lh 1)
         (text (expr (format "已加载 %s / 共 %s 首" loaded total)))))))
 
+(etaf-define-component etaf-ncm--view-list-panel
+    (&key layout columns visible)
+  "Wrap the library column in an absolute stage panel.
+VISIBLE is the reactive source that shows the list; LAYOUT and COLUMNS place
+the panel in the same cells the content budgets assume.  The panel is a direct
+child of the main stage, so the rows inside it keep a retained plane and a
+selection change publishes retained row paint instead of rebuilding the view."
+  :render
+  (let* ((sidebar-ch (cadr etaf-ncm--sidebar-width))
+         (rail-ch (cadr etaf-ncm--rail-width))
+         (aside-ch (cadr etaf-ncm--aside-width))
+         (columns (or columns 0))
+         (wide-p (eq layout 'wide))
+         (left (cond (wide-p sidebar-ch)
+                     ((eq layout 'medium) rail-ch)
+                     (t 0)))
+         (width (cond (wide-p (max 1 (- columns sidebar-ch aside-ch)))
+                      ((eq layout 'medium) (max 1 (- columns rail-ch)))
+                      (t (max 1 columns)))))
+    (etaf-view
+     (box :position 'absolute :left (list 'ch left) :top '(lh 0)
+          :width (list 'ch width) :height '(% 100) :z-index 0
+          :visibility (if (etaf-value visible) 'visible 'hidden)
+       (flex :flex-direction 'column :width 'stretch :height 'stretch
+             :min-width '(ch 0) :min-height '(lh 0)
+             :padding (if wide-p '((lh 1) (ch 2)) '((lh 0) (ch 1)))
+             :gap '((lh 1) (px 0))
+         (expr (etaf-current-slot 'default)))))))
+
 ;;; ---------------------------------------------------------------------------
 ;;; Lyrics, queue and player
 ;;; ---------------------------------------------------------------------------
 
-(etaf-define-component etaf-ncm--view-tabs (&key aside on-switch)
-  "Render the lyrics/queue switch with ASIDE active."
+(etaf-define-component etaf-ncm--view-tabs (&key kind on-switch)
+  "Render the lyrics/queue switch with KIND active.
+Each aside variant draws its own static tab row, so the active underline and
+paint never re-render when the other variant becomes visible."
   :view
   (flex :width 'stretch :height '(lh 2) :gap '((lh 0) (ch 2))
         :align-items 'center
@@ -354,10 +412,10 @@ ON-PRESS is called with a row's page index when that row is clicked."
         
          :hover-style (etaf-ncm--hover-surface)
          :help-echo "看歌词"
-         :font-weight (if (eq aside 'lyrics) 'bold 'normal)
-         :color (if (eq aside 'lyrics) (etaf-ncm-color :ink)
+         :font-weight (if (eq kind 'lyrics) 'bold 'normal)
+         :color (if (eq kind 'lyrics) (etaf-ncm-color :ink)
                   (etaf-ncm-color :muted))
-         :border-bottom (and (eq aside 'lyrics)
+         :border-bottom (and (eq kind 'lyrics)
                              (etaf-ncm--view-border 'bottom
                                                     (etaf-ncm-color :accent)))
          :on-press (lambda () (funcall on-switch 'lyrics))
@@ -366,10 +424,10 @@ ON-PRESS is called with a row's page index when that row is clicked."
         
          :hover-style (etaf-ncm--hover-surface)
          :help-echo "看播放队列"
-         :font-weight (if (eq aside 'queue) 'bold 'normal)
-         :color (if (eq aside 'queue) (etaf-ncm-color :ink)
+         :font-weight (if (eq kind 'queue) 'bold 'normal)
+         :color (if (eq kind 'queue) (etaf-ncm-color :ink)
                   (etaf-ncm-color :muted))
-         :border-bottom (and (eq aside 'queue)
+         :border-bottom (and (eq kind 'queue)
                              (etaf-ncm--view-border 'bottom
                                                     (etaf-ncm-color :accent)))
          :on-press (lambda () (funcall on-switch 'queue))
@@ -391,7 +449,7 @@ LINES is the visible slice of the parsed lyric and TRANS its translations."
           (text (expr (or artist ""))))
         (box :height '(lh 1) :overflow 'hidden :color (etaf-ncm-color :dim)
              :font-size 12
-          (text (expr (or album ""))))))
+          (text (expr (or (etaf-ncm--reactive-text album) ""))))))
     (box :height '(lh 1))
     (box :if loading :height '(lh 1) :color (etaf-ncm-color :dim)
       (text "正在取歌词..."))
@@ -462,31 +520,46 @@ Each entry is (:index :name :right :current) from the player model."
         (text (expr (or (plist-get entry :right) "")))))))
 
 (etaf-define-component etaf-ncm--view-aside
-    (&key aside title artist album lines trans current position total loading
-          entries pos count layout on-switch on-jump)
-  "Render the ASIDE panel with either the lyrics or the queue.
-LAYOUT decides the width: a wide layout keeps the panel at its sidebar width,
-a compact one makes it the only visible pane so it fills the window."
-  :view
-  (flex :flex-direction 'column
-        :width (if (eq layout 'wide) etaf-ncm--aside-width 'stretch)
-        :flex-grow (if (eq layout 'wide) 0 1)
-        :min-width '(ch 0) :height 'stretch
-        :padding '((lh 1) (ch 2)) :gap '((lh 0) (px 0))
-        :background-color (etaf-ncm-color :panel)
+    (&key kind visible layout columns title artist album lines trans current position total loading
+          entries pos count on-switch on-jump)
+  "Render one absolute aside variant: KIND is `lyrics' or `queue'.
+Both variants are panels of the root stage; VISIBLE is the reactive source
+that reveals this one, so switching panels publishes retained visibility
+updates instead of rebuilding the view.  LAYOUT and COLUMNS size and place
+the panel in the same cells the wheel hit test uses.  The panel ends at the
+window bottom; the player bar paints over its last rows, and the row budgets
+already stop the content above it."
+  :render
+  (let* ((aside-ch (cadr etaf-ncm--aside-width))
+         (rail-ch (cadr etaf-ncm--rail-width))
+         (columns (or columns 0))
+         (left (cond ((eq layout 'wide) (max 0 (- columns aside-ch)))
+                     ((eq layout 'medium) rail-ch)
+                     (t 0)))
+         (width (cond ((eq layout 'wide) aside-ch)
+                      ((eq layout 'medium) (max 1 (- columns rail-ch)))
+                      (t (max 1 columns)))))
+    (etaf-view
+     (box :position 'absolute :left (list 'ch left) :top '(lh 0)
+          :width (list 'ch width) :height '(% 100) :z-index 0
+          :visibility (if (etaf-value visible) 'visible 'hidden)
+          :padding '((lh 1) (ch 2))
+          :background-color (etaf-ncm-color :panel)
           :border-left (etaf-ncm--view-border 'left (etaf-ncm-color :line))
-    (etaf-ncm--view-tabs :aside aside :on-switch on-switch)
-    (etaf-ncm--view-lyrics :if (eq aside 'lyrics)
-      :title title :artist artist :album album :lines lines :trans trans
-      :current current :position position :total total :loading loading)
-    (etaf-ncm--view-queue :if (eq aside 'queue)
-      :entries entries :pos pos :count count :on-jump on-jump)))
+       (flex :flex-direction 'column :width 'stretch :height 'stretch
+             :min-width '(ch 0) :gap '((lh 0) (px 0))
+         (etaf-ncm--view-tabs :kind kind :on-switch on-switch)
+         (etaf-ncm--view-lyrics :if (eq kind 'lyrics)
+           :title title :artist artist :album album :lines lines :trans trans
+           :current current :position position :total total :loading loading)
+         (etaf-ncm--view-queue :if (eq kind 'queue)
+           :entries entries :pos pos :count count :on-jump on-jump))))))
 
 (defun etaf-ncm--reactive-text (text)
   "Return TEXT's current string, reading a reactive source in place.
 Reading inside the Host expression keeps the dependency on the source instead
 of subscribing the rendering Component to it."
-  (if (etaf-ref-p text) (etaf-value text) text))
+  (if (or (etaf-ref-p text) (etaf-computed-p text)) (etaf-value text) text))
 
 (defun etaf-ncm--active-value (active)
   "Return ACTIVE's current boolean for a HOST binding.
@@ -629,7 +702,8 @@ Controls sit in separated groups so the right edge reads as three ideas
          :color (etaf-ncm-color :muted)
       (text (expr (format "[%s]" quality))))
     (box :if (and quality (not compact)) :width '(ch 1) :height '(lh 1) (text " "))
-    (etaf-ncm--view-control :ref 'ncm-lyrics :icon 'lyrics :help "显示歌词 (l)" :on-press on-lyrics :active lyrics)
+    (etaf-ncm--view-control :ref 'ncm-lyrics :icons '(lyrics . lyrics) :value lyrics
+                            :help "显示歌词 (l)" :on-press on-lyrics)
     (etaf-ncm--view-control :ref 'ncm-queue-aside :icon 'queue :help "显示播放列表" :on-press on-queue)
     (box :width '(ch 1) :height '(lh 1) (text " "))
     (etaf-ui-icon :name (if (and (numberp volume) (zerop volume)) 'volume-mute 'volume)

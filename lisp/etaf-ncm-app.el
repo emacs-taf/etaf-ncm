@@ -122,13 +122,11 @@ renderer's focus cycling.")
 (defun etaf-ncm--view-entries (model)
   "Return MODEL's visible library rows as list entries."
   (pcase-let* ((`(,rows ,start ,_total) (etaf-ncm--page-rows model))
-               (selection (etaf-ncm--read model :selection))
                (playing (plist-get (etaf-ncm--read model :status) :song-id)))
     (cl-loop for row in rows
              for index from start
              collect (list :index (1+ index)
                            :row row
-                           :selected (= index selection)
                            :playing (and playing
                                          (eq (plist-get row :kind) :song)
                                          (equal (plist-get row :id) playing))))))
@@ -486,7 +484,35 @@ releases the polling timer and the session's pending backend requests."
              (on-repeat (lambda ()
                           (etaf-ncm-set-repeat
                            session
-                           (not (etaf-ncm--flag-value session :repeat))))))
+                           (not (etaf-ncm--flag-value session :repeat)))))
+             ;; Aside and pane sources are read inside Host bindings, so a panel
+             ;; switch publishes retained visibility and paint instead of
+             ;; re-rendering the app.
+             (aside-lyrics (etaf-computed
+                            (lambda ()
+                              (eq (etaf-value (etaf-ncm--ref session :aside)) 'lyrics))))
+             (aside-queue (etaf-computed
+                           (lambda ()
+                             (eq (etaf-value (etaf-ncm--ref session :aside)) 'queue))))
+             (lyrics-visible (etaf-computed
+                              (lambda ()
+                                (and (eq (etaf-value (etaf-ncm--ref session :aside)) 'lyrics)
+                                     (etaf-ncm--aside-shown-p session)))))
+             (queue-visible (etaf-computed
+                             (lambda ()
+                               (and (eq (etaf-value (etaf-ncm--ref session :aside)) 'queue)
+                                    (etaf-ncm--aside-shown-p session)))))
+             (pane-list (etaf-computed
+                         (lambda ()
+                           (eq (etaf-value (etaf-ncm--ref session :pane)) 'list))))
+             (list-visible (etaf-computed
+                            (lambda () (etaf-ncm--list-shown-p session))))
+             ;; The lyric panel's album line follows the selection, but the
+             ;; app render must not read the selection itself or a row move
+             ;; would repaint the whole view instead of the retained rows.
+             (selected-album (etaf-computed
+                              (lambda ()
+                                (or (plist-get (etaf-ncm--selected-row session) :meta) "")))))
   :setup
   (progn
     (etaf-theme-provide palette)
@@ -498,7 +524,7 @@ releases the polling timer and the session's pending backend requests."
      (lambda ()
        (etaf-ncm--dispose session))))
   :view
-  (flex :flex-direction 'column :width '(vw 100) :height '(vh 100)
+  (flex :position 'relative :flex-direction 'column :width '(vw 100) :height '(vh 100)
         ;; One clear line above the chrome keeps the header off the window
         ;; edge; the layout budget already reserves the root padding.
         :padding-top '(lh 1)
@@ -509,27 +535,26 @@ releases the polling timer and the session's pending backend requests."
         ;; window, which clipped the player bar's control row.
         :padding-bottom '(lh 0)
         :color (etaf-ncm-color :ink) :bgcolor (etaf-ncm-color :bg)
-    (flex :width 'stretch :flex-grow 1 :flex-basis '(lh 0) :min-height '(lh 0)
-          :align-items 'stretch
-      (etaf-ncm--view-sidebar
-       :if (eq (etaf-ncm--read session :layout) 'wide)
-       :groups etaf-ncm-sections
-       :section (etaf-ncm--read session :section)
-       :account (etaf-ncm--read session :account)
-       :on-locate on-locate)
-      (etaf-ncm--view-sidebar
-       :if (eq (etaf-ncm--read session :layout) 'medium)
-       :compact t
-       :groups etaf-ncm-sections
-       :section (etaf-ncm--read session :section)
-       :account (etaf-ncm--read session :account)
-       :on-locate on-locate)
-      (flex :if (etaf-ncm--list-shown-p session)
-            :flex-direction 'column :width 'stretch :flex-grow 1
-            :flex-basis '(px 0) :min-width '(ch 0) :min-height '(lh 0)
-            :padding (if (etaf-ncm--compact-layout-p session)
-                         '((lh 0) (ch 1)) '((lh 1) (ch 2)))
-            :gap '((lh 1) (px 0))
+    (box :position 'relative :width 'stretch :flex-grow 1 :flex-basis '(lh 0)
+         :min-height '(lh 0)
+      (flex :width 'stretch :height 'stretch :align-items 'stretch
+        (etaf-ncm--view-sidebar
+         :if (eq (etaf-ncm--read session :layout) 'wide)
+         :groups etaf-ncm-sections
+         :section (etaf-ncm--read session :section)
+         :account (etaf-ncm--read session :account)
+         :on-locate on-locate)
+        (etaf-ncm--view-sidebar
+         :if (eq (etaf-ncm--read session :layout) 'medium)
+         :compact t
+         :groups etaf-ncm-sections
+         :section (etaf-ncm--read session :section)
+         :account (etaf-ncm--read session :account)
+         :on-locate on-locate))
+      (etaf-ncm--view-list-panel
+       :layout (etaf-ncm--read session :layout)
+       :columns (etaf-ncm--read session :columns)
+       :visible list-visible
         (etaf-ncm--view-header
          :title (etaf-ncm--read session :title)
          :subtitle (etaf-ncm--read session :subtitle)
@@ -556,32 +581,39 @@ releases the polling timer and the session's pending backend requests."
          :total (etaf-ncm--read session :list-total)
          :loaded (length (etaf-ncm--read session :rows))
          :compact (etaf-ncm--compact-layout-p session)
+         :selection (etaf-ncm--ref session :selection)
          :empty-note (if (etaf-ncm--read session :loading)
                          "正在加载…"
                        "这里还没有内容：g 刷新，s 搜索")
          :on-press on-press-row))
       (etaf-ncm--view-aside
-       :if (etaf-ncm--aside-shown-p session)
-       :aside (etaf-ncm--read session :aside)
+       :kind 'lyrics :visible lyrics-visible
+       :layout (etaf-ncm--read session :layout)
+       :columns (etaf-ncm--read session :columns)
        :title (plist-get (etaf-ncm--view-status session) :title)
        :artist (plist-get (etaf-ncm--view-status session) :artist)
-       :album (or (plist-get (etaf-ncm--selected-row session) :meta) "")
+       :album selected-album
        :loading (plist-get (etaf-ncm--lyric-panel session) :loading)
        :lines (plist-get (etaf-ncm--lyric-panel session) :lines)
        :trans (plist-get (etaf-ncm--lyric-panel session) :trans)
        :current (plist-get (etaf-ncm--lyric-panel session) :current)
        :position (plist-get (etaf-ncm--lyric-panel session) :position)
        :total (plist-get (etaf-ncm--lyric-panel session) :total)
+       :on-switch on-switch-aside)
+      (etaf-ncm--view-aside
+       :kind 'queue :visible queue-visible
+       :layout (etaf-ncm--read session :layout)
+       :columns (etaf-ncm--read session :columns)
        :entries (plist-get (etaf-ncm--queue-panel session) :entries)
        :pos (plist-get (etaf-ncm--queue-panel session) :pos)
        :count (plist-get (etaf-ncm--queue-panel session) :count)
-       :layout (etaf-ncm--read session :layout)
        :on-switch on-switch-aside
        :on-jump on-jump-queue))
     (etaf-ncm--view-pane-tabs
      :if (etaf-ncm--compact-layout-p session)
-     :pane (etaf-ncm--read session :pane)
-     :aside (etaf-ncm--read session :aside)
+     :pane-list pane-list
+     :lyrics aside-lyrics
+     :queue aside-queue
      :on-pane on-show-pane
      :on-aside on-show-aside)
     ;; The bar paints the bottom six lines; the positioned host reserves them
@@ -602,8 +634,7 @@ releases the polling timer and the session's pending backend requests."
        :liked (etaf-ncm--ref session :liked-ref)
        :repeat (etaf-ncm--ref session :repeat-ref)
        :message (etaf-ncm--ref session :message)
-       :lyrics (and (eq (etaf-ncm--read session :aside) 'lyrics)
-                    (etaf-ncm--aside-shown-p session))
+       :lyrics lyrics-visible
        :queue-count (plist-get (etaf-ncm--view-status session) :queue-count)
        :on-toggle on-toggle
        :on-next on-next

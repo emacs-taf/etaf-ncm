@@ -4,6 +4,12 @@ All notable user-visible changes to ETAF NCM.
 
 ## Unreleased
 
+- The lyrics/queue switch, the list selection and the pane switch update
+  through retained Host bindings: both aside variants are fixed-canvas panels
+  whose visibility follows the player state, each row reads the selection
+  source inside its own paint bindings, and the compact pane tabs read their
+  own active sources.  Moving the highlight or switching panels does not
+  rebuild the view while the player stays in that region.
 - Play/pause, the heart, shuffle, repeat and the status message update through
   the retained player bar, so pressing a control publishes one retained Host
   update instead of repainting the whole player.  The bar reacts in a few

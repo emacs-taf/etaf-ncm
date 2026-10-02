@@ -282,7 +282,11 @@ ETAF's retained Host updates, so a playing second does not republish the view;
 a tick that moves the lyric line does. The player bar itself is a retained
 panel: the play/pause pill, the heart, shuffle, repeat and the status message
 read their own reactive sources inside Host bindings, so pressing one of them
-publishes a retained update instead of rebuilding the view. While nothing is playing it checks every `etaf-ncm-idle-poll-interval`
+publishes a retained update instead of rebuilding the view. The lyrics and
+queue panels are two fixed-canvas variants whose visibility follows the
+`:aside` source, and every library row reads the selection source in its own
+paint bindings; switching panels or moving the highlight likewise publishes
+retained updates. While nothing is playing it checks every `etaf-ncm-idle-poll-interval`
 (fifteen seconds). A lyric is fetched only when the playing song id changes, and
 the queue list is read from the backend's queue state file rather than
 re-downloaded.
