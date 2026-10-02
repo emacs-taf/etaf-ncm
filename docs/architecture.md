@@ -116,9 +116,10 @@ hold snapshots without keeping the player alive or accidentally mutating it.
   play/pause state, the volume, the shuffle and repeat flags and the message
   line change immediately, and the reply reconciles them with measured facts.
   Only a command that can move the queue reloads it.
-- Every library list is cached under its section (or search keyword).  Opening
-  a library shows the cached rows at once and refreshes the list in the
-  background. Cache entries keep both normalized rows and the backend total;
+- Every library list is cached under its section (or search keyword) through
+  ETAF's `etaf-list-cache`, which owns the freshness interval, the candidate
+  order and the one-at-a-time rule.  Opening a library shows the cached rows at
+  once and refreshes the list in the background. Cache entries keep both normalized rows and the backend total;
   even an unchanged row list can publish a new total. A foreground reply must
   match both the load generation and the current list key. A mounted player
   warms the lists it has not seen yet, one at a time, and refreshes

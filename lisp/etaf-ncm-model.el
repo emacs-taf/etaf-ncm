@@ -146,9 +146,8 @@ complete headless player for tests and other Lisp callers."
           :timer nil
           :last-press nil
           :play-generation 0
-          :list-cache (make-hash-table :test 'equal)
+          :list-cache (etaf-list-cache-create :grace 3)
           :list-key nil
-          :list-refresh-in-flight nil
           :section (etaf-ref :daily :name 'etaf-ncm-section)
           :title (etaf-ref "每日推荐" :name 'etaf-ncm-title)
           :subtitle (etaf-ref "根据你的口味生成，每天更新" :name 'etaf-ncm-subtitle)
@@ -249,15 +248,17 @@ Display goes through `etaf-ncm--publish-clock'."
 
 (defun etaf-ncm--update-clock-hosts (app seconds)
   "Replace APP's elapsed label and progress fill with SECONDS.
-The elapsed label updates through its retained Host; the meter is the shared
-range's flow fill, so a declined fixed-geometry update returns nil and the
-caller rebuilds the view with the new position instead."
+Both writes go through ETAF's retained Host boundary, so a playing second
+publishes without a View publication or layout work.  Return nil when APP has
+no mounted Runtime; the caller then republishes instead.  A rejected write
+signals through ETAF rather than being reported as a missing display."
   (when-let* ((runtime (etaf-ncm--runtime app)))
     (etaf-runtime-update-host-contents
      runtime (list (cons etaf-ncm--clock-host (etaf-ncm--format-seconds seconds))))
     (etaf-runtime-update-host-geometries
      runtime (list (cons etaf-ncm--meter-host
-                        (list :width (list '% (round (etaf-ncm--meter-percent app seconds)))))))))
+                        (list :width (list '% (round (etaf-ncm--meter-percent app seconds)))))))
+    t))
 
 (defun etaf-ncm--republish-clock (app seconds)
   "Publish APP's whole view with SECONDS as the displayed position.
@@ -429,12 +430,11 @@ SCOPE is `song' (default) or `playlist'.  An empty KEYWORD signals
 
 (defun etaf-ncm--list-entry (app key)
   "Return APP's cached library list for KEY, or nil."
-  (gethash key (plist-get app :list-cache)))
+  (etaf-list-cache-entry (plist-get app :list-cache) key))
 
-(defun etaf-ncm--store-list (app key request rows total)
-  "Cache ROWS and TOTAL for KEY in APP, keeping REQUEST for later refreshes."
-  (puthash key (list :rows rows :total total :at (float-time) :request request)
-           (plist-get app :list-cache)))
+(defun etaf-ncm--store-list (app key rows total)
+  "Cache ROWS and TOTAL for KEY in APP."
+  (etaf-list-cache-put (plist-get app :list-cache) key rows total))
 
 (defun etaf-ncm--show-cached-list (app key keep-position-p)
   "Show APP's cached rows for KEY when one exists, without a loading state.
@@ -480,10 +480,10 @@ reader is already looking at."
               (let* ((rows (etaf-ncm--library-rows kind data))
                      (total (or (etaf-ncm--parse-number (plist-get data :total))
                                 (length rows))))
-                (etaf-ncm--store-list app key request rows total)
+                (etaf-ncm--store-list app key rows total)
                 (if background
                     (progn
-                      (setf (plist-get app :list-refresh-in-flight) nil)
+                      (etaf-list-cache-set-busy (plist-get app :list-cache) nil)
                       (when (equal key (plist-get app :list-key))
                         (etaf-batch
                           (etaf-ncm--write app :rows rows)
@@ -504,7 +504,7 @@ reader is already looking at."
                                                   (length rows))))))))
      :on-error (lambda (message _hint)
                  (if background
-                     (setf (plist-get app :list-refresh-in-flight) nil)
+                     (etaf-list-cache-set-busy (plist-get app :list-cache) nil)
                    (when (and (= generation (etaf-ncm--read app :generation))
                               (equal key (plist-get app :list-key)))
                      (etaf-ncm--write app :loading nil)
@@ -512,43 +512,28 @@ reader is already looking at."
                      (etaf-ncm--write app :list-total 0)
                      (etaf-ncm--note app message)))))))
 
-(defun etaf-ncm--list-stale-p (entry now)
-  "Return non-nil when cached ENTRY is older than the refresh interval."
-  (and entry
-       (> (- now (or (plist-get entry :at) 0)) etaf-ncm-library-refresh-interval)))
-
 (defun etaf-ncm--background-list (app now)
   "Return the (KEY . REQUEST) APP should refresh in the background, or nil.
 The stalest cached list is refreshed first; when every sidebar list is still
 fresh, one not-yet-cached list is warmed so opening it can use the cache.
-Warming waits a few seconds after mount so the startup load is not competing
-with a prefetch."
+`etaf-list-cache' owns that order, the freshness interval and the quiet period
+after the session starts; this function only maps a section to its request."
   (when (and etaf-ncm-prefetch-libraries
-             (> (- now (or (plist-get app :started-at) 0)) 3)
-             (not (plist-get app :list-refresh-in-flight))
              (not (etaf-ncm--read app :loading)))
-    (let* ((cache (plist-get app :list-cache))
-           (best nil))
-      (maphash
-       (lambda (key entry)
-         (when (and (etaf-ncm--list-stale-p entry now)
-                    (or (not best)
-                        (< (plist-get entry :at) (plist-get (cdr best) :at))))
-           (setq best (cons key entry))))
-       cache)
-      (or best
-          (when-let* ((missing
-                       (seq-find (lambda (section)
-                                   (not (gethash (list :browse section) cache)))
-                                 (mapcar #'car (apply #'append
-                                                      (mapcar #'cdr etaf-ncm-sections))))))
-            (cons (list :browse missing)
-                  (list :request (etaf-ncm--browse-request app missing))))))))
+    (let* ((sections (mapcar #'car (apply #'append (mapcar #'cdr etaf-ncm-sections))))
+           (pairs (mapcar (lambda (section) (cons (list :browse section) section))
+                          sections))
+           (key (etaf-list-cache-next (plist-get app :list-cache)
+                                      (mapcar #'car pairs)
+                                      now etaf-ncm-library-refresh-interval)))
+      (when key
+        (let ((section (cdr (assq key pairs))))
+          (cons key (list :request (etaf-ncm--browse-request app section))))))))
 
 (defun etaf-ncm--refresh-background-list (app now)
   "Start one stale background library refresh for APP, when one is due."
   (when-let* ((next (etaf-ncm--background-list app now)))
-    (setf (plist-get app :list-refresh-in-flight) t)
+    (etaf-list-cache-set-busy (plist-get app :list-cache) t)
     (etaf-ncm--load app (car next) (plist-get (cdr next) :request) t)))
 
 (defun etaf-ncm--library-rows (kind data)
@@ -1145,9 +1130,9 @@ second for the same second."
 (defun etaf-ncm--start (app)
   "Start APP's playback polling; remounting a disposed session revives it."
   (setf (plist-get app :disposed) nil
-        (plist-get app :started-at) (float-time)
         (plist-get app :polled-at) 0
         (plist-get app :last-tick) (float-time))
+  (etaf-list-cache-start (plist-get app :list-cache))
   (etaf-ncm--sync-layout app)
   (add-hook 'window-size-change-functions #'etaf-ncm--window-size-change)
   (unless (plist-get app :timer)
@@ -1158,6 +1143,7 @@ second for the same second."
 (defun etaf-ncm--dispose (app)
   "Release APP's timer and in-flight requests."
   (setf (plist-get app :disposed) t)
+  (etaf-list-cache-disarm (plist-get app :list-cache))
   (cl-incf (plist-get app :play-generation))
   (when-let* ((timer (plist-get app :timer)))
     (cancel-timer timer)
