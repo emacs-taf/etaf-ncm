@@ -295,7 +295,8 @@ PANE-LIST, LYRICS and QUEUE are reactive sources; each tab reads them inside
 its Host bindings, so switching a pane publishes retained paint instead of
 rebuilding the view."
   :view
-  (flex :width 'stretch :height '(lh 2) :gap '((lh 0) (ch 2))
+  (flex :position 'relative :z-index 2
+        :width 'stretch :height '(lh 2) :gap '((lh 0) (ch 2))
         :flex-shrink 0 :align-items 'center :padding '((lh 0) (ch 2))
         :background-color (etaf-ncm-color :panel)
         :border-top (etaf-ncm--view-border 'top (etaf-ncm-color :line))
@@ -368,18 +369,23 @@ row's page index when that row is clicked."
         (text (expr (format "已加载 %s / 共 %s 首" loaded total)))))))
 
 (etaf-define-component etaf-ncm--view-list-panel
-    (&key layout columns visible)
+    (&key layout columns window-rows visible)
   "Wrap the library column in an absolute stage panel.
-VISIBLE is the reactive source that shows the list; LAYOUT and COLUMNS place
-the panel in the same cells the content budgets assume.  The panel is a direct
-child of the main stage, so the rows inside it keep a retained plane and a
-selection change publishes retained row paint instead of rebuilding the view."
+VISIBLE is the reactive source that shows the list; LAYOUT, COLUMNS and
+WINDOW-ROWS place and size the panel in the same cells the content budgets
+assume, keeping its footer above the pane switch and the player bar.  The
+panel is a direct child of the root plane, so the rows inside it keep a
+retained canvas and a selection change publishes retained row paint instead
+of rebuilding the view."
   :render
   (let* ((sidebar-ch (cadr etaf-ncm--sidebar-width))
          (rail-ch (cadr etaf-ncm--rail-width))
          (aside-ch (cadr etaf-ncm--aside-width))
          (columns (or columns 0))
          (wide-p (eq layout 'wide))
+         (rows (or window-rows 0))
+         (height (and (> rows 0)
+                      (max 1 (- rows 1 6 (if wide-p 0 2)))))
          (left (cond (wide-p sidebar-ch)
                      ((eq layout 'medium) rail-ch)
                      (t 0)))
@@ -388,7 +394,7 @@ selection change publishes retained row paint instead of rebuilding the view."
                       (t (max 1 columns)))))
     (etaf-view
      (box :position 'absolute :left (list 'ch left) :top '(lh 0)
-          :width (list 'ch width) :height '(% 100) :z-index 0
+          :width (list 'ch width) :height (if height (list 'lh height) '(% 100)) :z-index 0
           :visibility (if (etaf-value visible) 'visible 'hidden)
        (flex :flex-direction 'column :width 'stretch :height 'stretch
              :min-width '(ch 0) :min-height '(lh 0)
@@ -520,7 +526,7 @@ Each entry is (:index :name :right :current) from the player model."
         (text (expr (or (plist-get entry :right) "")))))))
 
 (etaf-define-component etaf-ncm--view-aside
-    (&key kind visible layout columns title artist album lines trans current position total loading
+    (&key kind visible layout columns window-rows title artist album lines trans current position total loading
           entries pos count on-switch on-jump)
   "Render one absolute aside variant: KIND is `lyrics' or `queue'.
 Both variants are panels of the root stage; VISIBLE is the reactive source
@@ -533,6 +539,9 @@ already stop the content above it."
   (let* ((aside-ch (cadr etaf-ncm--aside-width))
          (rail-ch (cadr etaf-ncm--rail-width))
          (columns (or columns 0))
+         (rows (or window-rows 0))
+         (height (and (> rows 0)
+                      (max 1 (- rows 1 6 (if (eq layout 'wide) 0 2)))))
          (left (cond ((eq layout 'wide) (max 0 (- columns aside-ch)))
                      ((eq layout 'medium) rail-ch)
                      (t 0)))
@@ -541,7 +550,7 @@ already stop the content above it."
                       (t (max 1 columns)))))
     (etaf-view
      (box :position 'absolute :left (list 'ch left) :top '(lh 0)
-          :width (list 'ch width) :height '(% 100) :z-index 0
+          :width (list 'ch width) :height (if height (list 'lh height) '(% 100)) :z-index 0
           :visibility (if (etaf-value visible) 'visible 'hidden)
           :padding '((lh 1) (ch 2))
           :background-color (etaf-ncm-color :panel)

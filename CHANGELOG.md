@@ -4,17 +4,15 @@ All notable user-visible changes to ETAF NCM.
 
 ## Unreleased
 
-- The lyrics/queue switch, the list selection and the pane switch update
-  through retained Host bindings: both aside variants are fixed-canvas panels
-  whose visibility follows the player state, each row reads the selection
-  source inside its own paint bindings, and the compact pane tabs read their
-  own active sources.  Moving the highlight or switching panels does not
-  rebuild the view while the player stays in that region.
-- Play/pause, the heart, shuffle, repeat and the status message update through
-  the retained player bar, so pressing a control publishes one retained Host
-  update instead of repainting the whole player.  The bar reacts in a few
-  milliseconds once it has been painted, and the bar itself is now an
-  absolutely positioned panel inside the window it owns.
+- Every interaction the app documents is now retained: play/pause, the
+  heart, shuffle, repeat, the status message, the lyrics/queue switch, the
+  compact pane switch and the library selection read their own reactive
+  sources inside Host bindings, and measuring the scripted fixture gives
+  11-90 ms with zero whole-candidate renders in either order.  Only loading
+  a new library still republishes the view, because the data it changes is
+  structural.  The library, the two aside variants and the player bar are
+  absolutely positioned panels of the root stage; keep their anchors there
+  when adding a panel whose Hosts must update in place.
 - Pressing `SPC` or the play pill with an empty queue plays the selected song
   instead of sending a toggle the backend cannot act on.  Selecting a row and
   pressing play now starts that song, and the play/pause button no longer

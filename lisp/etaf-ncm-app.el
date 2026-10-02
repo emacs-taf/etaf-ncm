@@ -535,25 +535,25 @@ releases the polling timer and the session's pending backend requests."
         ;; window, which clipped the player bar's control row.
         :padding-bottom '(lh 0)
         :color (etaf-ncm-color :ink) :bgcolor (etaf-ncm-color :bg)
-    (box :position 'relative :width 'stretch :flex-grow 1 :flex-basis '(lh 0)
-         :min-height '(lh 0)
-      (flex :width 'stretch :height 'stretch :align-items 'stretch
-        (etaf-ncm--view-sidebar
-         :if (eq (etaf-ncm--read session :layout) 'wide)
-         :groups etaf-ncm-sections
-         :section (etaf-ncm--read session :section)
-         :account (etaf-ncm--read session :account)
-         :on-locate on-locate)
-        (etaf-ncm--view-sidebar
-         :if (eq (etaf-ncm--read session :layout) 'medium)
-         :compact t
-         :groups etaf-ncm-sections
-         :section (etaf-ncm--read session :section)
-         :account (etaf-ncm--read session :account)
-         :on-locate on-locate))
+    (flex :width 'stretch :flex-grow 1 :flex-basis '(lh 0)
+          :min-height '(lh 0) :align-items 'stretch
+      (etaf-ncm--view-sidebar
+       :if (eq (etaf-ncm--read session :layout) 'wide)
+       :groups etaf-ncm-sections
+       :section (etaf-ncm--read session :section)
+       :account (etaf-ncm--read session :account)
+       :on-locate on-locate)
+      (etaf-ncm--view-sidebar
+       :if (eq (etaf-ncm--read session :layout) 'medium)
+       :compact t
+       :groups etaf-ncm-sections
+       :section (etaf-ncm--read session :section)
+       :account (etaf-ncm--read session :account)
+       :on-locate on-locate))
       (etaf-ncm--view-list-panel
        :layout (etaf-ncm--read session :layout)
        :columns (etaf-ncm--read session :columns)
+       :window-rows (etaf-ncm--read session :window-rows)
        :visible list-visible
         (etaf-ncm--view-header
          :title (etaf-ncm--read session :title)
@@ -590,6 +590,7 @@ releases the polling timer and the session's pending backend requests."
        :kind 'lyrics :visible lyrics-visible
        :layout (etaf-ncm--read session :layout)
        :columns (etaf-ncm--read session :columns)
+       :window-rows (etaf-ncm--read session :window-rows)
        :title (plist-get (etaf-ncm--view-status session) :title)
        :artist (plist-get (etaf-ncm--view-status session) :artist)
        :album selected-album
@@ -604,11 +605,12 @@ releases the polling timer and the session's pending backend requests."
        :kind 'queue :visible queue-visible
        :layout (etaf-ncm--read session :layout)
        :columns (etaf-ncm--read session :columns)
+       :window-rows (etaf-ncm--read session :window-rows)
        :entries (plist-get (etaf-ncm--queue-panel session) :entries)
        :pos (plist-get (etaf-ncm--queue-panel session) :pos)
        :count (plist-get (etaf-ncm--queue-panel session) :count)
        :on-switch on-switch-aside
-       :on-jump on-jump-queue))
+       :on-jump on-jump-queue)
     (etaf-ncm--view-pane-tabs
      :if (etaf-ncm--compact-layout-p session)
      :pane-list pane-list
