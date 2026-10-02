@@ -166,6 +166,13 @@ complete headless player for tests and other Lisp callers."
           :selection (etaf-ref 0 :name 'etaf-ncm-selection)
           :window-start (etaf-ref 0 :name 'etaf-ncm-window-start)
           :status (etaf-ref nil :name 'etaf-ncm-status)
+          ;; Per-interaction display state has its own retained reactive source.
+          ;; The player bar's Hosts read these refs, so a toggle publishes a
+          ;; retained Host update instead of re-rendering the whole view.
+          :state-ref (etaf-ref nil :name 'etaf-ncm-state)
+          :liked-ref (etaf-ref nil :name 'etaf-ncm-liked)
+          :shuffle-ref (etaf-ref nil :name 'etaf-ncm-shuffle)
+          :repeat-ref (etaf-ref nil :name 'etaf-ncm-repeat)
           ;; The displayed position is not reactive: a playing second changes it
           ;; and is shown through the player bar's retained Hosts, so a write
           ;; here would republish the whole view once per second.
@@ -212,6 +219,26 @@ view for nothing."
   "Publish (FUNCTION OLD-READING ARGUMENTS ...) as MODEL's value for KEY."
   (apply #'etaf-update-value (etaf-ncm--ref model key) function arguments))
 
+(defconst etaf-ncm--flag-slots
+  '((:state . :state-ref) (:liked . :liked-ref)
+    (:shuffle . :shuffle-ref) (:repeat . :repeat-ref))
+  "Status fields displayed through their own retained reactive sources.")
+
+(defun etaf-ncm--flag-value (app key)
+  "Return APP's displayed flag KEY from its retained source.
+Every status reply syncs the source, so it is the current reading, including
+an optimistic change the backend has not confirmed yet."
+  (etaf-value (etaf-ncm--ref app (cdr (assq key etaf-ncm--flag-slots)))))
+
+(defun etaf-ncm--sync-flags (app status &optional protected)
+  "Publish STATUS's display flags to APP's retained reactive sources.
+PROTECTED names status fields whose optimistic display must survive a reply
+that left the backend before the user's last command."
+  (dolist (pair etaf-ncm--flag-slots)
+    (when (and (plist-member status (car pair))
+               (not (memq (car pair) protected)))
+      (etaf-ncm--write app (cdr pair) (plist-get status (car pair))))))
+
 (defun etaf-ncm--clock (app)
   "Return APP's displayed playback position in seconds."
   (or (plist-get app :clock) 0))
@@ -232,8 +259,10 @@ Display goes through `etaf-ncm--publish-clock'."
 (defconst etaf-ncm--meter-host 'ncm-meter
   "Retained Host that fills the player bar's progress meter.")
 
-(defconst etaf-ncm--reply-volatile-keys '(:elapsed :as-of)
-  "Status fields that move with every backend reply, not with the track.")
+(defconst etaf-ncm--reply-volatile-keys '(:elapsed :as-of :state :liked :shuffle :repeat)
+  "Status fields that move with every backend reply, not with the track.
+Flag fields are displayed through their own retained host sources, so a reply
+that only moves them updates those hosts instead of republishing the view.")
 
 (defun etaf-ncm--runtime (app)
   "Return APP's mounted runtime, or nil when nothing displays APP."
@@ -773,7 +802,7 @@ The heart flips before the backend answers; a failed request puts the
 previous state back, and the reply reconciles it with measured facts."
   (let* ((status (etaf-ncm--read app :status))
          (song-id (plist-get status :song-id))
-         (previous (plist-get status :liked)))
+         (previous (etaf-ncm--flag-value app :liked)))
     (etaf-ncm--note app (if unlike "已取消喜欢" "已加入我喜欢的音乐"))
     (when (and song-id (plist-get app :liked-ids-loaded))
       (if unlike
@@ -781,8 +810,7 @@ previous state back, and the reply reconciles it with measured facts."
         (puthash song-id t (plist-get app :liked-ids))))
     (setf (plist-get app :optimistic-at) (float-time)
           (plist-get app :optimistic-keys) '(:liked))
-    (etaf-ncm--optimistic-status
-     app (lambda (status) (plist-put status :liked (not unlike))))
+    (etaf-ncm--write app :liked-ref (not unlike))
     (etaf-ncm--call app (list :op (if unlike :unlike :like))
                     :on-ok (lambda (_data) (etaf-ncm--request-status app))
                     :on-error (lambda (_message _hint _code)
@@ -790,9 +818,7 @@ previous state back, and the reply reconciles it with measured facts."
                                   (if unlike
                                       (puthash song-id t (plist-get app :liked-ids))
                                     (remhash song-id (plist-get app :liked-ids))))
-                                (etaf-ncm--optimistic-status
-                                 app (lambda (status)
-                                       (plist-put status :liked previous)))))))
+                                (etaf-ncm--write app :liked-ref previous)))))
 
 (defconst etaf-ncm--queue-commands '(:play :next :previous :jump :stop :add)
   "Commands whose reply can move the queue, which is then reloaded.")
@@ -810,20 +836,20 @@ reply then replaces that guess with measured facts."
   "Publish REQUEST's locally known effect in APP before its reply arrives."
   (pcase (plist-get request :op)
     (:toggle
-     (etaf-ncm--optimistic-status
-      app (lambda (status)
-            (plist-put status :state
-                       (if (eq (plist-get status :state) 'playing)
-                           'paused
-                         'playing)))))
+     ;; The transport state is displayed through its retained source, so the
+     ;; optimistic flip stays off the :status ref that repaints the view.
+     (etaf-ncm--write app :state-ref
+                      (if (eq (etaf-ncm--flag-value app :state) 'playing)
+                          'paused
+                        'playing)))
     (:stop
-     (etaf-ncm--optimistic-status
-      app (lambda (status) (plist-put status :state 'stopped))))
+     (etaf-ncm--write app :state-ref 'stopped))
     (:play
      (let ((id (let ((target (plist-get request :target)))
                  (and (eq (plist-get target :kind) :song)
                       (plist-get target :id)))))
        (etaf-ncm--set-clock app 0)
+       (etaf-ncm--write app :state-ref 'playing)
        (etaf-ncm--optimistic-status
         app (lambda (status)
               (setq status (plist-put status :state 'playing))
@@ -834,13 +860,9 @@ reply then replaces that guess with measured facts."
       app (lambda (status)
             (plist-put status :volume (plist-get request :value)))))
     (:shuffle
-     (etaf-ncm--optimistic-status
-      app (lambda (status)
-            (plist-put status :shuffle (plist-get request :on)))))
+     (etaf-ncm--write app :shuffle-ref (plist-get request :on)))
     (:repeat
-     (etaf-ncm--optimistic-status
-      app (lambda (status)
-            (plist-put status :repeat (plist-get request :on)))))
+     (etaf-ncm--write app :repeat-ref (plist-get request :on)))
     (_ nil)))
 
 (defun etaf-ncm--optimistic-status-keys (request)
@@ -1029,9 +1051,8 @@ player show a filled heart for a song in the liked library."
          (song-id (plist-get status :song-id)))
     (when (and status song-id)
       (let ((liked (and (gethash song-id (plist-get app :liked-ids)) t)))
-        (unless (equal liked (plist-get status :liked))
-          (etaf-ncm--write app :status
-                           (plist-put (copy-sequence status) :liked liked)))))))
+        (unless (equal liked (etaf-ncm--flag-value app :liked))
+          (etaf-ncm--write app :liked-ref liked))))))
 
 (defun etaf-ncm--request-account (app)
   "Load APP's account display name."
@@ -1079,13 +1100,15 @@ is when the answered status request was sent."
   (let* ((previous (etaf-ncm--read app :status))
          (song-id (plist-get status :song-id))
          (lyric (etaf-ncm--read app :lyric))
+         (stale-p (and requested-at
+                       (let ((optimistic-at (plist-get app :optimistic-at)))
+                         (and optimistic-at (< requested-at optimistic-at)))))
+         (protected (and stale-p (plist-get app :optimistic-keys)))
          (elapsed (or (plist-get status :elapsed) 0)))
     ;; A status reply older than the user's last command still describes the
     ;; old playback facts.  Keep the command's optimistic display for the
     ;; fields it changed until its own follow-up status confirms them.
-    (when (and requested-at
-               (let ((optimistic-at (plist-get app :optimistic-at)))
-                 (and optimistic-at (< requested-at optimistic-at))))
+    (when stale-p
       (dolist (key (plist-get app :optimistic-keys))
         (setq status (plist-put status key (plist-get previous key)))
         (when (eq key :elapsed)
@@ -1115,8 +1138,13 @@ is when the answered status request was sent."
                                    (and (equal song-id (plist-get previous :song-id))
                                         (plist-get previous :liked))))))
     (if (etaf-ncm--status-steady-p previous status)
-        (etaf-ncm--publish-clock app elapsed)
+        (progn
+          ;; Only the volatile fields moved: update the retained flag Hosts and
+          ;; the clock instead of republishing the whole view.
+          (etaf-ncm--sync-flags app status protected)
+          (etaf-ncm--publish-clock app elapsed))
       (etaf-ncm--set-clock app elapsed)
+      (etaf-ncm--sync-flags app status protected)
       (etaf-ncm--write app :status status))
     (when (and song-id (not (equal song-id (plist-get lyric :id))))
       (etaf-ncm--request-lyric app song-id))
@@ -1202,8 +1230,10 @@ is when the answered status request was sent."
                                   (list :id song-id :lines nil :trans nil :loading nil))))))
 
 (defun etaf-ncm--playing-p (app)
-  "Return non-nil when APP currently plays audio."
-  (eq (plist-get (etaf-ncm--read app :status) :state) 'playing))
+  "Return non-nil when APP currently plays audio.
+The retained state source is the current reading, including an optimistic
+toggle the backend has not confirmed yet."
+  (eq (etaf-ncm--flag-value app :state) 'playing))
 
 (defun etaf-ncm--tick (app)
   "Advance APP's local clock and poll the backend when due.
@@ -1512,8 +1542,15 @@ loaded count), `:queue-rows', `:queue-start' (zero-based loaded window start),
 `:theme', `:account', `:loading', `:error' and `:message'."
   (let* ((rows (etaf-ncm--read app :rows))
          (page (etaf-ncm--page-rows app))
-         (status (plist-put (copy-sequence (or (etaf-ncm--read app :status) nil))
-                            :elapsed (etaf-ncm--clock app)))
+         (status (let ((status (plist-put
+                                (copy-sequence (or (etaf-ncm--read app :status) nil))
+                                :elapsed (etaf-ncm--clock app))))
+                   ;; Display flags live in their own retained sources; the
+                   ;; snapshot reports the current reading, not the ref shape.
+                   (dolist (pair etaf-ncm--flag-slots)
+                     (setq status (plist-put status (car pair)
+                                             (etaf-ncm--flag-value app (car pair)))))
+                   status))
          (lyric (etaf-ncm--read app :lyric))
          (lines (plist-get lyric :lines))
          (index (and lines (etaf-ncm--lyric-index lines (etaf-ncm--clock app)))))

@@ -4,6 +4,11 @@ All notable user-visible changes to ETAF NCM.
 
 ## Unreleased
 
+- Play/pause, the heart, shuffle, repeat and the status message update through
+  the retained player bar, so pressing a control publishes one retained Host
+  update instead of repainting the whole player.  The bar reacts in a few
+  milliseconds once it has been painted, and the bar itself is now an
+  absolutely positioned panel inside the window it owns.
 - Pressing `SPC` or the play pill with an empty queue plays the selected song
   instead of sending a toggle the backend cannot act on.  Selecting a row and
   pressing play now starts that song, and the play/pause button no longer

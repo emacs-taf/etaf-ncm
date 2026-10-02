@@ -435,6 +435,12 @@ releases the polling timer and the session's pending backend requests."
                           (signal 'etaf-ncm-error
                                   '("etaf-ncm-app needs the :model from `etaf-ncm-create'"))))
              (palette (etaf-ncm--ref session :theme))
+             ;; The transport glyph reads the retained state source directly;
+             ;; the view never reads the state itself, so a toggle publishes a
+             ;; prepared text update instead of re-rendering the app.
+             (playing (etaf-computed
+                       (lambda ()
+                         (eq (etaf-value (etaf-ncm--ref session :state-ref)) 'playing))))
              ;; Callbacks are instance values, not per-render closures: a
              ;; re-render that passes a new function object to a keyed child
              ;; would make that child render again for nothing.
@@ -456,10 +462,10 @@ releases the polling timer and the session's pending backend requests."
              (on-stop (lambda () (etaf-ncm-stop session)))
              (on-like (lambda ()
                         ;; The heart is a toggle: a press on a liked song
-                        ;; removes the like.
+                        ;; removes the like.  The retained like source, not the
+                        ;; last repainted status, is the current reading.
                         (etaf-ncm-like session
-                                       (plist-get (etaf-ncm--view-status session)
-                                                  :liked))))
+                                       (and (etaf-ncm--flag-value session :liked) t))))
              (on-add (lambda ()
                        (when-let* ((row (etaf-ncm--selected-row session)))
                          (etaf-ncm-add-to-queue session row))))
@@ -476,11 +482,11 @@ releases the polling timer and the session's pending backend requests."
              (on-shuffle (lambda ()
                            (etaf-ncm-set-shuffle
                             session
-                            (not (plist-get (etaf-ncm--view-status session) :shuffle)))))
+                            (not (etaf-ncm--flag-value session :shuffle)))))
              (on-repeat (lambda ()
                           (etaf-ncm-set-repeat
                            session
-                           (not (plist-get (etaf-ncm--view-status session) :repeat))))))
+                           (not (etaf-ncm--flag-value session :repeat))))))
   :setup
   (progn
     (etaf-theme-provide palette)
@@ -543,7 +549,7 @@ releases the polling timer and the session's pending backend requests."
               :background-color (etaf-ncm-color :danger-bg)
               :color (etaf-ncm-color :danger)
           (box :height '(lh 1) :overflow 'hidden
-            (text (expr (or (etaf-ncm--read session :message) "")))))
+            (text (expr (or (etaf-ncm--reactive-text (etaf-ncm--ref session :message)) "")))))
         (etaf-ncm--view-list
          :entries (etaf-ncm--view-entries session)
          :start (1+ (nth 1 (etaf-ncm--page-rows session)))
@@ -578,35 +584,39 @@ releases the polling timer and the session's pending backend requests."
      :aside (etaf-ncm--read session :aside)
      :on-pane on-show-pane
      :on-aside on-show-aside)
-    (etaf-ncm--view-player
-     :compact (etaf-ncm--compact-layout-p session)
-     :title (plist-get (etaf-ncm--view-status session) :title)
-     :artist (plist-get (etaf-ncm--view-status session) :artist)
-     :vip (plist-get (etaf-ncm--view-status session) :vip)
-     :quality (plist-get (etaf-ncm--view-status session) :quality)
-     :state (plist-get (etaf-ncm--view-status session) :state)
-     :elapsed (plist-get (etaf-ncm--view-status session) :elapsed)
-     :duration (plist-get (etaf-ncm--view-status session) :duration)
-     :volume (plist-get (etaf-ncm--view-status session) :volume)
-     :shuffle (plist-get (etaf-ncm--view-status session) :shuffle)
-     :liked (plist-get (etaf-ncm--view-status session) :liked)
-     :repeat (plist-get (etaf-ncm--view-status session) :repeat)
-     :message (etaf-ncm--read session :message)
-     :lyrics (and (eq (etaf-ncm--read session :aside) 'lyrics)
-                  (etaf-ncm--aside-shown-p session))
-     :queue-count (plist-get (etaf-ncm--view-status session) :queue-count)
-     :on-toggle on-toggle
-     :on-next on-next
-     :on-previous on-previous
-     :on-stop on-stop
-     :on-like on-like
-     :on-add on-add
-     :on-lyrics on-lyrics
-     :on-queue on-queue
-     :on-volume on-volume
-     :on-seek on-seek
-     :on-shuffle on-shuffle
-     :on-repeat on-repeat)))
+    ;; The bar paints the bottom six lines; the positioned host reserves them
+    ;; in flow and the absolute panel inside is the retained publication
+    ;; address, so a control toggle updates its Hosts without a view rebuild.
+    (box :position 'relative :width 'stretch :height '(lh 6) :flex-shrink 0
+      (etaf-ncm--view-player
+       :compact (etaf-ncm--compact-layout-p session)
+       :title (plist-get (etaf-ncm--view-status session) :title)
+       :artist (plist-get (etaf-ncm--view-status session) :artist)
+       :vip (plist-get (etaf-ncm--view-status session) :vip)
+       :quality (plist-get (etaf-ncm--view-status session) :quality)
+       :playing playing
+       :elapsed (plist-get (etaf-ncm--view-status session) :elapsed)
+       :duration (plist-get (etaf-ncm--view-status session) :duration)
+       :volume (plist-get (etaf-ncm--view-status session) :volume)
+       :shuffle (etaf-ncm--ref session :shuffle-ref)
+       :liked (etaf-ncm--ref session :liked-ref)
+       :repeat (etaf-ncm--ref session :repeat-ref)
+       :message (etaf-ncm--ref session :message)
+       :lyrics (and (eq (etaf-ncm--read session :aside) 'lyrics)
+                    (etaf-ncm--aside-shown-p session))
+       :queue-count (plist-get (etaf-ncm--view-status session) :queue-count)
+       :on-toggle on-toggle
+       :on-next on-next
+       :on-previous on-previous
+       :on-stop on-stop
+       :on-like on-like
+       :on-add on-add
+       :on-lyrics on-lyrics
+       :on-queue on-queue
+       :on-volume on-volume
+       :on-seek on-seek
+       :on-shuffle on-shuffle
+       :on-repeat on-repeat))))
 
 (defun etaf-ncm-view (&optional model)
   "Return the player View for MODEL.

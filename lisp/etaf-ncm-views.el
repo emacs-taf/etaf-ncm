@@ -482,19 +482,40 @@ a compact one makes it the only visible pane so it fills the window."
     (etaf-ncm--view-queue :if (eq aside 'queue)
       :entries entries :pos pos :count count :on-jump on-jump)))
 
-(etaf-define-component etaf-ncm--view-control (&key icon glyph label help on-press active ref)
+(defun etaf-ncm--reactive-text (text)
+  "Return TEXT's current string, reading a reactive source in place.
+Reading inside the Host expression keeps the dependency on the source instead
+of subscribing the rendering Component to it."
+  (if (etaf-ref-p text) (etaf-value text) text))
+
+(defun etaf-ncm--active-value (active)
+  "Return ACTIVE's current boolean for a HOST binding.
+A reactive source is read at the call site, which keeps the read inside the
+host property binding instead of subscribing the whole component."
+  (if (etaf-ref-p active) (etaf-value active) active))
+
+(etaf-define-component etaf-ncm--view-control (&key icon icons glyph label help on-press active value ref)
   "Render one compact player action.
 ICON names an `etaf-ui-icon' in the SVG style, so the control keeps one
-optical size and never changes the row height.  GLYPH is the plain-text
-alternative for controls that are words (词 ON) instead of pictures.  LABEL
-appends a small count or state next to the icon."
+optical size and never changes the row height.  ICONS, when given, is an
+\(OFF . ON) icon-name pair rendered by `etaf-ui-toggle-icon'; VALUE is then the
+reactive source that selects the variant, so a state change publishes a
+retained Host text update instead of re-rendering the view.  GLYPH is the
+plain-text alternative for controls that are words (词 ON) instead of
+pictures.  LABEL appends a small count or state next to the icon."
   :view
   (flex :width 'max-content :height '(lh 1) :align-items 'center :flex-shrink 0
         :gap '((lh 0) (ch 1))
-    (etaf-ui-icon :if icon :name (or icon 'music) :set 'svg :size 1.0
+    (etaf-ui-toggle-icon :if icons :value (or value active)
+                         :off (car icons) :on (cdr icons)
+                         :set 'svg :size 1.0
+                         :color (etaf-ncm-color :muted)
+                         :on-color (etaf-ncm-color :accent)
+                         :min-width 3 :help-echo help :on-press on-press :ref ref)
+    (etaf-ui-icon :if (and icon (not icons)) :name (or icon 'music) :set 'svg :size 1.0
                   :color (etaf-ncm-color (if active :accent :muted))
                   :min-width 3 :help-echo help :on-press on-press :ref ref)
-    (box :if (and (not icon) glyph) :height '(lh 1) :role 'button :tab-index 0
+    (box :if (and (not icon) (not icons) glyph) :height '(lh 1) :role 'button :tab-index 0
          :color (etaf-ncm-color (if active :accent :muted))
          :hover-style (etaf-ncm--hover-surface)
          :help-echo help :on-press on-press
@@ -534,23 +555,27 @@ appends a small count or state next to the icon."
                                 (concat " - " artist)))))))
       (flex :height '(lh 1) :gap '((lh 0) (ch 1)) :align-items 'center
         (etaf-ncm--view-control :ref 'ncm-plus :icon 'plus :help "加入队列 (a)" :on-press on-add)
-        (etaf-ncm--view-control :ref 'ncm-like :icon (if liked 'heart-filled 'heart)
-                                :active liked
+        (etaf-ncm--view-control :ref 'ncm-like :icons '(heart . heart-filled)
+                                :value liked
                                 :help "喜欢 / 取消喜欢 (f / F)" :on-press on-like)
-        (etaf-ncm--view-control :ref 'ncm-shuffle :icon 'shuffle :help "随机播放 (z)"
-                                :on-press on-shuffle :active shuffle)
+        (etaf-ncm--view-control :ref 'ncm-shuffle :icons '(shuffle . shuffle)
+                                :value shuffle
+                                :help "随机播放 (z)" :on-press on-shuffle)
         (etaf-ncm--view-control :ref 'ncm-stop :icon 'close :help "停止" :on-press on-stop)
         (etaf-ncm--view-control :ref 'ncm-queue :icon 'queue :help "显示播放列表" :on-press on-queue
                                 :label (format "%s" (or queue-count 0))))
       (box :if (not compact) :height '(lh 1) :width 'stretch
            :overflow 'hidden :color (etaf-ncm-color :dim)
-        (text (expr (or message "")))))))
+        (text (expr (or (etaf-ncm--reactive-text message) "")))))))
 
 (etaf-define-component etaf-ncm--view-transport
-    (&key state repeat compact on-like on-previous on-toggle on-next on-repeat)
+    (&key playing repeat compact on-like on-previous on-toggle on-next on-repeat)
   "Render the centred transport with an accent play control.
-The play control is a one-line accent pill: a bigger glyph would paint outside
-its row and clip, which a terminal-cell layout cannot round away."
+PLAYING is the reactive boolean that selects the play/pause glyph, and REPEAT
+the reactive flag that paints the repeat control; both publish through
+retained Host text, so a toggle never rebuilds the bar.  The play control is a
+one-line accent pill: a bigger glyph would paint outside its row and clip,
+which a terminal-cell layout cannot round away."
   :view
   (flex :height (if compact '(lh 1) '(lh 2))
         :gap (if compact '((lh 0) (ch 1)) '((lh 0) (ch 3)))
@@ -561,14 +586,15 @@ its row and clip, which a terminal-cell layout cannot round away."
          :role 'button :tab-index 0
          :help-echo "播放 / 暂停 (SPC)" :on-press on-toggle
          :background-color (etaf-ncm-color :accent)
-      (etaf-ui-icon :name (if (eq state 'playing) 'pause 'play) :set 'svg :size 0.9
-                    :color (etaf-ncm-color :ink)
-                    ;; Span the whole pill so the glyph centres with one inset on
-                    ;; both sides; a narrower icon leaves the right side heavier.
-                    :min-width (if compact 3 4)
-                    :help-echo "播放 / 暂停 (SPC)" :on-press on-toggle))
+      (etaf-ui-toggle-icon :value playing :off 'play :on 'pause :set 'svg :size 0.9
+                           :color (etaf-ncm-color :ink) :on-color (etaf-ncm-color :ink)
+                           ;; Span the whole pill so the glyph centres with one inset on
+                           ;; both sides; a narrower icon leaves the right side heavier.
+                           :min-width (if compact 3 4)
+                           :help-echo "播放 / 暂停 (SPC)" :on-press on-toggle))
     (etaf-ncm--view-control :ref 'ncm-next :icon 'next :help "下一首 (n)" :on-press on-next)
-    (etaf-ncm--view-control :ref 'ncm-repeat :icon 'repeat :help "列表循环 (r)" :on-press on-repeat :active repeat)))
+    (etaf-ncm--view-control :ref 'ncm-repeat :icons '(repeat . repeat) :value repeat
+                            :help "列表循环 (r)" :on-press on-repeat)))
 
 (etaf-define-component etaf-ncm--view-progress
     (&key elapsed duration on-seek)
@@ -621,16 +647,19 @@ Controls sit in separated groups so the right edge reads as three ideas
       (text (expr (format "%d%%" (or volume 0)))))))
 
 (etaf-define-component etaf-ncm--view-player
-    (&key title artist vip quality state elapsed duration volume shuffle repeat lyrics message
+    (&key title artist vip quality playing elapsed duration volume shuffle repeat lyrics message
           queue-count compact liked on-toggle on-next on-previous on-stop on-like on-add
           on-volume on-seek on-shuffle on-repeat
           on-lyrics on-queue)
   "Render a native-style three-column bar, or three compact rows.
-The bar box is border-box: one border row, three content rows and one padding
-row above and below, so its total footprint stays the six lines the page
-budget reserves."
+The bar is an absolutely positioned panel: the app reserves its six lines with
+a positioned host, while the panel itself stays a retained publication address
+so its controls update without rebuilding the view.  The bar box is
+border-box: one border row, three content rows and one padding row above and
+below, so its total footprint stays the six lines the page budget reserves."
   :view
-  (box :width 'stretch :height '(lh 6) :flex-shrink 0
+  (box :position 'absolute :left '(px 0) :top '(lh 0)
+       :width '(% 100) :height '(% 100) :z-index 1
        :padding '((lh 1) (ch 2))
        :background-color (etaf-ncm-color :panel)
        :border-top (etaf-ncm--view-border 'top (etaf-ncm-color :line))
@@ -641,7 +670,7 @@ budget reserves."
                             :on-lyrics on-lyrics :on-add on-add
                             :on-like on-like :on-shuffle on-shuffle :on-stop on-stop :on-queue on-queue)
       (flex :flex-direction 'column :width 'stretch :height '(lh 3)
-        (etaf-ncm--view-transport :state state :repeat repeat :on-like on-like
+        (etaf-ncm--view-transport :playing playing :repeat repeat :on-like on-like
                                 :on-previous on-previous :on-toggle on-toggle :on-next on-next :on-repeat on-repeat)
         (etaf-ncm--view-progress :elapsed elapsed :duration duration
                                :on-seek on-seek))
@@ -656,7 +685,7 @@ budget reserves."
                             :on-shuffle on-shuffle :on-stop on-stop :on-queue on-queue)
       (flex :width 'stretch :height '(lh 1) :gap '((lh 0) (ch 2))
         (box :flex-grow 1 :flex-basis '(px 0) :min-width '(ch 0) :height '(lh 1)
-          (etaf-ncm--view-transport :state state :repeat repeat :compact t :on-like on-like
+          (etaf-ncm--view-transport :playing playing :repeat repeat :compact t :on-like on-like
                                   :on-previous on-previous :on-toggle on-toggle :on-next on-next :on-repeat on-repeat))
         (flex :width '(ch 24) :height '(lh 1) :flex-shrink 0 :flex-direction 'row
           (etaf-ncm--view-player-tools :lyrics lyrics :volume volume :compact t
