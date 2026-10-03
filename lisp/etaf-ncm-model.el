@@ -217,6 +217,7 @@ client persists in its state directory; function clients default to memory."
           ;; and is shown through the player bar's retained Hosts, so a write
           ;; here would republish the whole view once per second.
           :clock 0
+          :position-ref (etaf-ref 0 :name 'etaf-ncm-position)
           ;; (wall-clock . target) of a seek the backend has not applied yet.
           :seek-guard (etaf-ref nil :name 'etaf-ncm-seek-guard)
           :queue (etaf-ref nil :name 'etaf-ncm-queue)
@@ -287,80 +288,14 @@ that left the backend before the user's last command."
   (or (plist-get app :clock) 0))
 
 (defun etaf-ncm--set-clock (app seconds)
-  "Store SECONDS as APP's displayed position without publishing.
-Display goes through `etaf-ncm--publish-clock'."
-  (setf (plist-get app :clock) seconds))
-
-(defun etaf-ncm--ratio (value total)
-  "Return VALUE/TOTAL clamped to the closed interval from zero to one."
-  (let ((total (if (and (numberp total) (> total 0)) total 1)))
-    (max 0.0 (min 1.0 (/ (float (or value 0)) total)))))
-
-(defconst etaf-ncm--clock-host 'ncm-elapsed
-  "Retained Host that shows the played position on the player bar.")
-
-(defconst etaf-ncm--meter-host 'ncm-meter
-  "Retained Host that fills the player bar's progress meter.")
+  "Store SECONDS and publish the retained position source, not the whole status."
+  (setf (plist-get app :clock) seconds)
+  (etaf-ncm--write app :position-ref seconds))
 
 (defconst etaf-ncm--reply-volatile-keys '(:elapsed :as-of :state :liked :shuffle :repeat :volume)
   "Status fields that move with every backend reply, not with the track.
 Flag fields are displayed through their own retained host sources, so a reply
 that only moves them updates those hosts instead of republishing the view.")
-
-(defun etaf-ncm--runtime (app)
-  "Return APP's mounted runtime, or nil when nothing displays APP."
-  (let ((buffer (plist-get app :buffer)))
-    (and (buffer-live-p buffer) (etaf-runtime-for-buffer buffer))))
-
-(defun etaf-ncm--meter-percent (app seconds)
-  "Return the progress meter fill for SECONDS in APP, as a percentage."
-  (let ((duration (or (plist-get (etaf-ncm--read app :status) :duration) 0)))
-    (* 100.0 (etaf-ncm--ratio seconds duration))))
-
-(defun etaf-ncm--meter-width (ratio)
-  "Return the fractional filled width at RATIO."
-  (list '% (* 100.0 (etaf-ncm--ratio ratio 1))))
-
-(defun etaf-ncm--clock-line (app)
-  "Return the lyric line index APP shows for its displayed position, or nil."
-  (let* ((lyric (etaf-ncm--read app :lyric))
-         (lines (plist-get lyric :lines)))
-    (and lines (etaf-ncm--lyric-index lines (etaf-ncm--clock app)))))
-
-(defun etaf-ncm--update-clock-hosts (app seconds)
-  "Replace APP's elapsed label and progress fill with SECONDS.
-Both writes go through ETAF's retained Host boundary, so a playing second
-publishes without a View publication or layout work.  Return nil when APP has
-no mounted Runtime; the caller then republishes instead.  A rejected write
-signals through ETAF rather than being reported as a missing display."
-  (when-let* ((runtime (etaf-ncm--runtime app)))
-    (etaf-runtime-update-host-contents
-     runtime (list (cons etaf-ncm--clock-host (etaf-ncm--format-seconds seconds))))
-    (etaf-runtime-update-host-geometries
-     runtime (list (cons etaf-ncm--meter-host
-                        (list :width (list '% (round (etaf-ncm--meter-percent app seconds)))))))
-    t))
-
-(defun etaf-ncm--republish-clock (app seconds)
-  "Publish APP's whole view with SECONDS as the displayed position.
-Writing the status is what republishes: the view renders the playback facts
-and the position together, so the bar, the lyric panel and every reader of
-`:status' agree again."
-  (etaf-ncm--write app :status
-                   (plist-put (copy-sequence (or (etaf-ncm--read app :status) (list)))
-                              :elapsed seconds)))
-
-(defun etaf-ncm--publish-clock (app seconds)
-  "Show SECONDS as APP's displayed playback position.
-A playing second changes only the position, so the elapsed label and the
-progress meter are replaced through their retained Hosts and the view is left
-for the moments that really change it: a new lyric line, a seek, or a reply
-that carries more than a new position."
-  (let ((line (etaf-ncm--clock-line app)))
-    (etaf-ncm--set-clock app seconds)
-    (if (or (not (eql line (etaf-ncm--clock-line app)))
-            (not (etaf-ncm--update-clock-hosts app seconds)))
-        (etaf-ncm--republish-clock app seconds))))
 
 (defun etaf-ncm--status-steady (status)
   "Return STATUS without the fields that move with every backend reply."
@@ -1127,7 +1062,6 @@ seeks by offset: show the target immediately, then ask for the difference."
                  (< (- (float-time) (cdr last)) 0.8))
       (plist-put app :seek-commit (cons target (float-time)))
       (etaf-ncm--set-clock app target)
-      (etaf-ncm--republish-clock app target)
       ;; Hold the exact pointed target: the relative command rounds to whole
       ;; seconds, which would leave the guard one second off it.
       (etaf-ncm--write app :seek-guard (cons (+ (float-time) 3.0) target))
@@ -1301,11 +1235,12 @@ the progress bar run one backend latency behind the song."
 (defun etaf-ncm--apply-status (app status &optional requested-at)
   "Publish STATUS and fetch the lyric when the song changed.
 A reply that only moves the position is displayed through
-`etaf-ncm--publish-clock', so a playing second does not republish the view; a
+`etaf-ncm--set-clock', so a playing second does not republish the view; a
 reply that carries new playback facts publishes `:status'.  A reply that left
 the backend before the user's last command keeps that command's display for
 the fields it changed, so the bar does not jump back and forth.  REQUESTED-AT
 is when the answered status request was sent."
+  (etaf-batch
   (let* ((previous (etaf-ncm--read app :status))
          (song-id (plist-get status :song-id))
          (lyric (etaf-ncm--read app :lyric))
@@ -1351,7 +1286,7 @@ is when the answered status request was sent."
           ;; Only the volatile fields moved: update the retained flag Hosts and
           ;; the clock instead of republishing the whole view.
           (etaf-ncm--sync-flags app status protected)
-          (etaf-ncm--publish-clock app elapsed))
+          (etaf-ncm--set-clock app elapsed))
       (etaf-ncm--set-clock app elapsed)
       (etaf-ncm--sync-flags app status protected)
       (etaf-ncm--write app :status status))
@@ -1365,7 +1300,7 @@ is when the answered status request was sent."
                                (plist-get previous :queue-pos)))
                    (and (plist-get previous :song-id) song-id
                         (not (equal song-id (plist-get previous :song-id))))))
-      (etaf-ncm--request-queue app))))
+      (etaf-ncm--request-queue app)))))
 
 (defun etaf-ncm--status-flag (value)
   "Read a boolean or numeric status flag VALUE supplied by the backend."
@@ -1460,7 +1395,7 @@ second for the same second."
                  (not (etaf-ncm--poll-due-p app now)))
         (let* ((elapsed (+ (etaf-ncm--clock app) (- now last)))
                (duration (or (plist-get (etaf-ncm--read app :status) :duration) 0)))
-          (etaf-ncm--publish-clock
+          (etaf-ncm--set-clock
            app (if (> duration 0) (min elapsed duration) elapsed))))
       (when (etaf-ncm--poll-due-p app now)
         (etaf-ncm--request-status app))

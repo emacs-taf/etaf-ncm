@@ -140,6 +140,11 @@ renderer's focus cycling.")
                           :queue-pos 0 :queue-count 0 :shuffle nil :repeat nil))))
     (plist-put (copy-sequence status) :elapsed (etaf-ncm--clock model))))
 
+(defun etaf-ncm--status-source (model key)
+  "Return a retained projection of MODEL's status field KEY."
+  (etaf-computed (lambda () (plist-get (etaf-ncm--read model :status) key))
+                 :test #'equal :name (intern (format "ncm-status-%s" key))))
+
 (defun etaf-ncm--lyric-panel (model)
   "Return MODEL's lyric window as props for the lyrics View.
 Each visible line is (SECONDS TEXT ORDINAL); the ordinal is its position in
@@ -150,7 +155,7 @@ LRC repeats a timestamp."
          (budget (etaf-ncm--read model :lyric-rows))
          (trans (and (> budget 1) (plist-get lyric :trans)))
          (size (if trans (/ budget 2) budget))
-         (elapsed (etaf-ncm--clock model))
+         (elapsed (etaf-ncm--read model :position-ref))
          (index (and lines (etaf-ncm--lyric-index lines elapsed)))
          (window (and lines
                       (etaf-ncm--lyric-window lines index size)))
@@ -159,6 +164,13 @@ LRC repeats a timestamp."
                            for ordinal from start
                            collect (list (car line) (cdr line) ordinal))))
     (list :lines visible
+          :cells (if visible
+                     (cl-loop for line in visible
+                              append (append (list (list :text (nth 1 line)
+                                                         :current (equal (car line) (car (nth index lines)))))
+                                             (when-let* ((translation (cl-assoc (car line) trans :test #'=)))
+                                               (list (list :text (cdr translation) :translation t)))))
+                   (list (list :text (if (plist-get lyric :loading) "正在取歌词..." "这首歌没有歌词"))))
           :current (and lines (car (nth index lines)))
           :position (and index (1+ index))
           :total (and lines (length lines))
@@ -440,6 +452,15 @@ releases the polling timer and the session's pending backend requests."
                           (signal 'etaf-ncm-error
                                   '("etaf-ncm-app needs the :model from `etaf-ncm-create'"))))
              (palette (etaf-ncm--ref session :theme))
+             (track-title (etaf-ncm--status-source session :title))
+             (track-artist (etaf-ncm--status-source session :artist))
+             (track-vip (etaf-ncm--status-source session :vip))
+             (track-quality (etaf-ncm--status-source session :quality))
+             (track-duration (etaf-ncm--status-source session :duration))
+             (queue-count (etaf-ncm--status-source session :queue-count))
+             (position (etaf-ncm--ref session :position-ref))
+             (lyric-panel (etaf-computed (lambda () (etaf-ncm--lyric-panel session)) :test #'equal))
+             (queue-panel (etaf-computed (lambda () (etaf-ncm--queue-panel session)) :test #'equal))
              ;; The transport glyph reads the retained state source directly;
              ;; the view never reads the state itself, so a toggle publishes a
              ;; prepared text update instead of re-rendering the app.
@@ -568,7 +589,7 @@ releases the polling timer and the session's pending backend requests."
          :model session
          :groups etaf-ncm-sections
          :on-locate on-locate)
-        (flex :position 'absolute :left '(ch 0)
+        (flex :position 'absolute :z-index 0 :left '(ch 0)
               :top (list 'lh (pcase (etaf-ncm--read session :layout) ('wide 2) ('narrow 6) (_ 3)))
               :visibility (if (etaf-ncm--read session :error) 'visible 'hidden)
               :width 'stretch :height '(lh 1)
@@ -588,24 +609,15 @@ releases the polling timer and the session's pending backend requests."
        :layout (etaf-ncm--read session :layout)
        :columns (etaf-ncm--read session :columns)
        :window-rows (etaf-ncm--read session :window-rows)
-       :title (plist-get (etaf-ncm--view-status session) :title)
-       :artist (plist-get (etaf-ncm--view-status session) :artist)
-       :album selected-album
-       :loading (plist-get (etaf-ncm--lyric-panel session) :loading)
-       :lines (plist-get (etaf-ncm--lyric-panel session) :lines)
-       :trans (plist-get (etaf-ncm--lyric-panel session) :trans)
-       :current (plist-get (etaf-ncm--lyric-panel session) :current)
-       :position (plist-get (etaf-ncm--lyric-panel session) :position)
-       :total (plist-get (etaf-ncm--lyric-panel session) :total)
+       :title track-title :artist track-artist :album selected-album
+       :projection lyric-panel :rows (etaf-ncm--read session :lyric-rows)
        :on-switch on-switch-aside)
       (etaf-ncm--view-aside
        :kind 'queue :visible queue-visible
        :layout (etaf-ncm--read session :layout)
        :columns (etaf-ncm--read session :columns)
        :window-rows (etaf-ncm--read session :window-rows)
-       :entries (plist-get (etaf-ncm--queue-panel session) :entries)
-       :pos (plist-get (etaf-ncm--queue-panel session) :pos)
-       :count (plist-get (etaf-ncm--queue-panel session) :count)
+       :projection queue-panel :rows (etaf-ncm--read session :queue-rows)
        :on-switch on-switch-aside
        :on-jump on-jump-queue)
     (etaf-ncm--view-pane-tabs
@@ -618,25 +630,21 @@ releases the polling timer and the session's pending backend requests."
     ;; The bar reserves six lines (five in compact layouts); the positioned host
     ;; in flow and the absolute panel inside is the retained publication
     ;; address, so a control toggle updates its Hosts without a view rebuild.
-    (box :position 'relative :width 'stretch
+    (box :position 'relative :z-index 0 :width 'stretch
          :height (if (etaf-ncm--compact-layout-p session) '(lh 5) '(lh 6))
          :flex-shrink 0
       (etaf-ncm--view-player
        :compact (etaf-ncm--compact-layout-p session)
-       :title (plist-get (etaf-ncm--view-status session) :title)
-       :artist (plist-get (etaf-ncm--view-status session) :artist)
-       :vip (plist-get (etaf-ncm--view-status session) :vip)
-       :quality (plist-get (etaf-ncm--view-status session) :quality)
+       :title track-title :artist track-artist :vip track-vip :quality track-quality
        :playing playing
-       :elapsed (plist-get (etaf-ncm--view-status session) :elapsed)
-       :duration (plist-get (etaf-ncm--view-status session) :duration)
+       :elapsed position :duration track-duration
        :volume (etaf-ncm--ref session :volume-ref)
        :shuffle (etaf-ncm--ref session :shuffle-ref)
        :liked (etaf-ncm--ref session :liked-ref)
        :repeat (etaf-ncm--ref session :repeat-ref)
        :message (etaf-ncm--ref session :message)
        :lyrics lyrics-visible
-       :queue-count (plist-get (etaf-ncm--view-status session) :queue-count)
+       :queue-count queue-count
        :on-toggle on-toggle
        :on-next on-next
        :on-previous on-previous

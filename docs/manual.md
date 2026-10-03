@@ -299,9 +299,9 @@ checkout, state directory, Node.js binary or request budget.
 While a song is playing the player ticks once per `etaf-ncm-status-interval`
 (one second by default), advancing the local clock for a smooth progress bar and
 asking the backend for playback truth. A tick never overlaps the previous
-request. The elapsed label and the progress fill are updated in place through
-ETAF's retained Host updates, so a playing second does not republish the view;
-a tick that moves the lyric line does. The player bar itself is a retained
+request. The playing position is a retained source, so the elapsed label, the
+progress fill and the lyric window update in place through their Host getters
+and a playing second does not republish the view. The player bar itself is a retained
 panel: the play/pause pill, the heart, shuffle, repeat and the status message
 read their own reactive sources inside Host bindings, so pressing one of them
 publishes a retained update instead of rebuilding the view. The lyrics and

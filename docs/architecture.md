@@ -198,21 +198,19 @@ remain stable across motion and backend replies.
   never overlaps the previous request (`:status-in-flight`).  While a request is
   on its way the tick leaves the clock alone: the reply is the truth and a local
   guess would repaint the view for the same second.
-- The moving position lives in the session's `:clock` slot, not in a reactive
-  source: a playing second replaces the elapsed label and the progress meter
-  through their retained Hosts, so it commits one batched Ebox publication
-  instead of repainting the view.  A tick that crosses a lyric line republishes,
-  because the panel's current line moves with it.  `etaf-ncm-state` merges the
-  clock back into the reported `:status`, which keeps the public snapshot shape
-  unchanged.
+- The moving position is the session's retained `:position-ref` source;
+  `etaf-ncm--set-clock' stores the numeric slot and publishes that source
+  together.  A playing second therefore updates the elapsed label, the progress
+  fill and the lyric window through their existing Host getters instead of
+  writing a new `:status' and repainting the view.  `etaf-ncm-state' merges the
+  position back into the reported `:status', which keeps the public snapshot
+  shape unchanged.
 - The progress bar is an `etaf-range': a flow track paints the rail and gives
   the row its measurable width, and an absolutely positioned fill overlay above
-  it carries the played fraction. A playing second updates the elapsed label
-  (`etaf-runtime-update-host-contents') and the fill's width percentage
-  (`etaf-runtime-update-host-geometries'), both ETAF public retained updates:
-  no View publication, no per-tick layout pass, and an absolutely positioned
-  Host is the one shape Ebox accepts a width update on. The next ordinary View
-  publication supplies the same clock geometry.
+  it carries the played fraction. A playing second changes only the Range's
+  value source, so its Fill getter republishes the elapsed fraction without a
+  View publication or a per-tick layout pass. The next ordinary View publication
+  supplies the same clock geometry.
 - Idle: one check per `etaf-ncm-idle-poll-interval` (15 s).
 - A lyric is fetched only when the playing song id changes.
 - The queue list is read from the backend's queue file, not re-downloaded.

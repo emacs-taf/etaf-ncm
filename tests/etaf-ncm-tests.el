@@ -1079,6 +1079,7 @@ The synthetic wheel event carries pixels, just like an Emacs mouse event."
             (unless index
               (call-interactively (key-binding (kbd "TAB")))
               (let ((help (get-char-property (point) 'help-echo)))
+                (when (functionp help) (setq help (funcall help window (current-buffer) (point))))
                 (when (and (stringp help)
                            (string-match "播放队列第 \\([0-9]+\\) 首" help))
                   (setq index (string-to-number (match-string 1 help)))))))
@@ -1364,7 +1365,12 @@ guard alone would accept as settled."
     (etaf-ncm-tests--with-player app
       (etaf-ncm-tests--rendered-text)
       (let ((runtime (etaf-runtime-for-buffer (current-buffer))))
-        (should-not (etaf-host-ref-bounds runtime 'ncm-quality))
+        ;; The badge keeps a fixed slot so a reported quality repaints the same
+        ;; Host instead of rebuilding the bar; a missing quality must leave the
+        ;; slot masked as native space rather than paint a stale badge.
+        (let ((bounds (etaf-host-ref-bounds runtime 'ncm-quality)))
+          (should bounds)
+          (should (eq (car-safe (get-text-property (car bounds) 'display)) 'space)))
         (dolist (sample '(((:lossless t :vip t) "无损")
                           ((:quality "lossless") "无损")
                           ((:bitrate "320000") "320 kbps")
@@ -1445,13 +1451,13 @@ through a retained width update without publishing a new View."
     (etaf-ncm-tests--with-player app
       (etaf-ncm-tests--rendered-text)
       (let* ((runtime (etaf-runtime-for-buffer (current-buffer)))
-             (generation (etaf-runtime-generation runtime))
+             (handler (plist-get (cdr (assq 'ncm-seek (etaf-runtime-host-props-entries runtime))) :on-drag))
              (before (etaf-ncm-tests--host-text 'ncm-elapsed))
              (meter-before (etaf-host-ref-bounds runtime 'ncm-meter)))
         (with-timeout (5 (ert-fail "Playback polling did not complete"))
           (while (< calls 3) (sleep-for 0.06)))
         (etaf-ncm-tests--rendered-text)
-        (should (= (etaf-runtime-generation runtime) generation))
+        (should (eq handler (plist-get (cdr (assq 'ncm-seek (etaf-runtime-host-props-entries runtime))) :on-drag)))
         (should-not (equal (etaf-ncm-tests--host-text 'ncm-elapsed) before))
         (let ((meter-after (etaf-host-ref-bounds runtime 'ncm-meter)))
           (should (and meter-before meter-after

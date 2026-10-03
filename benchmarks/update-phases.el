@@ -82,7 +82,7 @@
                 (when (fboundp symbol) (etaf-ncm-benchmark--advise symbol)))
               (setq etaf-ncm-benchmark--counts nil)
               (let ((t0 (float-time)))
-                (etaf-ncm--publish-clock app 42)
+                (etaf-ncm--set-clock app 42)
                 (etaf-runtime-flush (etaf-runtime-for-buffer buffer))
                 (princ (format "one clock update: %d ms total\n"
                                (round (* 1000 (- (float-time) t0))))))

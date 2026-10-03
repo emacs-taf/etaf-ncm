@@ -41,7 +41,7 @@
                      (t0 (float-time)))
                 (if (eq kind 'selection)
                     (etaf-ncm-move-selection app 1)
-                  (etaf-ncm--publish-clock app (+ 61.4 index)))
+                  (etaf-ncm--set-clock app (+ 61.4 index)))
                 (etaf-runtime-flush (etaf-runtime-for-buffer buffer))
                 (push (round (* 1000 (- (float-time) t0))) costs)))
             (format "%-8s viewport=%sx%s rows=%s page=%s ms=%S"

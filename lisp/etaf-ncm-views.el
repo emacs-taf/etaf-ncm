@@ -75,14 +75,14 @@ over, one step above the panel it sits on."
 ;;; Primitive Views
 ;;; ---------------------------------------------------------------------------
 
-(etaf-define-component etaf-ncm--view-nav-item (&key icon label section entry-key badge on-press chip)
+(etaf-define-component etaf-ncm--view-nav-item (&key icon label section entry-key badge on-press chip help)
   "Render one library entry, retaining its active paint across navigation."
   :bindings ((active (etaf-computed (lambda () (eq (etaf-value section) entry-key)))))
   :view
   (flex :width (if chip '(ch 5) 'stretch) :height (if chip '(lh 1) '(lh 2)) :flex-direction 'column
         :role 'button :tab-index 0
        
-        :help-echo (or label "音乐库")
+        :help-echo (or help label "音乐库")
         :on-press on-press
     ;; A callbackless button here would block the cell's inherited keymap.
     (flex :width 'stretch :height '(lh 1) :gap '((lh 0) (ch 1))
@@ -120,7 +120,7 @@ the row is clicked, and ON-ACTION with INDEX plus the action key (`download' or
              (index (etaf-computed
                      (lambda () (or (plist-get (etaf-ncm--reactive-text row) :display-index) 0)))))
   :view
-  (grid :position 'absolute :left '(ch 0) :top (list 'lh offset)
+  (grid :position 'absolute :z-index 0 :left '(ch 0) :top (list 'lh offset)
         :width 'stretch :height '(lh 1) :role 'button :tab-index 0
         :visibility (if (etaf-ncm--reactive-text row) 'visible 'hidden)
         :grid-template-columns (if compact etaf-ncm--row-columns-compact
@@ -150,8 +150,9 @@ the row is clicked, and ON-ACTION with INDEX plus the action key (`download' or
                   (etaf-ncm-color :dim))
       ;; Both states belong to the same retained text Host. A hidden absolute
       ;; overlay has no initial composition target and poisons the fast cohort.
-      (text (expr (if (etaf-ncm--active-value playing) play-glyph
-                    (format "%2s" (etaf-ncm--active-value index))))))
+      (text (expr (let ((active (etaf-ncm--active-value playing))
+                        (number (etaf-ncm--active-value index)))
+                    (if active play-glyph (format "%2s" number))))))
     (box :height '(lh 1) :overflow 'hidden
       (text (expr (or (plist-get (etaf-ncm--reactive-text row) :name) ""))))
     (box :height '(lh 1) :overflow 'hidden :font-weight 'normal
@@ -239,7 +240,7 @@ sidebar instead of the whole application."
       (box :if (and (not compact) (not (eq group (car groups)))) :height '(lh 1))
       (etaf-ncm--view-nav-item :for (entry (cdr group)) :key (car entry)
         :icon (nth 2 entry)
-        :label (if compact "" (nth 1 entry))
+        :label (if compact "" (nth 1 entry)) :help (nth 1 entry)
         :section section :entry-key (car entry)
         :on-press (lambda () (funcall on-locate (car entry)))))
     (box :flex-grow 1 :flex-basis '(lh 0) :min-height '(lh 0))
@@ -267,7 +268,7 @@ session source itself, so a library switch repaints the chips only."
   :render
   (let ((section (etaf-ncm--ref model :section)))
     (etaf-view
-     (flex :position 'absolute :left '(ch 0) :top '(lh 4)
+     (flex :position 'absolute :z-index 0 :left '(ch 0) :top '(lh 4)
            :width 'stretch :height '(lh 2) :gap '((lh 0) (ch 1))
            :align-items 'center :overflow 'hidden
        (etaf-ncm--view-nav-item :for (entry (apply #'append (mapcar #'cdr groups))) :key (car entry)
@@ -287,7 +288,7 @@ change repaints the header instead of the whole application."
          (subtitle (etaf-ncm--ref model :subtitle))
          (query (etaf-ncm--read model :query)))
     (etaf-view
-  (column :position 'absolute :left '(ch 0) :top '(lh 0)
+  (column :position 'absolute :z-index 0 :left '(ch 0) :top '(lh 0)
           :width 'stretch :height (if compact '(lh 3) '(lh 2)) :item-gap '(lh 0)
     (flex :if compact :width 'stretch :height '(lh 1) :gap '((lh 0) (ch 1))
           :align-items 'center
@@ -405,14 +406,14 @@ inline action key."
                      (max 1 (- window-rows (pcase layout ('wide 12) ('narrow 14) (_ 11))))
                    (+ count 2))))
     (etaf-view
-     (flex :position 'absolute :left '(ch 0) :top (list 'lh top)
+     (flex :position 'absolute :z-index 0 :left '(ch 0) :top (list 'lh top)
            :flex-direction 'column :width 'stretch :height (list 'lh height)
            :min-height '(lh 0) :gap '((lh 0) (px 0)) :overflow 'hidden
-       (box :position 'absolute :left '(ch 0) :top '(lh 0)
+       (box :position 'absolute :z-index 0 :left '(ch 0) :top '(lh 0)
             :width 'stretch :height '(lh 6)
             :visibility (if (zerop (etaf-value visible)) 'visible 'hidden)
          (etaf-ncm--view-note :text empty-note))
-       (box :position 'absolute :left '(ch 0) :top '(lh 0)
+       (box :position 'absolute :z-index 0 :left '(ch 0) :top '(lh 0)
             :width 'stretch :height (list 'lh count)
          (etaf-ncm--view-row :for (offset offsets) :key offset
            :offset offset
@@ -422,7 +423,7 @@ inline action key."
            :compact compact
            :press on-press
            :on-action on-action))
-       (flex :position 'absolute :left '(ch 0) :top (list 'lh (max 0 (- height 2)))
+       (flex :position 'absolute :z-index 0 :left '(ch 0) :top (list 'lh (max 0 (- height 2)))
              :flex-direction 'column
              :visibility (if (etaf-value footer-visible) 'visible 'hidden)
              :width 'stretch :height '(lh 2)
@@ -466,7 +467,7 @@ of rebuilding the view."
      (box :position 'absolute :left (list 'ch left) :top '(lh 0)
           :width (list 'ch width) :height (if height (list 'lh height) '(% 100)) :z-index 0
           :visibility (if (etaf-value visible) 'visible 'hidden)
-       (flex :position 'absolute :left '(ch 0) :top '(lh 0)
+       (flex :position 'absolute :z-index 0 :left '(ch 0) :top '(lh 0)
              :flex-direction 'column :width 'stretch :height 'stretch
              :min-width '(ch 0) :min-height '(lh 0)
              :padding (if wide-p '((lh 1) (ch 2)) '((lh 0) (ch 1)))
@@ -510,95 +511,94 @@ paint never re-render when the other variant becomes visible."
          :on-press (lambda () (funcall on-switch 'queue))
       (text "播放队列"))))
 
-(etaf-define-component etaf-ncm--view-lyrics
-    (&key title artist album lines trans current position total loading)
-  "Render the lyric window LINES around CURRENT seconds.
-LINES is the visible slice of the parsed lyric and TRANS its translations."
+(etaf-define-component etaf-ncm--view-lyric-cell (&key projection index)
+  "Keep one physical lyric row while its text and current-line paint change."
+  :bindings ((cell (etaf-computed
+                   (lambda () (nth index (plist-get (etaf-value projection) :cells))) :test #'equal)))
   :view
+  (box :height '(lh 1) :overflow 'hidden
+       :color (let ((row (etaf-value cell)))
+                (etaf-ncm-color (cond ((plist-get row :current) :accent)
+                                      ((plist-get row :translation) :dim) (t :muted))))
+       :font-weight (if (plist-get (etaf-value cell) :current) 'bold 'normal)
+    (text (expr (let* ((row (etaf-value cell)) (text (or (plist-get row :text) "")))
+                  (if (plist-get row :translation) (propertize text 'face '(:height 0.85)) text))))))
+
+(etaf-define-component etaf-ncm--view-lyrics
+    (&key title artist album projection rows)
+  "Render retained metadata and a viewport-sized lyric row pool."
+  :render
+  (let ((offsets (and (> rows 0) (number-sequence 0 (1- rows)))))
+   (etaf-view
   (flex :flex-direction 'column :width 'stretch :flex-grow 1 :flex-basis '(lh 0)
         :min-height '(lh 0) :gap '((lh 0) (px 0)) :overflow 'hidden
     (flex :width 'stretch :gap '((lh 0) (ch 1)) :align-items 'center
       (etaf-ncm--view-cover :size '(ch 10))
       (column :flex-grow 1 :flex-basis '(px 0) :min-width '(ch 0) :item-gap '(lh 0)
         (box :height '(lh 1) :overflow 'hidden :font-weight 'bold
-          (text (expr (or title "还没有播放"))))
+          (text (expr (or (etaf-ncm--reactive-text title) "还没有播放"))))
         (box :height '(lh 1) :overflow 'hidden :color (etaf-ncm-color :muted)
-          (text (expr (or artist ""))))
+          (text (expr (or (etaf-ncm--reactive-text artist) ""))))
         (box :height '(lh 1) :overflow 'hidden :color (etaf-ncm-color :dim)
              :font-size 12
           (text (expr (or (etaf-ncm--reactive-text album) ""))))))
     (box :height '(lh 1))
-    (box :if loading :height '(lh 1) :color (etaf-ncm-color :dim)
-      (text "正在取歌词..."))
-    (box :if (and (not loading) (zerop (or total 0))) :height '(lh 1)
-         :color (etaf-ncm-color :dim)
-      (text "这首歌没有歌词"))
-    (flex :if lines :flex-direction 'column :width 'stretch :flex-grow 1
+    (flex :flex-direction 'column :width 'stretch :flex-grow 1
           :min-height '(lh 0) :gap '((lh 0) (px 0)) :overflow 'hidden
-      ;; The key is the line's ordinal, not its timestamp: a real LRC may
-      ;; repeat a timestamp and two lines must still keep distinct instances.
-      (column :for (line lines) :key (nth 2 line)
-              :width 'stretch :item-gap '(lh 0)
-        (box :height '(lh 1) :overflow 'hidden
-             :color (if (equal (car line) current)
-                        (etaf-ncm-color :accent)
-                      (etaf-ncm-color :muted))
-             :font-weight (if (equal (car line) current) 'bold 'normal)
-          (text (expr (or (cadr line) " "))))
-        (box :if (etaf-ncm--translation-for trans (car line))
-             :height '(lh 1) :overflow 'hidden
-             :color (etaf-ncm-color :dim) :font-size 12
-          (text (expr (or (etaf-ncm--translation-for trans (car line)) ""))))))
-    (box :if lines :width 'stretch :height '(lh 1) :color (etaf-ncm-color :dim)
+      (etaf-ncm--view-lyric-cell :for (index offsets) :key index :projection projection :index index))
+    (box :width 'stretch :height '(lh 1) :color (etaf-ncm-color :dim)
          :font-size 12 :text-align 'center
-      (text (expr (format "%s / %s" (or position 0) (or total 0)))))))
+      (text (expr (let ((data (etaf-value projection)))
+                    (if (plist-get data :lines)
+                        (format "%s / %s" (or (plist-get data :position) 0) (or (plist-get data :total) 0)) "")))))))))
 
-(etaf-define-component etaf-ncm--view-queue (&key entries pos count on-jump)
-  "Render queue ENTRIES around position POS.
-Each entry is (:index :name :right :current) from the player model."
+(etaf-define-component etaf-ncm--view-queue-cell (&key projection index on-jump)
+  "Render one retained queue slot, resolving its current identity on activation."
+  :bindings ((entry (etaf-computed (lambda () (nth index (plist-get (etaf-value projection) :entries))) :test #'equal))
+             (glyph (car (etaf-ui-icon-lines 'play :set 'svg :color (etaf-ncm-color :accent)))))
   :view
-  (flex :flex-direction 'column :width 'stretch :flex-grow 1 :flex-basis '(lh 0)
+  (flex :width 'stretch :height '(lh 1) :role 'button :tab-index 0
+        :visibility (if (etaf-value entry) 'visible 'hidden)
+        :help-echo (lambda (&rest _)
+                     (let ((row (etaf-value entry)))
+                       (when row (format "播放队列第 %s 首：%s" (plist-get row :index) (plist-get row :name)))))
+        :hover-style (etaf-ncm--hover-surface)
+        :gap '((lh 0) (ch 1)) :align-items 'center
+        :background-color (if (plist-get (etaf-value entry) :current)
+                              (etaf-ncm-color :accent-soft) (etaf-ncm-color :panel))
+        :color (if (plist-get (etaf-value entry) :current) (etaf-ncm-color :accent) (etaf-ncm-color :muted))
+        :font-weight (if (plist-get (etaf-value entry) :current) 'bold 'normal)
+        :on-press (lambda () (when-let* ((row (etaf-value entry))) (funcall on-jump (plist-get row :index))))
+    (box :width '(ch 5) :height '(lh 1) :color (etaf-ncm-color :dim)
+      (text (expr (let ((row (etaf-value entry)))
+                    (cond ((null row) "") ((plist-get row :current) glyph)
+                          (t (format "%s." (plist-get row :index))))))))
+    (box :flex-grow 1 :flex-basis '(px 0) :min-width '(ch 0) :height '(lh 1) :overflow 'hidden
+      (text (expr (or (plist-get (etaf-value entry) :name) ""))))
+    (box :width '(ch 5) :height '(lh 1) :text-align 'right :color (etaf-ncm-color :dim)
+      (text (expr (or (plist-get (etaf-value entry) :right) ""))))))
+
+(etaf-define-component etaf-ncm--view-queue (&key projection rows on-jump)
+  "Render a viewport-sized queue pool without replacing rows on every scroll."
+  :render
+  (let ((offsets (and (> rows 0) (number-sequence 0 (1- rows)))))
+   (etaf-view
+  (flex :position 'relative :flex-direction 'column :width 'stretch :flex-grow 1 :flex-basis '(lh 0)
         :min-height '(lh 0) :gap '((lh 0) (px 0)) :overflow 'hidden
     (column :width 'stretch :height '(lh 2) :item-gap '(lh 0)
       (text :font-weight 'bold "播放队列")
       (text :color (etaf-ncm-color :dim)
-            (expr (format "第 %s-%s 首 / 共 %s 首"
-                          (or (plist-get (car entries) :index) 0)
-                          (or (plist-get (car (last entries)) :index) 0)
-                          (or count 0)))))
-    (box :if (and (null entries) (zerop (or count 0)))
-         :height '(lh 1) :color (etaf-ncm-color :dim)
+            (expr (let* ((data (etaf-value projection)) (entries (plist-get data :entries)))
+                    (format "第 %s-%s 首 / 共 %s 首" (or (plist-get (car entries) :index) 0)
+                            (or (plist-get (car (last entries)) :index) 0) (or (plist-get data :count) 0))))))
+    (box :position 'absolute :z-index 0 :top '(lh 2) :left '(ch 0) :height '(lh 1)
+         :visibility (if (plist-get (etaf-value projection) :entries) 'hidden 'visible)
+         :color (etaf-ncm-color :dim)
       (text "队列是空的"))
-    (flex :for (entry entries) :key (plist-get entry :index)
-      :width 'stretch :height '(lh 1) :role 'button :tab-index 0
-     
-      :help-echo (format "播放队列第 %s 首：%s"
-                         (plist-get entry :index) (plist-get entry :name))
-      :hover-style (etaf-ncm--hover-surface)
-      :gap '((lh 0) (ch 1)) :align-items 'center
-      :background-color (and (plist-get entry :current)
-                             (etaf-ncm-color :accent-soft))
-      :color (if (plist-get entry :current)
-                 (etaf-ncm-color :accent)
-               (etaf-ncm-color :muted))
-      :font-weight (if (plist-get entry :current) 'bold 'normal)
-      :on-press (lambda () (funcall on-jump (plist-get entry :index)))
-      (box :width (list 'ch (max 3 (1+ (length (number-to-string (or count 0))))))
-           :height '(lh 1) :color (etaf-ncm-color :dim)
-        (etaf-ui-icon :if (plist-get entry :current) :name 'play :set 'svg :size 1.0
-                      :min-width 2 :color (etaf-ncm-color :accent))
-        (text :if (not (plist-get entry :current))
-              (expr (format "%s." (plist-get entry :index)))))
-      (box :flex-grow 1 :flex-basis '(px 0) :min-width '(ch 0) :height '(lh 1)
-           :overflow 'hidden
-        (text (expr (or (plist-get entry :name) ""))))
-      (box :width '(ch 5) :height '(lh 1) :text-align 'right
-           :color (etaf-ncm-color :dim)
-        (text (expr (or (plist-get entry :right) "")))))))
+    (etaf-ncm--view-queue-cell :for (index offsets) :key index :projection projection :index index :on-jump on-jump)))))
 
 (etaf-define-component etaf-ncm--view-aside
-    (&key kind visible layout columns window-rows title artist album lines trans current position total loading
-          entries pos count on-switch on-jump)
+    (&key kind visible layout columns window-rows title artist album projection rows on-switch on-jump)
   "Render one absolute aside variant: KIND is `lyrics' or `queue'.
 Both variants are panels of the root stage; VISIBLE is the reactive source
 that reveals this one, so switching panels publishes retained visibility
@@ -610,9 +610,11 @@ already stop the content above it."
   (let* ((aside-ch (cadr etaf-ncm--aside-width))
          (rail-ch (cadr etaf-ncm--rail-width))
          (columns (or columns 0))
-         (rows (or window-rows 0))
-         (height (and (> rows 0)
-                      (max 1 (- rows 1 (if (eq layout 'wide) 6 5)
+         ;; The panel spans the window; ROWS is the row budget each panel view
+         ;; keeps for its own pool, so this local must not shadow that prop.
+         (window-height (or window-rows 0))
+         (height (and (> window-height 0)
+                      (max 1 (- window-height 1 (if (eq layout 'wide) 6 5)
                                 (if (eq layout 'wide) 0 1)))))
          (left (cond ((eq layout 'wide) (max 0 (- columns aside-ch)))
                      ((eq layout 'medium) rail-ch)
@@ -631,10 +633,9 @@ already stop the content above it."
              :min-width '(ch 0) :gap '((lh 0) (px 0))
          (etaf-ncm--view-tabs :kind kind :on-switch on-switch)
          (etaf-ncm--view-lyrics :if (eq kind 'lyrics)
-           :title title :artist artist :album album :lines lines :trans trans
-           :current current :position position :total total :loading loading)
+           :title title :artist artist :album album :projection projection :rows rows)
          (etaf-ncm--view-queue :if (eq kind 'queue)
-           :entries entries :pos pos :count count :on-jump on-jump))))))
+           :projection projection :rows rows :on-jump on-jump))))))
 
 (defun etaf-ncm--reactive-text (text)
   "Return TEXT's current string, reading a reactive source in place.
@@ -677,7 +678,16 @@ pictures.  LABEL appends a small count or state next to the icon."
          :help-echo help :on-press on-press
       (text (expr (or glyph ""))))
     (box :if label :height '(lh 1) :color (etaf-ncm-color :muted)
-      (text (expr (or label ""))))))
+      (text (expr (format "%s" (or (etaf-ncm--reactive-text label) "")))))))
+
+(defun etaf-ncm--track-label (title artist vip)
+  "Format retained TITLE, ARTIST and VIP without changing dependency branches."
+  (let ((name (or (etaf-ncm--reactive-text title) ""))
+        (performer (or (etaf-ncm--reactive-text artist) ""))
+        (premium (etaf-ncm--active-value vip)))
+    (concat (if premium (propertize "VIP " 'face (list :foreground (etaf-ncm-color :accent) :weight 'normal)) "")
+            (if (string-empty-p name) "未在播放" name)
+            (if (string-empty-p performer) "" (concat " - " performer)))))
 
 (etaf-define-component etaf-ncm--view-track
     (&key title artist vip queue-count compact shuffle message liked
@@ -694,21 +704,15 @@ pictures.  LABEL appends a small count or state next to the icon."
       (etaf-ncm--view-cover :size '(ch 6) :height '(lh 3)))
     (box :if compact :height '(lh 1) :width 'stretch
          :min-width '(ch 0) :overflow 'hidden :font-weight 'bold
-      (text (expr (concat (if vip "VIP " "")
-                          (if (string-empty-p (or title "")) "未在播放" title)
-                          (if (string-empty-p (or artist "")) "" (concat " - " artist))))))
+      (text :ref 'ncm-track-title (expr (etaf-ncm--track-label title artist vip))))
     (flex :flex-direction 'column :width 'stretch :min-width '(ch 0)
           :gap '((lh 0) (ch 1)) :justify-content 'center
       (flex :if (not compact) :height '(lh 1) :width 'stretch
             :min-width '(ch 0)
             :gap '((lh 0) (ch 1)) :align-items 'center
-        (box :if vip :id "ncm-vip" :height '(lh 1) :color (etaf-ncm-color :accent)
-          (text "VIP"))
         (box :height '(lh 1) :flex-grow 1 :flex-basis '(px 0)
              :min-width '(ch 0) :overflow 'hidden :font-weight 'bold
-          (text (expr (concat (if (string-empty-p (or title "")) "未在播放" title)
-                              (if (string-empty-p (or artist "")) ""
-                                (concat " - " artist)))))))
+          (text :ref 'ncm-track-title (expr (etaf-ncm--track-label title artist vip)))))
       (flex :height '(lh 1) :gap '((lh 0) (ch 1)) :align-items 'center
         (etaf-ncm--view-control :ref 'ncm-plus :icon 'plus :help "加入队列 (a)" :on-press on-add)
         (etaf-ncm--view-control :ref 'ncm-like :icons '(heart . heart-filled)
@@ -719,7 +723,7 @@ pictures.  LABEL appends a small count or state next to the icon."
                                 :help "随机播放 (z)" :on-press on-shuffle)
         (etaf-ncm--view-control :ref 'ncm-stop :icon 'close :help "停止" :on-press on-stop)
         (etaf-ncm--view-control :ref 'ncm-queue :icon 'queue :help "显示播放列表" :on-press on-queue
-                                :label (format "%s" (or queue-count 0))))
+                                :label queue-count))
       (box :if (not compact) :height '(lh 1) :width 'stretch
            :overflow 'hidden :color (etaf-ncm-color :dim)
         (text (expr (or (etaf-ncm--reactive-text message) "")))))))
@@ -755,22 +759,24 @@ which a terminal-cell layout cannot round away."
 (etaf-define-component etaf-ncm--view-progress
     (&key elapsed duration on-seek)
   "Render elapsed, a draggable progress range and the duration."
-  :view
+  :render
+  (let ((maximum (max 1 (or (etaf-ncm--active-value duration) 0))))
+   (etaf-view
   (flex :height '(lh 1) :gap '((lh 0) (ch 1)) :align-items 'center
     (box :width '(ch 5) :height '(lh 1) :text-align 'right
          :color (etaf-ncm-color :dim) :flex-shrink 0
       (text :ref 'ncm-elapsed :id "ncm-elapsed"
-            (expr (etaf-ncm--format-seconds elapsed))))
+            (expr (etaf-ncm--format-seconds (etaf-ncm--active-value elapsed)))))
     (flex :flex-direction 'row :flex-grow 1 :flex-basis '(px 0) :min-width '(ch 0)
           :height '(lh 1)
-      (etaf-range :value elapsed :min 0 :max (max 1 (or duration 0))
+      (etaf-range :value elapsed :min 0 :max maximum
                   :ref 'ncm-seek :fill-ref 'ncm-meter
                   :aria-label "播放进度，点击或拖动跳转"
                   :color (etaf-ncm-color :accent)
                   :track-color (etaf-ncm-color :panel3)
                   :on-commit on-seek))
     (box :width '(ch 5) :height '(lh 1) :color (etaf-ncm-color :dim) :flex-shrink 0
-      (text (expr (etaf-ncm--format-seconds duration))))))
+      (text (expr (etaf-ncm--format-seconds (etaf-ncm--active-value duration)))))))))
 
 (etaf-define-component etaf-ncm--view-player-tools
     (&key quality lyrics volume compact on-lyrics on-queue on-volume)
@@ -782,11 +788,13 @@ Controls sit in separated groups so the right edge reads as three ideas
   :view
   (flex :height '(lh 1) :align-items 'center :flex-shrink 0
         :justify-content 'end :gap (if compact '((lh 0) (ch 0.5)) '((lh 0) (ch 1)))
-    (box :if (and quality (not compact)) :id "ncm-quality" :ref 'ncm-quality :height '(lh 1)
-         :flex-shrink 0 :min-width '(ch 4) :max-width '(ch 10) :overflow 'hidden :help-echo quality
+    (box :if (not compact) :id "ncm-quality" :ref 'ncm-quality :height '(lh 1)
+         :visibility (if (etaf-ncm--active-value quality) 'visible 'hidden)
+         :flex-shrink 0 :width '(ch 10) :overflow 'hidden
+         :help-echo (lambda (&rest _) (etaf-ncm--active-value quality))
          :color (etaf-ncm-color :muted)
-      (text (expr (format "[%s]" quality))))
-    (box :if (and quality (not compact)) :width '(ch 1) :height '(lh 1) (text " "))
+      (text (expr (let ((label (etaf-ncm--active-value quality))) (if label (format "[%s]" label) "")))))
+    (box :if (not compact) :width '(ch 1) :height '(lh 1) (text " "))
     (etaf-ncm--view-control :ref 'ncm-lyrics :icons '(lyrics . lyrics) :value lyrics
                             :help "显示歌词 (l)" :on-press on-lyrics)
     (etaf-ncm--view-control :ref 'ncm-queue-aside :icon 'queue :help "显示播放列表" :on-press on-queue)
