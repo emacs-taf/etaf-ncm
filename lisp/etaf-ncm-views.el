@@ -75,18 +75,18 @@ over, one step above the panel it sits on."
 ;;; Primitive Views
 ;;; ---------------------------------------------------------------------------
 
-(etaf-define-component etaf-ncm--view-nav-item (&key icon label section entry-key badge on-press)
+(etaf-define-component etaf-ncm--view-nav-item (&key icon label section entry-key badge on-press chip)
   "Render one library entry, retaining its active paint across navigation."
   :bindings ((active (etaf-computed (lambda () (eq (etaf-value section) entry-key)))))
   :view
-  (flex :width 'stretch :height '(lh 2) :flex-direction 'column
+  (flex :width (if chip '(ch 5) 'stretch) :height (if chip '(lh 1) '(lh 2)) :flex-direction 'column
         :role 'button :tab-index 0
        
         :help-echo (or label "音乐库")
         :on-press on-press
     ;; A callbackless button here would block the cell's inherited keymap.
     (flex :width 'stretch :height '(lh 1) :gap '((lh 0) (ch 1))
-          :align-items 'center :padding '((lh 0) (ch 2))
+          :align-items 'center :padding (if chip '((lh 0) (ch 1)) '((lh 0) (ch 2)))
           :hover-style (etaf-ncm--hover-surface)
           :background-color (if (etaf-value active) (etaf-ncm-color :accent-soft)
                               (etaf-ncm-color :panel))
@@ -96,16 +96,16 @@ over, one step above the panel it sits on."
                            :set 'svg :size 1.0 :min-width 3
                            :color (etaf-ncm-color :muted)
                            :on-color (etaf-ncm-color :accent))
-      (box :flex-grow 1 :flex-basis '(px 0) :min-width '(ch 0) :height '(lh 1)
+      (box :if (not chip) :flex-grow 1 :flex-basis '(px 0) :min-width '(ch 0) :height '(lh 1)
            :overflow 'hidden :font-weight 'normal
         (text (expr (or label ""))))
       (box :if badge :width '(ch 5) :height '(lh 1) :text-align 'right
            :font-weight 'normal :color (etaf-ncm-color :dim)
         (text (expr badge))))
-    (box :height '(lh 1))))
+    (box :if (not chip) :height '(lh 1))))
 
 (etaf-define-component etaf-ncm--view-row
-    (&key index offset row playing selection compact press on-action)
+    (&key offset row playing selection compact press on-action)
   "Render library ROW number INDEX, highlighted when SELECTION names it.
 ROW and PLAYING may be retained reactive sources; the row reads them inside
 its Host text and paint bindings, so a list reply updates prepared values
@@ -113,11 +113,16 @@ instead of rebuilding the row.  COMPACT drops the album and add-to-queue
 columns, which a narrow frame cannot show.  PRESS is called with INDEX when
 the row is clicked, and ON-ACTION with INDEX plus the action key (`download' or
 `queue') of the inline action the reader pressed."
-  :bindings ((downloaded (etaf-computed
-                          (lambda () (plist-get (etaf-ncm--reactive-text row) :downloaded)))))
+  :bindings ((play-glyph (car (etaf-ui-icon-lines 'play :set 'svg :size 1.0
+                                                  :color (etaf-ncm-color :accent))))
+             (downloaded (etaf-computed
+                          (lambda () (plist-get (etaf-ncm--reactive-text row) :downloaded))))
+             (index (etaf-computed
+                     (lambda () (or (plist-get (etaf-ncm--reactive-text row) :display-index) 0)))))
   :view
   (grid :position 'absolute :left '(ch 0) :top (list 'lh offset)
         :width 'stretch :height '(lh 1) :role 'button :tab-index 0
+        :visibility (if (etaf-ncm--reactive-text row) 'visible 'hidden)
         :grid-template-columns (if compact etaf-ncm--row-columns-compact
                                  etaf-ncm--row-columns)
         :gap '((lh 0) (ch 1)) :align-items 'center :padding '((lh 0) (ch 1))
@@ -125,7 +130,7 @@ the row is clicked, and ON-ACTION with INDEX plus the action key (`download' or
         ;; paint binding needs a declared value, and an absent background
         ;; cannot acquire a prepared slot.
         :background-color (let ((playing (etaf-ncm--active-value playing))
-                                (selected (eq (1- index) (etaf-value selection))))
+                                (selected (eq (1- (etaf-ncm--active-value index)) (etaf-value selection))))
                             (cond (playing (etaf-ncm-color :accent-soft))
                                   (selected (etaf-ncm-color :panel2))
                                   (t (etaf-ncm-color :bg))))
@@ -133,22 +138,20 @@ the row is clicked, and ON-ACTION with INDEX plus the action key (`download' or
                    (etaf-ncm-color :accent)
                  (etaf-ncm-color :ink))
         :font-weight (let ((playing (etaf-ncm--active-value playing))
-                           (selected (eq (1- index) (etaf-value selection))))
+                           (selected (eq (1- (etaf-ncm--active-value index)) (etaf-value selection))))
                        (if (or playing selected) 'bold 'normal))
         :hover-style (etaf-ncm--hover-surface)
         :help-echo "播放这一行"
-        :on-press (lambda () (funcall press index))
-    (box :position 'relative :width '(ch 3) :height '(lh 1) :justify-self 'end
-         :color (if (eq (1- index) (etaf-value selection))
+        :on-press (lambda () (when (etaf-ncm--reactive-text row)
+                               (funcall press (etaf-ncm--active-value index))))
+    (box :width '(ch 3) :height '(lh 1) :justify-self 'end
+         :color (if (eq (1- (etaf-ncm--active-value index)) (etaf-value selection))
                     (etaf-ncm-color :muted)
                   (etaf-ncm-color :dim))
-      ;; A glyph marker would fall back to a taller symbol font and grow the
-      ;; row; the shared SVG icon keeps the row at one line height.
-      (box :position 'absolute :left '(ch 1) :top '(lh 0) :height '(lh 1)
-           :visibility (if (etaf-ncm--active-value playing) 'visible 'hidden)
-        (etaf-ui-icon :name 'play :set 'svg :size 1.0 :min-width 2
-                      :color (etaf-ncm-color :accent)))
-      (text (expr (if (etaf-ncm--active-value playing) "" (format "%2s" index)))))
+      ;; Both states belong to the same retained text Host. A hidden absolute
+      ;; overlay has no initial composition target and poisons the fast cohort.
+      (text (expr (if (etaf-ncm--active-value playing) play-glyph
+                    (format "%2s" (etaf-ncm--active-value index))))))
     (box :height '(lh 1) :overflow 'hidden
       (text (expr (or (plist-get (etaf-ncm--reactive-text row) :name) ""))))
     (box :height '(lh 1) :overflow 'hidden :font-weight 'normal
@@ -172,12 +175,14 @@ the row is clicked, and ON-ACTION with INDEX plus the action key (`download' or
                            :color (etaf-ncm-color :dim)
                            :on-color (etaf-ncm-color :accent)
                            :help-echo "下载到本地（勾号表示已下载，点击可重新下载）"
-                           :on-press (lambda () (funcall on-action index 'download))))
+                           :on-press (lambda () (when (etaf-ncm--reactive-text row)
+                                                  (funcall on-action (etaf-ncm--active-value index) 'download)))))
     (box :if (not compact) :height '(lh 1) :justify-self 'center :min-width '(ch 2)
       (etaf-ui-icon :name 'plus :set 'svg :size 1.0 :min-width 3
                     :color (etaf-ncm-color :dim)
                     :help-echo "加入队列"
-                    :on-press (lambda () (funcall on-action index 'queue))))))
+                    :on-press (lambda () (when (etaf-ncm--reactive-text row)
+                                           (funcall on-action (etaf-ncm--active-value index) 'queue)))))))
 
 (etaf-define-component etaf-ncm--view-note (&key text)
   "Render TEXT as a quiet placeholder filling the content area.
@@ -260,23 +265,15 @@ The strip replaces the sidebar: every library stays one press away while the
 header keeps showing the current library's name.  The component reads the
 session source itself, so a library switch repaints the chips only."
   :render
-  (let* ((section (etaf-ncm--read model :section)))
+  (let ((section (etaf-ncm--ref model :section)))
     (etaf-view
-  (flex :width 'stretch :height '(lh 2) :gap '((lh 0) (ch 1))
-        :align-items 'center :overflow 'hidden
-    (flex :for (entry (apply #'append (mapcar #'cdr groups))) :key (car entry)
-      :height '(lh 1) :align-items 'center :padding '((lh 0) (ch 1))
-      :role 'button :tab-index 0
-     
-      :hover-style (etaf-ncm--hover-surface)
-      :help-echo (or (nth 1 entry) "音乐库")
-      :background-color (and (eq (car entry) section) (etaf-ncm-color :accent-soft))
-      :color (if (eq (car entry) section) (etaf-ncm-color :accent) (etaf-ncm-color :dim))
-      :on-press (lambda () (funcall on-locate (car entry)))
-      (etaf-ui-icon :name (or (nth 2 entry) 'music) :set 'svg :size 1.0 :min-width 3
-                    :color (if (eq (car entry) section)
-                               (etaf-ncm-color :accent)
-                             (etaf-ncm-color :dim))))))))
+     (flex :position 'absolute :left '(ch 0) :top '(lh 4)
+           :width 'stretch :height '(lh 2) :gap '((lh 0) (ch 1))
+           :align-items 'center :overflow 'hidden
+       (etaf-ncm--view-nav-item :for (entry (apply #'append (mapcar #'cdr groups))) :key (car entry)
+         :chip t :icon (nth 2 entry) :label (nth 1 entry)
+         :section section :entry-key (car entry)
+         :on-press (lambda () (funcall on-locate (car entry))))))))
 
 (etaf-define-component etaf-ncm--view-header
     (&key model compact on-search on-play-library on-refresh)
@@ -290,7 +287,8 @@ change repaints the header instead of the whole application."
          (subtitle (etaf-ncm--ref model :subtitle))
          (query (etaf-ncm--read model :query)))
     (etaf-view
-  (column :width 'stretch :height (if compact '(lh 3) '(lh 2)) :item-gap '(lh 0)
+  (column :position 'absolute :left '(ch 0) :top '(lh 0)
+          :width 'stretch :height (if compact '(lh 3) '(lh 2)) :item-gap '(lh 0)
     (flex :if compact :width 'stretch :height '(lh 1) :gap '((lh 0) (ch 1))
           :align-items 'center
       (box :flex-grow 1 :flex-basis '(px 0) :min-width '(ch 0) :height '(lh 1)
@@ -307,7 +305,7 @@ change repaints the header instead of the whole application."
         (etaf-text-input :value query :label "搜索"
                          :placeholder "搜索歌曲、歌手、歌单或专辑"
                          :hide-label t :on-change on-search))
-      (box :if (etaf-value playable)
+      (box :visibility (if (etaf-value playable) 'visible 'hidden)
         (etaf-button :label "▶ 播放全部" :variant 'primary :pointer 'hand
                      :help-echo "播放整个列表" :on-press on-play-library)))
     (flex :if (not compact) :width 'stretch :height '(lh 2)
@@ -321,7 +319,7 @@ change repaints the header instead of the whole application."
         (etaf-text-input :value query :label "搜索"
                          :placeholder "搜索歌曲、歌手、歌单或专辑"
                          :hide-label t :on-change on-search))
-      (box :if (etaf-value playable)
+      (box :visibility (if (etaf-value playable) 'visible 'hidden)
         (etaf-button :label "播放全部" :variant 'primary :pointer 'hand
                      :help-echo "播放整个列表" :on-press on-play-library))
       (etaf-button :label "换一批" :variant 'ghost
@@ -392,33 +390,42 @@ inline action key."
   :render
   (let* ((slots (plist-get model :row-slots))
          (playing (plist-get model :row-playing))
-         (visible (etaf-value (etaf-ncm--ref model :visible-count)))
-         (start (etaf-value (etaf-ncm--ref model :window-start)))
-         (count (max 0 (min visible (length slots))))
+         (visible (etaf-ncm--ref model :visible-count))
+         (count (min (etaf-ncm--read model :page-size) (length slots)))
          (offsets (and (> count 0) (number-sequence 0 (1- count))))
          (page-label (etaf-ncm--ref model :page-label))
          (loaded-label (etaf-ncm--ref model :loaded-label))
          (empty-note (etaf-ncm--ref model :empty-note))
          (footer-visible (etaf-ncm--ref model :footer-visible))
-         (more-visible (etaf-ncm--ref model :more-visible)))
+         (more-visible (etaf-ncm--ref model :more-visible))
+         (layout (etaf-ncm--read model :layout))
+         (window-rows (etaf-ncm--read model :window-rows))
+         (top (pcase layout ('wide 3) ('narrow 7) (_ 4)))
+         (height (if window-rows
+                     (max 1 (- window-rows (pcase layout ('wide 12) ('narrow 14) (_ 11))))
+                   (+ count 2))))
     (etaf-view
-     (flex :flex-direction 'column :width 'stretch :flex-grow 1 :flex-basis '(lh 0)
+     (flex :position 'absolute :left '(ch 0) :top (list 'lh top)
+           :flex-direction 'column :width 'stretch :height (list 'lh height)
            :min-height '(lh 0) :gap '((lh 0) (px 0)) :overflow 'hidden
-       (etaf-ncm--view-note :if (zerop count) :text empty-note)
-       (box :position 'relative :width 'stretch :height (list 'lh count)
+       (box :position 'absolute :left '(ch 0) :top '(lh 0)
+            :width 'stretch :height '(lh 6)
+            :visibility (if (zerop (etaf-value visible)) 'visible 'hidden)
+         (etaf-ncm--view-note :text empty-note))
+       (box :position 'absolute :left '(ch 0) :top '(lh 0)
+            :width 'stretch :height (list 'lh count)
          (etaf-ncm--view-row :for (offset offsets) :key offset
-           :index (1+ (+ start offset)) :offset offset
+           :offset offset
            :row (aref slots offset)
            :playing (aref playing offset)
            :selection selection
            :compact compact
            :press on-press
            :on-action on-action))
-       (box :if (not (zerop count)) :flex-grow 1 :flex-basis '(lh 0)
-            :min-height '(lh 0))
-       (flex :if (etaf-value footer-visible) :flex-direction 'column
-             :width 'stretch
-             :height (if (etaf-value more-visible) '(lh 2) '(lh 1))
+       (flex :position 'absolute :left '(ch 0) :top (list 'lh (max 0 (- height 2)))
+             :flex-direction 'column
+             :visibility (if (etaf-value footer-visible) 'visible 'hidden)
+             :width 'stretch :height '(lh 2)
              :flex-shrink 0 :gap '((lh 0) (px 0))
              :color (etaf-ncm-color :dim) :font-size 12
          (flex :width 'stretch :height '(lh 1) :gap '((lh 0) (ch 2))
@@ -427,7 +434,8 @@ inline action key."
            (box :if (not compact) :height '(lh 1) :overflow 'hidden
                 :flex-grow 1 :flex-basis '(px 0) :min-width '(ch 0)
              (text "j/k 或滚轮选择 · 双击播放 · a 入队 · d 下载 · / 搜索 · l 歌词 · ? 帮助")))
-         (box :if (etaf-value more-visible) :height '(lh 1)
+         (box :height '(lh 1)
+              :visibility (if (and (etaf-value footer-visible) (etaf-value more-visible)) 'visible 'hidden)
            (text (expr (etaf-ncm--reactive-text loaded-label)))))))))
 
 (etaf-define-component etaf-ncm--view-list-panel
@@ -458,7 +466,8 @@ of rebuilding the view."
      (box :position 'absolute :left (list 'ch left) :top '(lh 0)
           :width (list 'ch width) :height (if height (list 'lh height) '(% 100)) :z-index 0
           :visibility (if (etaf-value visible) 'visible 'hidden)
-       (flex :flex-direction 'column :width 'stretch :height 'stretch
+       (flex :position 'absolute :left '(ch 0) :top '(lh 0)
+             :flex-direction 'column :width 'stretch :height 'stretch
              :min-width '(ch 0) :min-height '(lh 0)
              :padding (if wide-p '((lh 1) (ch 2)) '((lh 0) (ch 1)))
              :gap '((lh 1) (px 0))
@@ -768,6 +777,8 @@ which a terminal-cell layout cannot round away."
   "Render the reported quality, pane controls and a draggable volume range.
 Controls sit in separated groups so the right edge reads as three ideas
 (quality badge, pane switches, volume) instead of one crowded line."
+  :bindings ((muted (etaf-computed
+                    (lambda () (zerop (or (etaf-ncm--active-value volume) 0))))))
   :view
   (flex :height '(lh 1) :align-items 'center :flex-shrink 0
         :justify-content 'end :gap (if compact '((lh 0) (ch 0.5)) '((lh 0) (ch 1)))
@@ -780,8 +791,8 @@ Controls sit in separated groups so the right edge reads as three ideas
                             :help "显示歌词 (l)" :on-press on-lyrics)
     (etaf-ncm--view-control :ref 'ncm-queue-aside :icon 'queue :help "显示播放列表" :on-press on-queue)
     (box :width '(ch 1) :height '(lh 1) (text " "))
-    (etaf-ui-icon :name (if (and (numberp volume) (zerop volume)) 'volume-mute 'volume)
-                  :set 'svg :size 0.9 :color (etaf-ncm-color :muted) :min-width 2)
+    (etaf-ui-toggle-icon :value muted :off 'volume :on 'volume-mute
+                         :set 'svg :size 0.9 :color (etaf-ncm-color :muted) :min-width 2)
     (flex :flex-direction 'row :width (if compact '(ch 8) '(ch 12)) :height '(lh 1)
           :flex-shrink 0
       (etaf-range :value (or volume 0) :min 0 :max 100 :ref 'ncm-volume
@@ -792,7 +803,7 @@ Controls sit in separated groups so the right edge reads as three ideas
                   :on-commit on-volume))
     (box :width '(ch 4) :height '(lh 1) :text-align 'right
          :color (etaf-ncm-color :dim)
-      (text (expr (format "%d%%" (or volume 0)))))))
+      (text (expr (format "%d%%" (or (etaf-ncm--active-value volume) 0)))))))
 
 (etaf-define-component etaf-ncm--view-player
     (&key title artist vip quality playing elapsed duration volume shuffle repeat lyrics message

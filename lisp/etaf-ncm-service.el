@@ -137,6 +137,85 @@ requests, or 0 when CLIENT is not a subprocess client."
       (setf (etaf-ncm--client-pending client) nil))
     count))
 
+(defconst etaf-ncm--browse-resources
+  '((:daily . "daily") (:liked . "liked") (:fm . "fm") (:recent . "recent")
+    (:playlists . "myplaylists") (:charts . "charts") (:albums . "myalbums")
+    (:artists . "myartists") (:podcasts . "podcasts"))
+  "Library resources served by `netease-api.mjs'.")
+
+(defconst etaf-ncm--cache-byte-limit (* 4 1024 1024)
+  "Maximum size of the disposable local library snapshot.")
+
+(defun etaf-ncm--client-cache-file (client)
+  "Return CLIENT's local snapshot path; function clients default to memory."
+  (when (etaf-ncm--client-p client)
+    (expand-file-name "library-cache.eld" (etaf-ncm--client-state-directory client))))
+
+(defun etaf-ncm--client-cache-identity (client)
+  "Bind snapshots to CLIENT's credentials without storing credentials."
+  (when (etaf-ncm--client-p client)
+    (let ((file (expand-file-name "config.json" (etaf-ncm--client-state-directory client))))
+      (when (file-readable-p file)
+        (with-temp-buffer
+          (insert-file-contents-literally file)
+          (secure-hash 'sha256 (current-buffer)))))))
+
+(defun etaf-ncm--cache-read (file identity)
+  "Read bounded snapshot FILE for IDENTITY as data, never executable Lisp.
+Missing, incompatible, corrupt and other-account snapshots are cache misses."
+  (when (and file (not (file-remote-p file)) (file-readable-p file))
+    (condition-case nil
+        (when (<= (file-attribute-size (file-attributes file)) etaf-ncm--cache-byte-limit)
+          (with-temp-buffer
+            (insert-file-contents file)
+            (let* ((read-circle nil)
+                   (data (read (current-buffer))))
+              (when (and (proper-list-p data) (equal (plist-get data :schema) 1)
+                         (equal (plist-get data :identity) identity)
+                         (proper-list-p (plist-get data :entries))
+                         (<= (length (plist-get data :entries)) 16))
+                (cl-remove-if-not
+                 (lambda (entry)
+                   (and (proper-list-p entry)
+                        (let ((key (plist-get entry :key)))
+                          (and (proper-list-p key) (= (length key) 2)
+                               (eq (car key) :browse)
+                               (assq (cadr key) etaf-ncm--browse-resources)))
+                        (proper-list-p (plist-get entry :rows))
+                        (numberp (plist-get entry :total)) (>= (plist-get entry :total) 0)
+                        (numberp (plist-get entry :at)) (>= (plist-get entry :at) 0)))
+                 (plist-get data :entries))))))
+      (error nil))))
+
+(defun etaf-ncm--cache-write (file identity entries)
+  "Atomically save ENTRIES to FILE for IDENTITY with private permissions.
+A second app's newer entries win over this app's older snapshot."
+  (when (file-remote-p file)
+    (signal 'etaf-ncm-error '("Library snapshots require a local file")))
+  (let ((table (make-hash-table :test 'equal)) temporary)
+    (dolist (entry (append (etaf-ncm--cache-read file identity) entries))
+      (let* ((key (plist-get entry :key)) (old (gethash key table)))
+        (when (and (numberp (plist-get entry :at))
+                   (or (not (numberp (plist-get old :at)))
+                       (>= (plist-get entry :at) (plist-get old :at))))
+          (puthash key entry table))))
+    (with-temp-buffer
+      (let ((print-length nil) (print-level nil) (print-circle nil))
+        (prin1 (list :schema 1 :identity identity
+                     :entries (hash-table-values table)) (current-buffer)))
+      (when (> (string-bytes (buffer-string)) etaf-ncm--cache-byte-limit)
+        (signal 'etaf-ncm-error '("Library snapshot exceeds the size limit")))
+      (make-directory (file-name-directory file) t)
+      (unwind-protect
+          (progn
+            (setq temporary (make-temp-file (concat file ".")))
+            (set-file-modes temporary #o600)
+            (let ((coding-system-for-write 'utf-8-unix))
+              (write-region (point-min) (point-max) temporary nil 'silent))
+            (rename-file temporary file t)
+            (setq temporary nil))
+        (when (and temporary (file-exists-p temporary)) (delete-file temporary))))))
+
 (defun etaf-ncm-parse-lyric (text)
   "Parse LRC TEXT into a list of (SECONDS . LINE) ordered by SECONDS.
 Lines without a timestamp are dropped, empty ones are kept so pauses in the
@@ -162,12 +241,6 @@ song stay visible.  TEXT may be nil."
 ;;; ---------------------------------------------------------------------------
 ;;; Request translation
 ;;; ---------------------------------------------------------------------------
-
-(defconst etaf-ncm--browse-resources
-  '((:daily . "daily") (:liked . "liked") (:fm . "fm") (:recent . "recent")
-    (:playlists . "myplaylists") (:charts . "charts") (:albums . "myalbums")
-    (:artists . "myartists") (:podcasts . "podcasts"))
-  "Library resources served by `netease-api.mjs'.")
 
 (defconst etaf-ncm--play-commands
   '((:daily . "daily") (:liked . "liked") (:fm . "fm") (:playlist . "playlist")

@@ -11,6 +11,26 @@
   "support": [],
   "cases": [
     {
+      "name": "etaf-ncm-tests-library-snapshot-survives-restart",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "Restore populated and empty sidebar snapshots without network calls; keep file private and reject another account."
+    },
+    {
+      "name": "etaf-ncm-tests-snapshot-failure-is-a-cache-miss",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "Corrupt, oversized and incompatible snapshots fail open without evaluating their contents."
+    },
+    {
+      "name": "etaf-ncm-tests-library-loads-are-deduplicated-and-isolated",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "Rapid navigation shares per-key requests; offline and disposed callbacks preserve visible cached data."
+    },
+    {
+      "name": "etaf-ncm-tests-background-diff-preserves-identities",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "An unchanged background reply leaves the GUI publication revision unchanged; changed replies and revisits preserve selected song and scroll anchor."
+    },
+    {
       "name": "etaf-ncm-tests-new-session-is-headless",
       "file": "tests/etaf-ncm-tests.el",
       "purpose": "A session built without a buffer starts on the daily library, shows the lyric panel and sends no request."
@@ -168,7 +188,7 @@
     {
       "name": "etaf-ncm-tests-library-total-survives-cache-and-refresh",
       "file": "tests/etaf-ncm-tests.el",
-      "purpose": "A partial library displays loaded and true totals, preserves them through cache hits, updates totals even with identical rows, reports zero loaded rows honestly, and clears counts after a failed foreground reload."
+      "purpose": "A partial library displays loaded and true totals, preserves them through cache hits, updates totals even with identical rows, reports zero loaded rows honestly, and preserves cached counts after a failed refresh."
     },
     {
       "name": "etaf-ncm-tests-long-library-keys-show-one-based-ranges",

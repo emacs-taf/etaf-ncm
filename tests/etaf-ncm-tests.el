@@ -609,10 +609,114 @@ The background reply must not move the reader's selection."
       (should-not (plist-get state :loading))
       (should (equal (plist-get state :title) "每日推荐")))
     (etaf-ncm-move-selection app 4)
-    (funcall (cdr (car deferred))
+    (should-not deferred) ; Navigation does not launch a refresh process.
+    (etaf-ncm-refresh app)
+    (funcall (cdr (seq-find (lambda (entry) (eq (plist-get (car entry) :op) :browse)) deferred))
              (list :ok (etaf-ncm-tests--fixture "daily")))
     (should (= (plist-get (etaf-ncm-state app) :selection) 4))
     (should (= (plist-get (etaf-ncm-state app) :rows-total) 12))))
+
+(ert-deftest etaf-ncm-tests-library-snapshot-survives-restart ()
+  "A new offline session restores populated and empty libraries before mounting."
+  (let* ((directory (make-temp-file "ncm-snapshot-" t))
+         (file (expand-file-name "library.eld" directory)) calls
+         (client (lambda (request callback)
+                   (if (eq (plist-get request :resource) :albums)
+                       (funcall callback '(:ok (:albums nil :total 0)))
+                     (etaf-ncm-tests--client request callback))))
+         (app (etaf-ncm-create :client client :cache-file file)))
+    (unwind-protect
+        (progn
+          (etaf-ncm-tests--with-player app
+            (etaf-ncm-locate app :liked)
+            (etaf-ncm-locate app :albums))
+          (should (= #o600 (logand #o777 (file-modes file))))
+          (let ((restored (etaf-ncm-create
+                           :cache-file file :client (lambda (request _callback) (push request calls)))))
+            (should (= 12 (plist-get (etaf-ncm-state restored) :rows-total)))
+            (etaf-ncm-locate restored :liked)
+            (should (> (plist-get (etaf-ncm-state restored) :rows-total) 0))
+            (etaf-ncm-locate restored :albums)
+            (should (= 0 (plist-get (etaf-ncm-state restored) :rows-total)))
+            (should-not (plist-get (etaf-ncm-state restored) :loading))
+            (should-not calls))
+          (with-temp-file (expand-file-name "config.json" directory)
+            (insert "{\"cookie\":\"fake-other-account\"}"))
+          (let ((other (etaf-ncm-create :cache-file file
+                                        :client (etaf-ncm-make-client :state-directory directory))))
+            (should (= 0 (plist-get (etaf-ncm-state other) :rows-total)))))
+      (delete-directory directory t))))
+
+(ert-deftest etaf-ncm-tests-snapshot-failure-is-a-cache-miss ()
+  "Corrupt, oversized and incompatible snapshots never break startup."
+  (let* ((directory (make-temp-file "ncm-bad-snapshot-" t))
+         (file (expand-file-name "library.eld" directory)))
+    (unwind-protect
+        (progn
+          (dolist (text '("(" "#.(error \"must not run\")" "(:schema 99 :entries nil)"))
+            (with-temp-file file (insert text))
+            (let ((app (etaf-ncm-create :client (lambda (_r _cb)) :cache-file file)))
+              (should (= 0 (plist-get (etaf-ncm-state app) :rows-total)))))
+          (with-temp-file file (insert (make-string (1+ (* 4 1024 1024)) ?x)))
+          (let ((app (etaf-ncm-create :client (lambda (_r _cb)) :cache-file file)))
+            (should (= 0 (plist-get (etaf-ncm-state app) :rows-total)))))
+      (delete-directory directory t))))
+
+(ert-deftest etaf-ncm-tests-library-loads-are-deduplicated-and-isolated ()
+  "Rapid navigation shares per-key work; late replies never replace another page."
+  (let* (pending
+         (app (etaf-ncm-create :client (lambda (r cb)
+                                        (if (eq (plist-get r :op) :browse)
+                                            (push (cons r cb) pending)
+                                          (funcall cb '(:ok nil)))))))
+    (etaf-ncm-locate app :daily)
+    (etaf-ncm-locate app :liked)
+    (etaf-ncm-locate app :daily)
+    (should (= 2 (length pending)))
+    (funcall (cdar pending) (list :ok (etaf-ncm-tests--fixture "daily")))
+    (should (= 0 (plist-get (etaf-ncm-state app) :rows-total)))
+    (funcall (cdr (cadr pending)) (list :ok (etaf-ncm-tests--fixture "daily")))
+    (should (= 12 (plist-get (etaf-ncm-state app) :rows-total)))
+    (let ((rows (plist-get (etaf-ncm-state app) :items)))
+      (etaf-ncm-refresh app)
+      (etaf-ncm-refresh app)
+      (should (= 3 (length pending)))
+      (funcall (cdar pending) '(:error "offline" :code "network"))
+      (should (equal rows (plist-get (etaf-ncm-state app) :items)))
+      (should-not (plist-get (etaf-ncm-state app) :error))
+      (etaf-ncm-tests--with-player app nil)
+      (funcall (cdar pending) '(:ok (:songs nil :total 0)))
+      (should (equal rows (plist-get (etaf-ncm-state app) :items))))))
+
+(ert-deftest etaf-ncm-tests-background-diff-preserves-identities ()
+  "Equal replies skip row work; insertion preserves selected song and viewport."
+  (let* ((songs (etaf-ncm-tests--songs 60)) deferred pending
+         (app (etaf-ncm-create :client (lambda (r cb)
+                                        (if (and deferred (eq (plist-get r :op) :browse))
+                                            (setq pending cb)
+                                          (funcall cb (if (eq (plist-get r :op) :browse)
+                                                          (list :ok (list :songs songs :total (length songs)))
+                                                        '(:ok nil))))))))
+    (etaf-ncm-tests--with-player app
+      (etaf-ncm-move-selection app 20)
+      (let* ((runtime (etaf-runtime-for-buffer (current-buffer)))
+             (start (plist-get (etaf-ncm-state app) :window-start)))
+        (setq deferred t)
+        (etaf-ncm-refresh app)
+        (etaf-runtime-flush runtime)
+        (let ((revision (plist-get (etaf-runtime-snapshot runtime) :revision)))
+          (funcall pending (list :ok (list :songs songs :total (length songs))))
+          (etaf-runtime-flush runtime)
+          (should (= revision (plist-get (etaf-runtime-snapshot runtime) :revision))))
+        (setq deferred nil)
+        (setq songs (cons '(:id 99 :name "新歌" :artist "歌手" :ms 1000) songs))
+        (etaf-ncm-refresh app)
+        (should (= 21 (plist-get (etaf-ncm-state app) :selection)))
+        (should (= (1+ start) (plist-get (etaf-ncm-state app) :window-start)))
+        (etaf-ncm-locate app :liked)
+        (etaf-ncm-locate app :daily)
+        (should (= 21 (plist-get (etaf-ncm-state app) :selection)))
+        (should (= (1+ start) (plist-get (etaf-ncm-state app) :window-start)))))))
 
 ;;; ---------------------------------------------------------------------------
 ;;; Long libraries and panel interaction
@@ -685,7 +789,7 @@ The synthetic wheel event carries pixels, just like an Emacs mouse event."
       (should (= (plist-get (etaf-ncm-state app) :list-total) 500)))))
 
 (ert-deftest etaf-ncm-tests-library-total-survives-cache-and-refresh ()
-  "Partial totals survive cache hits, change without new rows, and clear on error."
+  "Partial totals survive cache hits, change without new rows, and survive errors."
   (let* ((songs (etaf-ncm-tests--songs 100))
          pending defer
          (app (etaf-ncm-create
@@ -707,6 +811,7 @@ The synthetic wheel event carries pixels, just like an Emacs mouse event."
       (should-not (plist-get (etaf-ncm-state app) :loading))
       (should (= (plist-get (etaf-ncm-state app) :list-total) 500))
       (etaf-ncm-move-selection app 99)
+      (etaf-ncm-refresh app)
       (funcall pending (list :ok (list :songs songs :total 501)))
       (should (= (plist-get (etaf-ncm-state app) :selection) 99))
       (should (= (plist-get (etaf-ncm-state app) :list-total) 501))
@@ -720,7 +825,7 @@ The synthetic wheel event carries pixels, just like an Emacs mouse event."
                               (etaf-ncm-tests--rendered-text)))
       (etaf-ncm-refresh app)
       (funcall pending '(:error "加载失败"))
-      (should (= (plist-get (etaf-ncm-state app) :list-total) 0))
+      (should (= (plist-get (etaf-ncm-state app) :list-total) 501))
       (should (= (plist-get (etaf-ncm-state app) :rows-total) 0)))))
 
 (ert-deftest etaf-ncm-tests-long-library-keys-show-one-based-ranges ()
@@ -766,7 +871,8 @@ The synthetic wheel event carries pixels, just like an Emacs mouse event."
     (should (= (plist-get (etaf-ncm-state app) :rows-total) 0))
     (should (= (plist-get (etaf-ncm-state app) :list-total) 0))
     (etaf-ncm-locate app :liked)
-    (funcall (cadr pending) (list :ok (list :songs (etaf-ncm-tests--songs 3) :total 3)))
+    (should (= 1 (length pending)))
+    (funcall (car pending) (list :ok (list :songs (etaf-ncm-tests--songs 3) :total 3)))
     (should (= (plist-get (etaf-ncm-state app) :rows-total) 100))
     (should (= (plist-get (etaf-ncm-state app) :list-total) 500))
     (should (eq (plist-get (etaf-ncm-state app) :section) :liked))))
@@ -856,8 +962,12 @@ The synthetic wheel event carries pixels, just like an Emacs mouse event."
           (if (eq section :search)
               (etaf-ncm-search app "曲目")
             (etaf-ncm-locate app section))
-          (should (eq (and (string-match-p "播放全部" (etaf-ncm-tests--rendered-text)) t)
-                      (and (memq section '(:daily :liked :fm)) t))))))))
+          (let* ((at (string-match "播放全部" (etaf-ncm-tests--rendered-text)))
+                 ;; Retained hidden Hosts keep text but mask it as native space
+                 ;; and remove its keymap; it must not remain visibly actionable.
+                 (visible (and at (not (eq (car-safe (get-text-property (1+ at) 'display)) 'space)))))
+            (should (eq (and visible t) (and (memq section '(:daily :liked :fm)) t)))
+            (when (and at (not visible)) (should-not (get-text-property (1+ at) 'keymap)))))))))
 
 (ert-deftest etaf-ncm-tests-queue-wheel-scrolls-only-the-event-panel ()
   "Wheel events reach the entire queue, preserve selection and follow a new track."
@@ -1137,7 +1247,7 @@ locate the entry by its help text instead of a character offset."
 (ert-deftest etaf-ncm-tests-player-volume-drag-and-reply ()
   "Click/drag sets the pointed volume optimistically and reconciles its reply."
   (let* ((etaf-ncm-tests--requests nil)
-         pending
+         pending handler
          (app (etaf-ncm-tests--session
                (lambda (request callback)
                  (if (eq (plist-get request :op) :volume)
@@ -1146,6 +1256,7 @@ locate the entry by its help text instead of a character offset."
                    (etaf-ncm-tests--client request callback))))))
     (etaf-ncm-tests--with-player app
       (etaf-ncm-tests--rendered-text)
+      (setq handler (plist-get (cdr (assq 'ncm-volume (etaf-runtime-host-props-entries (etaf-runtime-for-buffer (current-buffer))))) :on-drag))
       (dolist (sample '((0.5 50) (0.8 80) (-1 0) (2 100)))
         (setq etaf-ncm-tests--requests nil)
         (etaf-ncm-tests--slider-gesture 'ncm-volume 'start 0.1)
@@ -1157,7 +1268,8 @@ locate the entry by its help text instead of a character offset."
         (etaf-ncm-tests--rendered-text)
         (funcall pending '(:ok (:ok t)))
         (etaf-ncm-tests--rendered-text)
-        (should (= (plist-get (plist-get (etaf-ncm-state app) :status) :volume) 55)))
+        (should (= (plist-get (plist-get (etaf-ncm-state app) :status) :volume) 55))
+        (should (eq handler (plist-get (cdr (assq 'ncm-volume (etaf-runtime-host-props-entries (etaf-runtime-for-buffer (current-buffer))))) :on-drag))))
       (setq etaf-ncm-tests--requests nil)
       (etaf-ncm-tests--slider-gesture 'ncm-volume 'start 0.8)
       (etaf-ncm-tests--slider-gesture 'ncm-volume 'cancel 0.8)

@@ -64,12 +64,16 @@
 ;; model, so any action or backend reply repaints it; prefer `etaf-ncm-open' or
 ;; `etaf-ncm-view' over mounting the Component directly.
 ;;
-;; Function: etaf-ncm-create (&key client)
+;; Function: etaf-ncm-create (&key client cache-file)
 ;; Return a new player session that talks to CLIENT.
 ;; CLIENT defaults to `etaf-ncm-client-factory' when that is bound and otherwise
 ;; to `etaf-ncm-make-client'.  The session owns no buffer and no timer before it
 ;; is mounted, so it is a complete headless player for scripts and tests.  Pass a
-;; CLIENT function to drive the same player from another backend.
+;; CLIENT function to drive the same player from another backend. CACHE-FILE
+;; optionally selects a disposable local sidebar snapshot, restored before mount.
+;; The default client uses library-cache.eld in its state directory; injected
+;; function clients stay in memory unless CACHE-FILE is supplied. Snapshots are
+;; credential-scoped, size-bounded, atomically replaced and never evaluated.
 ;;
 ;; Function: etaf-ncm-state (app)
 ;; Return APP's session state as a detached plist snapshot.

@@ -32,9 +32,9 @@ key or mouse ─▶ app command ─▶ model action ─▶ client request ─▶
    model action and returns. Nothing blocks.
 2. The action writes the intent (selection, message, loading) into reactive
    sources and sends a request through the client.
-3. The reply callback writes the result into the sources. Loading carries a
-   generation counter, so a reply from a superseded library or search is
-   discarded instead of overwriting newer data.
+3. The reply callback compares normalized data before publishing. Per-key
+   request tokens share pending loads; a late reply warms its own cache but
+   cannot overwrite a different visible library. Disposed tokens are ignored.
 4. `etaf-ncm-app` subscribes to the sources it displays. A write repaints only
    the subscribed subtree, so a status tick never re-renders the sidebar.
 
@@ -48,7 +48,7 @@ on.
 - Session (model): current library, loaded rows, backend total, selection, page,
   queue window and panel row budgets, message, error, the local download
   registry (the backend reports it) and the per-row download marker,
-  pending generations, poll timer, `:theme`, `:aside`, `:layout` and `:pane`.
+  pending request tokens, poll timer, `:theme`, `:aside`, `:layout` and `:pane`.
 - Backend state directory: login cookie, queue file, saved queues and the
   download registry. The player reads the queue tracks from that file and takes
   the current index from the backend command, so a stale file cannot invent a
@@ -102,7 +102,12 @@ hold snapshots without keeping the player alive or accidentally mutating it.
 - Sidebar and library rows have fixed, independently addressable drawing areas.
   Title, text and active colours update retained Hosts rather than rebuilding
   the sidebar. Structural flags (footer and play-all visibility) store booleans,
-  not row lists: replacing rows must not invalidate unchanged topology.
+  not row lists: replacing rows must not invalidate unchanged topology. The
+  library keeps a viewport-sized row pool; unused rows, footers and play-all
+  controls retain their Hosts but hide their pixels and input maps. Row numbers
+  travel with slot values, so scrolling does not rebuild the row components.
+  The playing glyph is line-safe icon text in the number Host, not a hidden
+  positioned overlay. Headers, chips, lists and footers use separate planes.
 - A press on a row selects it; a press on the row that is already selected
   plays it.  The gesture does not consult a timing window, so a slow repaint
   cannot turn a double click into two selections.
@@ -129,11 +134,17 @@ hold snapshots without keeping the player alive or accidentally mutating it.
   Only a command that can move the queue reloads it.
 - Every library list is cached under its section (or search keyword) through
   ETAF's `etaf-list-cache`, which owns the freshness interval, the candidate
-  order and the one-at-a-time rule.  Opening a library shows the cached rows at
-  once and refreshes the list in the background. Cache entries keep both normalized rows and the backend total;
-  even an unchanged row list can publish a new total. A foreground reply must
-  match both the load generation and the current list key. A mounted player
-  warms the lists it has not seen yet, one at a time, and refreshes
+  order and the one-at-a-time rule. Sidebar cache hits only publish existing
+  memory; they do not start processes or access files. The service restores a
+  bounded, credential-scoped sidebar snapshot before mount, preserving each
+  entry's observation time through the public `:at` cache API. Reply-driven
+  snapshot saves are coalesced outside navigation. Other search/detail entries
+  remain session-local. Cache entries keep normalized rows and backend totals;
+  equality skips row publication entirely, while a changed total is observable.
+  Per-key request tokens deduplicate work and reject disposed replies. A reply
+  may publish only into the current key; other replies only warm their cache.
+  Selection and scroll anchors follow resource identity through insertions.
+  A mounted player warms missing lists one at a time and refreshes
   `etaf-ncm-library-refresh-interval`-second-old entries
   while it is idle.  The refresh pauses while the player's buffer is not on
   screen, backs off after a failure and stops when the backend needs a human
@@ -174,8 +185,11 @@ Seek and volume are `etaf-range' Components: the pointer-to-ratio conversion
 uses the host's painted pixels through ETAF's public measurement and Host-bound
 APIs, and never leaves the app. A click and a released drag commit the pointed
 value; motion reports a live value and cancellation commits nothing. Volume
-routes through the existing optimistic command and reply reconciliation path,
-retaining the 0–130 range.
+routes through a retained numeric source and the existing optimistic command
+and reply reconciliation path, retaining the 0–100 range. Its fill, percentage
+and mute glyph update without rebuilding the player. Slider drag/value reads
+belong to the Fill Host getter, not the component render; callback identities
+remain stable across motion and backend replies.
 
 ## Polling policy
 
@@ -207,6 +221,14 @@ Costs are therefore bounded by the poll the session selected, and zero when no
 player is mounted.
 
 ## Measuring repaint cost
+
+Cached data and passing functional tests are not performance acceptance.
+Measure native GUI events through flush and redisplay, including first use,
+warmed repeats, backend reconciliation and changing lyric/queue windows.
+The historical microbenchmarks below do not represent all real interactions;
+particularly, equal-size toy lists can conceal cold admission and topology
+costs. Outstanding slow paths must remain reported as failures, not averaged
+away into a fast median.
 
 An update is only as cheap as the nodes it invalidates, and two numbers decide
 whether a change to the player is affordable:

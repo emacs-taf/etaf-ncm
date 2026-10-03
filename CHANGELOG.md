@@ -4,6 +4,15 @@ All notable user-visible changes to ETAF NCM.
 
 ## Unreleased
 
+- Sidebar libraries restore a private local snapshot before mounting, so
+  cached navigation does no network or disk work even after restarting Emacs.
+  Periodic refresh deduplicates in-flight requests, skips unchanged replies,
+  preserves song/scroll identities and keeps old data when offline.
+- Library rows retain viewport-sized slots and row-number bindings across
+  scrolling and section changes. The playing glyph shares a text Host with
+  the row number rather than using a hidden positioned overlay.
+- Volume uses a retained numeric source for optimistic updates and replies,
+  keeping the slider callback stable instead of rebuilding the player.
 - Compact list/lyrics/queue tabs form one left-aligned, equal-width row.
   Only the visible pane is highlighted; the player follows without a blank row.
 - Double-click starts directly on the selected song using the loaded list,

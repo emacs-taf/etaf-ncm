@@ -122,12 +122,14 @@ so opening a library rarely waits for the network."
 ;;; Construction and reactive access
 ;;; ---------------------------------------------------------------------------
 
-(cl-defun etaf-ncm-create (&key client)
+(cl-defun etaf-ncm-create (&key client cache-file)
   "Create a player session that talks to CLIENT.
 CLIENT defaults to `etaf-ncm-client-factory' when that is bound, and otherwise
 to `etaf-ncm-make-client'.  The session owns no buffer and no timer until it is
 mounted by `etaf-ncm-app' or started by `etaf-ncm-refresh'; it is also a
-complete headless player for tests and other Lisp callers."
+complete headless player for tests and other Lisp callers.
+CACHE-FILE optionally selects a local library snapshot. The default subprocess
+client persists in its state directory; function clients default to memory."
   (let* ((client (or client
                      (if etaf-ncm-client-factory
                          (funcall etaf-ncm-client-factory)
@@ -148,7 +150,12 @@ complete headless player for tests and other Lisp callers."
                                                            (played (etaf-value playing-id)))
                                                        (and row played
                                                             (equal (plist-get row :id) played))))))))))
-    (list :client client
+    (let ((app (list :client client
+          :cache-file (or cache-file (etaf-ncm--client-cache-file client))
+          :cache-identity (etaf-ncm--client-cache-identity client)
+          :cache-save-timer nil
+          :list-in-flight (make-hash-table :test 'equal)
+          :list-positions (make-hash-table :test 'equal)
           :playing-id playing-id
           :row-slots row-slots
           :row-playing row-playing
@@ -205,6 +212,7 @@ complete headless player for tests and other Lisp callers."
           :liked-ref (etaf-ref nil :name 'etaf-ncm-liked)
           :shuffle-ref (etaf-ref nil :name 'etaf-ncm-shuffle)
           :repeat-ref (etaf-ref nil :name 'etaf-ncm-repeat)
+          :volume-ref (etaf-ref 0 :name 'etaf-ncm-volume)
           ;; The displayed position is not reactive: a playing second changes it
           ;; and is shown through the player bar's retained Hosts, so a write
           ;; here would republish the whole view once per second.
@@ -227,8 +235,9 @@ complete headless player for tests and other Lisp callers."
           :pane (etaf-ref 'list :name 'etaf-ncm-pane)
           :loading (etaf-ref nil :name 'etaf-ncm-loading)
           :error (etaf-ref nil :name 'etaf-ncm-error)
-          :message (etaf-ref nil :name 'etaf-ncm-message)
-          :generation (etaf-ref 0 :name 'etaf-ncm-generation))))
+          :message (etaf-ref nil :name 'etaf-ncm-message))))
+      (etaf-ncm--restore-cache app)
+      app)))
 
 (defun etaf-ncm--ref (model key)
   "Return MODEL's reactive source named KEY."
@@ -255,7 +264,7 @@ view for nothing."
 
 (defconst etaf-ncm--flag-slots
   '((:state . :state-ref) (:liked . :liked-ref)
-    (:shuffle . :shuffle-ref) (:repeat . :repeat-ref))
+    (:shuffle . :shuffle-ref) (:repeat . :repeat-ref) (:volume . :volume-ref))
   "Status fields displayed through their own retained reactive sources.")
 
 (defun etaf-ncm--flag-value (app key)
@@ -293,7 +302,7 @@ Display goes through `etaf-ncm--publish-clock'."
 (defconst etaf-ncm--meter-host 'ncm-meter
   "Retained Host that fills the player bar's progress meter.")
 
-(defconst etaf-ncm--reply-volatile-keys '(:elapsed :as-of :state :liked :shuffle :repeat)
+(defconst etaf-ncm--reply-volatile-keys '(:elapsed :as-of :state :liked :shuffle :repeat :volume)
   "Status fields that move with every backend reply, not with the track.
 Flag fields are displayed through their own retained host sources, so a reply
 that only moves them updates those hosts instead of republishing the view.")
@@ -372,19 +381,20 @@ so the player bar updates in place instead of republishing the whole view."
   "Return MODEL's backend client."
   (plist-get model :client))
 
-(cl-defun etaf-ncm--call (model request &key on-ok on-error)
+(cl-defun etaf-ncm--call (model request &key on-ok on-error quiet)
   "Send REQUEST for MODEL, routing a failure into the visible status line.
 ON-OK receives the reply data; ON-ERROR the failure message, its hint and the
-backend's error code.  A client that
-signals while turning the request into a command is reported like any other
+backend's error code. QUIET leaves visible error/message state untouched.
+A client that signals while turning a request into a command is treated like any
 backend failure, so nothing reaches the caller of a player action."
   (let ((delivered nil)
         (fail (lambda (message hint code)
-                (etaf-ncm--write model :error message)
-                (etaf-ncm--write model :message
-                                 (if (and hint (not (string-empty-p hint)))
-                                     (format "%s（%s）" message hint)
-                                   message))
+                (unless quiet
+                  (etaf-ncm--write model :error message)
+                  (etaf-ncm--write model :message
+                                   (if (and hint (not (string-empty-p hint)))
+                                       (format "%s（%s）" message hint)
+                                     message)))
                 (when on-error (funcall on-error message hint code)))))
     (condition-case error
         (etaf-ncm-client-call
@@ -393,7 +403,7 @@ backend failure, so nothing reaches the caller of a player action."
            (setq delivered t)
            (if (eq (car result) :ok)
                (progn
-                 (etaf-ncm--write model :error nil)
+                 (unless quiet (etaf-ncm--write model :error nil))
                  (when on-ok (funcall on-ok (cadr result))))
              (funcall fail (or (cadr result) "请求失败")
                       (plist-get (cddr result) :hint)
@@ -449,14 +459,18 @@ backend failure, so nothing reaches the caller of a player action."
 (defun etaf-ncm-locate (app section)
   "Show library SECTION in APP and load its rows.
 SECTION is one of the keys in `etaf-ncm-sections'.  A cached list is shown at
-once and refreshed in the background; the first visit waits for the backend,
-and a reply from an earlier library is discarded.  Unknown SECTION signals
-`etaf-ncm-error'."
+once without I/O; the periodic scheduler refreshes it in the background.
+Only a list absent from memory and the previous-run snapshot needs a backend
+load. A late reply warms its own cache without replacing another library.
+Unknown SECTION signals `etaf-ncm-error'."
   (unless (and (symbolp section) (or (eq section :search)
                                      (etaf-ncm--section-label section)))
     (signal 'etaf-ncm-error (list (format "Unknown library: %S" section))))
   (let* ((key (list :browse section))
          (same-p (equal key (plist-get app :list-key))))
+    (when (plist-get app :list-key)
+      (puthash (plist-get app :list-key) (etaf-ncm--list-position app)
+               (plist-get app :list-positions)))
     (etaf-batch
       (etaf-ncm--write app :mode 'browse)
       (etaf-ncm--write app :pane 'list)
@@ -465,9 +479,11 @@ and a reply from an earlier library is discarded.  Unknown SECTION signals
       (etaf-ncm--write app :subtitle (or (cdr (assq section etaf-ncm--section-subtitles)) ""))
       (etaf-ncm--write app :origin (list :kind section))
       (setf (plist-get app :list-key) key)
-      (etaf-ncm--show-cached-list app key same-p)
-      (etaf-ncm--load app key (etaf-ncm--browse-request app section)
-                      (and (etaf-ncm--list-entry app key) t) same-p))))
+      (etaf-ncm--show-cached-list app key same-p))
+    ;; Cache hits do no process creation or disk I/O. The existing periodic
+    ;; scheduler alone revalidates/warm-loads libraries after publication.
+    (unless (etaf-ncm--list-entry app key)
+      (etaf-ncm--load app key (etaf-ncm--browse-request app section) nil same-p))))
 
 (defun etaf-ncm-search (app keyword &optional scope)
   "Search KEYWORD in APP and show the matches.
@@ -507,8 +523,73 @@ SCOPE is `song' (default) or `playlist'.  An empty KEYWORD signals
   (etaf-list-cache-entry (plist-get app :list-cache) key))
 
 (defun etaf-ncm--store-list (app key rows total)
-  "Cache ROWS and TOTAL for KEY in APP."
-  (etaf-list-cache-put (plist-get app :list-cache) key rows total))
+  "Cache ROWS and TOTAL for KEY in APP, coalescing a later disk snapshot."
+  (etaf-list-cache-put (plist-get app :list-cache) key rows total)
+  (when (and (plist-get app :cache-file) (not (plist-get app :cache-save-timer)))
+    (setf (plist-get app :cache-save-timer)
+          (run-at-time 2 nil (lambda () (etaf-ncm--save-cache app))))))
+
+(defun etaf-ncm--save-cache (app)
+  "Persist APP's sidebar lists outside the navigation/publication path."
+  (when-let* ((timer (plist-get app :cache-save-timer))) (cancel-timer timer))
+  (setf (plist-get app :cache-save-timer) nil)
+  (when-let* ((file (plist-get app :cache-file)))
+    (let (entries)
+      (dolist (section (apply #'append (mapcar #'cdr etaf-ncm-sections)))
+        (let* ((key (list :browse (car section)))
+               (entry (etaf-ncm--list-entry app key)))
+          (when entry (push (append (list :key key) entry) entries))))
+      (condition-case error
+          (etaf-ncm--cache-write file (plist-get app :cache-identity) entries)
+        (error (message "音乐库缓存未保存：%s" (error-message-string error)))))))
+
+(defun etaf-ncm--restore-cache (app)
+  "Hydrate APP before mounting; invalid snapshots never delay a cold load."
+  (dolist (entry (etaf-ncm--cache-read (plist-get app :cache-file)
+                                     (plist-get app :cache-identity)))
+    (when (proper-list-p entry)
+      (let ((key (plist-get entry :key)) (rows (plist-get entry :rows))
+            (total (plist-get entry :total)) (at (plist-get entry :at)))
+        (when (and (proper-list-p key) (= (length key) 2)
+                   (eq (car key) :browse) (etaf-ncm--section-label (cadr key))
+                   (proper-list-p rows) (<= (length rows) 10000)
+                   (cl-every (lambda (row)
+                               (and (proper-list-p row) (stringp (plist-get row :name))
+                                    (memq (plist-get row :kind)
+                                          '(:song :playlist :album :artist :chart :podcast :episode)))) rows)
+                   (numberp total) (>= total 0) (numberp at) (>= at 0))
+          (etaf-list-cache-put (plist-get app :list-cache) key rows total :at at)))))
+  (when (etaf-ncm--list-entry app '(:browse :daily))
+    (setf (plist-get app :list-key) '(:browse :daily))
+    (etaf-ncm--show-cached-list app '(:browse :daily) nil)))
+
+(defun etaf-ncm--list-position (app)
+  "Capture APP's selection and viewport by song/resource identity."
+  (let* ((rows (etaf-ncm--read app :rows))
+         (selected (etaf-ncm--read app :selection))
+         (start (etaf-ncm--read app :window-start)))
+    (list :selection selected :start start
+          :selected (list (plist-get (nth selected rows) :kind)
+                          (plist-get (nth selected rows) :id))
+          :top (list (plist-get (nth start rows) :kind) (plist-get (nth start rows) :id)))))
+
+(defun etaf-ncm--restore-position (app position)
+  "Restore POSITION in APP, following identities through inserted/reordered rows."
+  (let* ((rows (etaf-ncm--read app :rows))
+         (size (max 1 (etaf-ncm--read app :page-size)))
+         (locate (lambda (key fallback)
+                   (or (and (cadr key)
+                            (cl-position-if
+                             (lambda (row) (equal key (list (plist-get row :kind) (plist-get row :id)))) rows))
+                       fallback 0)))
+         (selection (max 0 (min (max 0 (1- (length rows)))
+                                (funcall locate (plist-get position :selected) (plist-get position :selection)))))
+         (start (max 0 (min (max 0 (- (length rows) size))
+                            (funcall locate (plist-get position :top) (plist-get position :start))))))
+    (when (< selection start) (setq start selection))
+    (when (>= selection (+ start size)) (setq start (- (1+ selection) size)))
+    (etaf-ncm--write app :selection selection)
+    (etaf-ncm--write app :window-start start)))
 
 (defun etaf-ncm--show-cached-list (app key keep-position-p)
   "Show APP's cached rows for KEY when one exists, without a loading state.
@@ -520,8 +601,7 @@ they are already looking at."
       (etaf-ncm--write app :list-total (or (plist-get entry :total) 0))
       (if keep-position-p
           (etaf-ncm--clamp-list-position app)
-        (etaf-ncm--write app :selection 0)
-        (etaf-ncm--write app :window-start 0))
+        (etaf-ncm--restore-position app (gethash key (plist-get app :list-positions))))
       (etaf-ncm--write app :loading nil)
       (etaf-ncm--refresh-slots app))))
 
@@ -538,59 +618,57 @@ they are already looking at."
     (etaf-ncm--refresh-slots app)))
 
 (defun etaf-ncm--load (app key request &optional background keep-position-p)
-  "Load REQUEST for APP, caching its rows under KEY.
-BACKGROUND requests leave the visible loading state to the foreground load
-they refresh: their reply replaces the cache and repaints only while KEY is
-still the visible list, without resetting the reader's position.
-KEEP-POSITION-P also keeps the position of a foreground reload of the list the
-reader is already looking at."
-  (let ((generation (1+ (etaf-ncm--read app :generation)))
-        (kind (or (plist-get request :resource) (plist-get request :op))))
-    (unless background
-      (etaf-ncm--write app :generation generation)
+  "Deduplicate REQUEST under KEY and publish only changed visible data.
+BACKGROUND never blanks a cached list. KEEP-POSITION-P follows the selected
+resource and viewport through inserts or reordering. Replies for other keys
+only warm the cache; disposal invalidates all request tokens."
+  (let* ((pending (plist-get app :list-in-flight))
+         (cache (plist-get app :list-cache))
+         (kind (or (plist-get request :resource) (plist-get request :op))))
+    (unless (or background (etaf-ncm--list-entry app key))
       (etaf-ncm--write app :loading t)
       (etaf-ncm--write app :error nil))
-    (etaf-ncm--call
-     app request
-     :on-ok (lambda (data)
-              (let* ((rows (etaf-ncm--library-rows kind data))
-                     (total (or (etaf-ncm--parse-number (plist-get data :total))
-                                (length rows))))
-                (etaf-ncm--store-list app key rows total)
-                (etaf-list-cache-note-success (plist-get app :list-cache))
-                (if background
-                    (progn
-                      (etaf-list-cache-set-busy (plist-get app :list-cache) nil)
-                      (when (equal key (plist-get app :list-key))
-                        (etaf-batch
-                          (etaf-ncm--write app :rows rows)
-                          (etaf-ncm--write app :list-total total)
-                          (etaf-ncm--clamp-list-position app)
-                          (etaf-ncm--refresh-slots app))))
-                  (when (and (= generation (etaf-ncm--read app :generation))
-                             (equal key (plist-get app :list-key)))
-                    (etaf-batch
-                      (etaf-ncm--write app :rows rows)
-                      (etaf-ncm--write app :list-total total)
-                      (if keep-position-p
-                          (etaf-ncm--clamp-list-position app)
-                        (etaf-ncm--write app :selection 0)
-                        (etaf-ncm--write app :window-start 0))
-                      (etaf-ncm--write app :loading nil)
-                      (etaf-ncm--refresh-slots app)
-                      (etaf-ncm--note app (format "%s · %d 项"
-                                                  (etaf-ncm--read app :title)
-                                                  (length rows))))))))
-     :on-error (lambda (message _hint code)
-                 (etaf-list-cache-note-failure (plist-get app :list-cache) code)
-                 (if background
-                     (etaf-list-cache-set-busy (plist-get app :list-cache) nil)
-                   (when (and (= generation (etaf-ncm--read app :generation))
-                              (equal key (plist-get app :list-key)))
-                     (etaf-ncm--write app :loading nil)
-                     (etaf-ncm--write app :rows nil)
-                     (etaf-ncm--write app :list-total 0)
-                     (etaf-ncm--note app message)))))))
+    (unless (gethash key pending)
+      (let* ((token (list key))
+             (finish (lambda ()
+                       (when (eq token (gethash key pending))
+                         (remhash key pending)
+                         (etaf-list-cache-set-busy cache (> (hash-table-count pending) 0))
+                         (not (plist-get app :disposed))))))
+        (puthash key token pending)
+        (etaf-list-cache-set-busy cache t)
+        (etaf-ncm--call
+         app request :quiet t
+         :on-ok
+         (lambda (data)
+           (when (funcall finish)
+             (let* ((rows (etaf-ncm--library-rows kind data))
+                    (total (or (etaf-ncm--parse-number (plist-get data :total)) (length rows)))
+                    (changed (not (etaf-list-cache-unchanged-p cache key rows total))))
+               (if changed (etaf-ncm--store-list app key rows total)
+                 (etaf-list-cache-touch cache key))
+               (etaf-list-cache-note-success cache)
+               (when (equal key (plist-get app :list-key))
+                 (etaf-batch
+                   (when changed
+                     (let ((position (and (or background keep-position-p)
+                                          (etaf-ncm--list-position app))))
+                       (etaf-ncm--write app :rows rows)
+                       (etaf-ncm--write app :list-total total)
+                       (etaf-ncm--restore-position app position)))
+                   (etaf-ncm--write app :loading nil)
+                   (when changed (etaf-ncm--refresh-slots app))
+                   (unless background
+                     (etaf-ncm--note app (format "%s · %d 项" (etaf-ncm--read app :title) (length rows)))))))))
+         :on-error
+         (lambda (message _hint code)
+           (when (funcall finish)
+             (etaf-list-cache-note-failure cache code)
+             (when (equal key (plist-get app :list-key))
+               (etaf-ncm--write app :loading nil)
+               (unless background
+                 (etaf-ncm--write app :error message)
+                 (etaf-ncm--note app message))))))))))
 
 (defun etaf-ncm--cache-visible-p (app)
   "Return non-nil when APP's buffer can be seen, or the session is headless.
@@ -960,9 +1038,7 @@ reply then replaces that guess with measured facts."
               (if id (plist-put status :song-id id) status)))
        (etaf-ncm--sync-playing app)))
     (:volume
-     (etaf-ncm--optimistic-status
-      app (lambda (status)
-            (plist-put status :volume (plist-get request :value)))))
+     (etaf-ncm--write app :volume-ref (plist-get request :value)))
     (:shuffle
      (etaf-ncm--write app :shuffle-ref (plist-get request :on)))
     (:repeat
@@ -1115,11 +1191,12 @@ refreshes the list the view already shows, so the reader's position is kept."
                               :resource :songs
                               :limit (max etaf-ncm-fetch-limit
                                           (* 3 (etaf-ncm--read app :page-size))))
-                        nil t))
+                        (and (etaf-ncm--list-entry app key) t) t))
     (let* ((section (etaf-ncm--read app :section))
            (key (list :browse section)))
       (setf (plist-get app :list-key) key)
-      (etaf-ncm--load app key (etaf-ncm--browse-request app section) nil t)))
+      (etaf-ncm--load app key (etaf-ncm--browse-request app section)
+                      (and (etaf-ncm--list-entry app key) t) t)))
   (etaf-ncm--request-status app)
   (etaf-ncm--request-liked-ids app)
   (etaf-ncm--request-downloads app)
@@ -1412,6 +1489,8 @@ second for the same second."
 (defun etaf-ncm--dispose (app)
   "Release APP's timer and in-flight requests."
   (setf (plist-get app :disposed) t)
+  (clrhash (plist-get app :list-in-flight))
+  (when (plist-get app :cache-save-timer) (etaf-ncm--save-cache app))
   (etaf-list-cache-disarm (plist-get app :list-cache))
   (when-let* ((timer (plist-get app :timer)))
     (cancel-timer timer)
@@ -1640,6 +1719,7 @@ never rebuilds for a reply that changes which songs are on the page."
       (dotimes (index (length slots))
         (let ((value (etaf-ncm--decorate-row
                       app (and (< index (length rows)) (nth index rows)))))
+          (when value (setq value (plist-put value :display-index (1+ (+ start index)))))
           (unless (equal (etaf-value (aref slots index)) value)
             (etaf-set-value (aref slots index) value)))))
     (etaf-ncm--sync-playing app)

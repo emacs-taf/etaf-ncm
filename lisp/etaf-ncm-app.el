@@ -370,14 +370,14 @@ In a wide layout, which shows both, this keeps the library list focused."
   "Raise the volume by ten."
   (interactive)
   (let* ((model (etaf-ncm--current-model))
-         (volume (or (plist-get (etaf-ncm--view-status model) :volume) 0)))
+         (volume (or (etaf-ncm--flag-value model :volume) 0)))
     (etaf-ncm-set-volume model (min 100 (+ volume 10)))))
 
 (defun etaf-ncm--volume-down ()
   "Lower the volume by ten."
   (interactive)
   (let* ((model (etaf-ncm--current-model))
-         (volume (or (plist-get (etaf-ncm--view-status model) :volume) 0)))
+         (volume (or (etaf-ncm--flag-value model :volume) 0)))
     (etaf-ncm-set-volume model (max 0 (- volume 10)))))
 
 (defun etaf-ncm--seek-back ()
@@ -568,7 +568,10 @@ releases the polling timer and the session's pending backend requests."
          :model session
          :groups etaf-ncm-sections
          :on-locate on-locate)
-        (flex :if (etaf-ncm--read session :error) :width 'stretch :height '(lh 1)
+        (flex :position 'absolute :left '(ch 0)
+              :top (list 'lh (pcase (etaf-ncm--read session :layout) ('wide 2) ('narrow 6) (_ 3)))
+              :visibility (if (etaf-ncm--read session :error) 'visible 'hidden)
+              :width 'stretch :height '(lh 1)
               :align-items 'center :padding '((lh 0) (ch 1))
               :background-color (etaf-ncm-color :danger-bg)
               :color (etaf-ncm-color :danger)
@@ -627,7 +630,7 @@ releases the polling timer and the session's pending backend requests."
        :playing playing
        :elapsed (plist-get (etaf-ncm--view-status session) :elapsed)
        :duration (plist-get (etaf-ncm--view-status session) :duration)
-       :volume (plist-get (etaf-ncm--view-status session) :volume)
+       :volume (etaf-ncm--ref session :volume-ref)
        :shuffle (etaf-ncm--ref session :shuffle-ref)
        :liked (etaf-ncm--ref session :liked-ref)
        :repeat (etaf-ncm--ref session :repeat-ref)

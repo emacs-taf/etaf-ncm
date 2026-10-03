@@ -313,14 +313,25 @@ retained updates. While nothing is playing it checks every `etaf-ncm-idle-poll-i
 the queue list is read from the backend's queue state file rather than
 re-downloaded.
 
-Library lists are cached per section and refreshed in the background: opening a
-library shows the cached rows immediately, a mounted player warms the lists it
-has not seen yet, and a list older than `etaf-ncm-library-refresh-interval`
-(five minutes) is refreshed while the player is idle. Set
-`etaf-ncm-prefetch-libraries` to nil to leave the cache to the visited
-libraries only.  The refresh pauses while the player's buffer is not on screen,
-backs off after a failure and stops when the backend needs a human (an expired
-login), resuming after the next successful load.
+Sidebar libraries are local-first, including across app/Emacs restarts. The
+previous `library-cache.eld` in `etaf-ncm-state-directory` is restored before
+mounting. Clicking a cached section performs no disk I/O or backend request;
+it immediately shows the cache, including an empty cached library. The
+snapshot contains only library metadata, not audio URLs or credentials. It is
+bounded to 4 MiB, private (0600), atomically saved after replies settle, and tied
+to the current credential configuration. Reopen after changing accounts.
+Corrupt/incompatible snapshots are ignored and rebuilt; the backend remains
+the authority. Only a never-cached section needs its first network load.
+
+The mounted player warms missing sidebar lists one at a time and revalidates
+lists older than `etaf-ncm-library-refresh-interval` (five minutes). Equal
+replies do not update row sources or repaint; changed replies retain selected
+song and viewport identities. Revisiting a section also restores its previous
+position. In-flight requests for the same list are shared. Failed refreshes
+keep old data, back off, and pause on an expired login until a successful load.
+`g` requests a revalidation without blanking cached content. Background work
+pauses when the player is hidden; setting `etaf-ncm-prefetch-libraries` to nil
+disables automatic library refresh/warming (manual `g` remains available).
 
 Unmounting cancels the timer and drops late replies, so a closed player costs
 nothing. A long-running Emacs that keeps a player mounted only pays the poll it
