@@ -535,9 +535,6 @@ releases the polling timer and the session's pending backend requests."
         ;; One clear line above the chrome keeps the header off the window
         ;; edge; the layout budget already reserves the root padding.
         :padding-top '(lh 1)
-        ;; A press anywhere dismisses an open popover that does not contain it;
-        ;; the capture hook is the one place that sees every press in the app.
-        :on-press-capture (lambda () (etaf-ui-dismiss-outside-press))
         ;; Rows that show symbol glyphs (the state dot, the transport icons, the
         ;; sidebar glyphs) render a little taller than the frame's line height
         ;; because their fallback font has larger metrics.  Keep the last line
@@ -545,19 +542,22 @@ releases the polling timer and the session's pending backend requests."
         ;; window, which clipped the player bar's control row.
         :padding-bottom '(lh 0)
         :color (etaf-ncm-color :ink) :bgcolor (etaf-ncm-color :bg)
-    (flex :width 'stretch :flex-grow 1 :flex-basis '(lh 0)
-          :min-height '(lh 0) :align-items 'stretch
+    (box :width 'stretch :flex-grow 1 :flex-basis '(lh 0) :min-height '(lh 0))
       (etaf-ncm--view-sidebar
        :if (eq (etaf-ncm--read session :layout) 'wide)
        :model session
+       :height (if-let* ((rows (etaf-ncm--read session :window-rows)))
+                   (list 'lh (max 1 (- rows 7))) '(% 100))
        :groups etaf-ncm-sections
        :on-locate on-locate)
       (etaf-ncm--view-sidebar
        :if (eq (etaf-ncm--read session :layout) 'medium)
        :compact t
        :model session
+       :height (if-let* ((rows (etaf-ncm--read session :window-rows)))
+                   (list 'lh (max 1 (- rows 9))) '(% 100))
        :groups etaf-ncm-sections
-       :on-locate on-locate))
+       :on-locate on-locate)
       (etaf-ncm--view-list-panel
        :layout (etaf-ncm--read session :layout)
        :columns (etaf-ncm--read session :columns)
@@ -585,7 +585,7 @@ releases the polling timer and the session's pending backend requests."
          :compact (etaf-ncm--compact-layout-p session)
          :selection (etaf-ncm--ref session :selection)
          :on-press on-press-row
-         :on-menu on-row-action))
+         :on-action on-row-action))
       (etaf-ncm--view-aside
        :kind 'lyrics :visible lyrics-visible
        :layout (etaf-ncm--read session :layout)

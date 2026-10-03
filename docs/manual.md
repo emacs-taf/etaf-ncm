@@ -58,7 +58,7 @@ is revived by its next mount.
 | click or drag the progress bar | Seek to the position under the pointer |
 | click or drag the volume slider | Set volume at the pointer, from 0 to 130% |
 | click the cover / `词` / queue control | Show lyrics / lyrics / the queue, preserving the current selection and queue window |
-| click a row's `...` | Open that row's options: play, add to queue, download |
+| click a row's download / `+` icon | Download / add to queue directly; the compact layout keeps download |
 | `SPC` | Pause or resume; with an empty queue it plays the selected song |
 | `n` / `p` | Next / previous queue entry |
 | `a` | Append the selected song to the queue |
@@ -160,9 +160,9 @@ with the reply; a command that can move the queue reloads it.
 
 A press selects a row and a press on the selected row plays it: a double click
 therefore starts the song even when the first repaint took a moment. In the
-daily recommendation, liked songs and private FM, playing a song row first
-queues that library, then jumps to the row's position after the list starts.
-`n` and `p` therefore continue through the library. The `播放全部` button appears
+daily recommendation, liked songs and private FM, playing a song row queues
+the loaded songs and starts directly at that row, without playing the first
+song beforehand. `n` and `p` continue through those loaded songs in order. The `播放全部` button appears
 only in those libraries, where whole-list playback is supported.
 
 Songs in search results or recent plays still play directly. A playlist, album,
@@ -180,10 +180,11 @@ again. Clicking an entry jumps to it, and visible entries remain reachable by
 
 ## Local downloads
 
-A row's `...` button opens that row's options: play it, append it to the queue,
-or download it. `d` downloads the selected row without opening the menu. The
-message line reports the pending and finished command, and a check mark
-appears next to every song whose file is on this machine.
+The row's download icon downloads it directly; the `+` icon adds it to the
+queue. There is no options menu. Compact rows keep the download icon; `a`
+still adds the selected song to the queue. `d` downloads the selection.
+The download arrow becomes a check mark when the file is on this machine;
+clicking that check downloads it again. The message line reports progress.
 
 The backend does the downloading: it takes the best quality the account can
 play, stores the file under its own download directory and registers it, so

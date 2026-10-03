@@ -110,7 +110,7 @@
 ;; Play ITEM, or APP's current library when ITEM is nil.
 ;; ITEM is a library row as reported in `etaf-ncm-state' `:items'; a row carries
 ;; at least `:kind' and `:id'.  A song row in the daily, liked or FM library
-;; first plays that library and then jumps to the row's 1-based loaded position.
+;; queues the loaded ids and starts at that row in one backend command.
 ;; Other songs play directly, while a playlist, album,
 ;; artist, chart or podcast is resolved by the backend into its playable songs.
 ;; A row without a playable target signals `etaf-ncm-error'.
@@ -133,9 +133,9 @@
 ;; An empty library does nothing.
 ;;
 ;; Function: etaf-ncm-row-action (app index key)
-;; Run the row-menu action KEY on library row INDEX (counting from 1) in APP.
-;; KEY is `play', `queue' or `download'; the row is resolved when the menu item
-;; is chosen, so a list reply that moved in between cannot act on a stale row.
+;; Run action KEY on library row INDEX (counting from 1) in APP.
+;; KEY is `play', `queue' or `download'; the inline icon resolves the row when
+;; pressed, so a list reply that moved in between cannot act on a stale row.
 ;; An out-of-range INDEX or unknown KEY signals `etaf-ncm-error'.
 ;;
 ;; Function: etaf-ncm-jump-queue (app index)

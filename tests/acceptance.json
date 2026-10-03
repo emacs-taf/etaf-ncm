@@ -176,14 +176,14 @@
       "purpose": "Home, End, PageUp and PageDown navigate all 500 loaded rows and the footer shows one-based ranges with the true total."
     },
     {
-      "name": "etaf-ncm-tests-song-row-waits-for-library-before-jump",
+      "name": "etaf-ncm-tests-song-row-starts-in-one-command",
       "file": "tests/etaf-ncm-tests.el",
-      "purpose": "Daily, liked and FM song presses wait for successful whole-list playback before jumping to the captured full-list index and retain the library queue."
+      "purpose": "Daily, liked and FM presses capture the loaded ids and starting index in one request; later selection changes cannot alter it."
     },
     {
       "name": "etaf-ncm-tests-song-row-failure-and-supersession",
       "file": "tests/etaf-ncm-tests.el",
-      "purpose": "Failed or superseded list play and a stop command suppress stale jumps; a failed jump reports its backend error."
+      "purpose": "Failed, superseded and late playback replies never issue a follow-up jump over another playback command."
     },
     {
       "name": "etaf-ncm-tests-other-libraries-play-rows-directly",

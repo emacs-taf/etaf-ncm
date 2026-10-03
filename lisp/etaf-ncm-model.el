@@ -157,6 +157,7 @@ complete headless player for tests and other Lisp callers."
           :empty-note (etaf-ref "" :name 'etaf-ncm-empty-note)
           :visible-count (etaf-ref 0 :name 'etaf-ncm-visible-count)
           :footer-visible (etaf-ref nil :name 'etaf-ncm-footer-visible)
+          :playable (etaf-ref nil :name 'etaf-ncm-playable)
           :more-visible (etaf-ref nil :name 'etaf-ncm-more-visible)
           :selected-album (etaf-ref "" :name 'etaf-ncm-selected-album)
           :buffer nil
@@ -175,7 +176,6 @@ complete headless player for tests and other Lisp callers."
           :last-tick (float-time)
           :timer nil
           :last-press nil
-          :play-generation 0
           :list-cache (etaf-list-cache-create :grace 3)
           :list-key nil
           ;; Liked-song ids: the backend status carries no like field, so the
@@ -734,9 +734,10 @@ after the session starts; this function only maps a section to its request."
 (defun etaf-ncm-play (app &optional item)
   "Play ITEM in APP, or the current library when ITEM is nil.
 ITEM is a library row, a song id, or a keyword string.  A song row in a
-playable library queues that library, then jumps to its loaded-list position
-after playback succeeds.  Other targets play directly.  ITEM nil replays the
-whole current library."
+playable library queues the loaded song ids and starts on that song in one
+backend command.  No list is fetched again (FM may return different songs),
+and no first-entry playback precedes the selection.  Other targets play
+directly.  ITEM nil replays the whole current library from its first entry."
   (let* ((target (etaf-ncm--target app item))
          (origin (etaf-ncm--playable-origin app))
          (rows (etaf-ncm--read app :rows))
@@ -752,17 +753,13 @@ whole current library."
                                  (and (eq (plist-get row :kind) :song)
                                       (equal (plist-get row :id) item-id)))
                                rows)))))
-         (generation (cl-incf (plist-get app :play-generation)))
          (message (format "正在播放：%s" (etaf-ncm--target-label app item))))
     (etaf-ncm--command
-     app (list :op :play :target (if index origin target)) message
-     (when index
-       (lambda ()
-         ;; A late list reply must not jump over a newer play request or
-         ;; restart a session that was closed while the list was loading.
-         (when (and (= generation (plist-get app :play-generation))
-                    (not (plist-get app :disposed)))
-           (etaf-ncm--command app (list :op :jump :index (1+ index)) message)))))))
+     app (append (list :op :play :target (if index origin target))
+                 (when index
+                   (list :ids (mapcar (lambda (row) (plist-get row :id)) rows)
+                         :start (1+ index))))
+     message)))
 
 (defun etaf-ncm--playable-origin (app)
   "Return APP's origin when the backend can play it as a whole list."
@@ -819,8 +816,8 @@ An empty library does nothing."
     (etaf-ncm-download app row)))
 
 (defun etaf-ncm-row-action (app index key)
-  "Run the row-menu action KEY on library row INDEX (counting from 1) in APP.
-KEY is `play', `queue' or `download'; the row is resolved when the menu item
+  "Run action KEY on library row INDEX (counting from 1) in APP.
+KEY is `play', `queue' or `download'; the row is resolved when the action
 is chosen, so a list reply that moved between opening and choosing cannot
 act on a stale row.  An out-of-range INDEX or unknown KEY signals
 `etaf-ncm-error'."
@@ -948,16 +945,20 @@ reply then replaces that guess with measured facts."
     (:stop
      (etaf-ncm--write app :state-ref 'stopped))
     (:play
-     (let ((id (let ((target (plist-get request :target)))
-                 (and (eq (plist-get target :kind) :song)
-                      (plist-get target :id)))))
+     (let ((id (or (and (plist-get request :ids)
+                        (nth (1- (or (plist-get request :start) 1))
+                             (plist-get request :ids)))
+                   (let ((target (plist-get request :target)))
+                     (and (eq (plist-get target :kind) :song)
+                          (plist-get target :id))))))
        (etaf-ncm--set-clock app 0)
        (etaf-ncm--write app :state-ref 'playing)
        (etaf-ncm--optimistic-status
         app (lambda (status)
               (setq status (plist-put status :state 'playing))
               (setq status (plist-put status :elapsed 0))
-              (if id (plist-put status :song-id id) status)))))
+              (if id (plist-put status :song-id id) status)))
+       (etaf-ncm--sync-playing app)))
     (:volume
      (etaf-ncm--optimistic-status
       app (lambda (status)
@@ -979,13 +980,10 @@ reply then replaces that guess with measured facts."
     (:seek '(:elapsed))
     (_ nil)))
 
-(defun etaf-ncm--command (app request message &optional on-ok)
+(defun etaf-ncm--command (app request message)
   "Send REQUEST for APP, showing MESSAGE and its local effect immediately.
 The backend reply reconciles the optimistic state; only a command that can
-move the queue reloads it.  ON-OK, when given, continues a command sequence
-instead of reconciling an intermediate playback state."
-  (when (memq (plist-get request :op) '(:next :previous :stop :jump))
-    (cl-incf (plist-get app :play-generation)))
+move the queue reloads it."
   (setf (plist-get app :optimistic-at) (float-time)
         (plist-get app :optimistic-keys) (etaf-ncm--optimistic-status-keys request))
   (etaf-batch
@@ -993,13 +991,11 @@ instead of reconciling an intermediate playback state."
     (etaf-ncm--optimistic-command app request))
   (etaf-ncm--call app request
                   :on-ok (lambda (_data)
-                           (if on-ok
-                               (funcall on-ok)
-                             (etaf-batch
-                               (etaf-ncm--request-status app)
-                               (when (memq (plist-get request :op)
-                                           etaf-ncm--queue-commands)
-                                 (etaf-ncm--request-queue app)))))))
+                           (etaf-batch
+                             (etaf-ncm--request-status app)
+                             (when (memq (plist-get request :op)
+                                         etaf-ncm--queue-commands)
+                               (etaf-ncm--request-queue app))))))
 
 (defconst etaf-ncm--double-press-window 1.0
   "Seconds within which a second press on the same row counts as a double press.
@@ -1417,7 +1413,6 @@ second for the same second."
   "Release APP's timer and in-flight requests."
   (setf (plist-get app :disposed) t)
   (etaf-list-cache-disarm (plist-get app :list-cache))
-  (cl-incf (plist-get app :play-generation))
   (when-let* ((timer (plist-get app :timer)))
     (cancel-timer timer)
     (setf (plist-get app :timer) nil))
@@ -1659,7 +1654,7 @@ never rebuilds for a reply that changes which songs are on the page."
                            "正在加载…"
                          "这里还没有内容：g 刷新，s 搜索"))
            (visible-count (length rows))
-           (footer-visible (or rows (> total 0)))
+           (footer-visible (and (or rows (> total 0)) t))
            (more-visible (< loaded total))
            (selected-album (or (plist-get (etaf-ncm--selected-row app) :meta) "")))
       (dolist (pair (list (cons :page-label page-label)
@@ -1667,6 +1662,7 @@ never rebuilds for a reply that changes which songs are on the page."
                           (cons :empty-note empty-note)
                           (cons :visible-count visible-count)
                           (cons :footer-visible footer-visible)
+                          (cons :playable (and (etaf-ncm--playable-origin app) t))
                           (cons :more-visible more-visible)
                           (cons :selected-album selected-album)))
         (let ((ref (plist-get app (car pair))))
@@ -1702,9 +1698,10 @@ A nil scroll position centres the window on the playing entry."
             (start (etaf-ncm--read app :window-start)))
         (cond ((< selection start) (setq start selection))
               ((>= selection (+ start size)) (setq start (- (1+ selection) size))))
-        (etaf-ncm--write app :selection selection)
-        (etaf-ncm--write app :window-start (max 0 start))
-        (etaf-ncm--refresh-slots app)))))
+        (etaf-batch
+          (etaf-ncm--write app :selection selection)
+          (etaf-ncm--write app :window-start (max 0 start))
+          (etaf-ncm--refresh-slots app))))))
 
 (defun etaf-ncm--selected-row (app)
   "Return the row APP's selection points at, or nil."

@@ -180,7 +180,7 @@
     (should (equal (plist-get (etaf-ncm-state app) :title) "搜索结果"))))
 
 (ert-deftest etaf-ncm-tests-play-uses-the-selected-row ()
-  "Playing a song selection queues its library and jumps to the selected row."
+  "Playing a selection starts on its loaded id without a follow-up jump."
   (setq etaf-ncm-tests--requests nil)
   (let ((app (etaf-ncm-tests--session)))
     (etaf-ncm-refresh app)
@@ -188,7 +188,9 @@
     (etaf-ncm-activate-selection app)
     (let ((request (etaf-ncm-tests--request :play)))
       (should (equal (plist-get request :target) (list :kind :daily)))
-      (should (= (plist-get (etaf-ncm-tests--request :jump) :index) 3))
+      (should (= (plist-get request :start) 3))
+      (should (= (nth 2 (plist-get request :ids)) 3))
+      (should-not (etaf-ncm-tests--request :jump))
       (should (equal (plist-get (etaf-ncm-state app) :message) "正在播放：曲目 3")))
     (etaf-ncm-play app)
     (should (equal (plist-get (etaf-ncm-state app) :message) "正在播放：每日推荐"))))
@@ -201,7 +203,7 @@
     (etaf-ncm-play app (nth 0 (etaf-ncm-tests--rows app)))
     (should (equal (plist-get (etaf-ncm-tests--request :play) :target)
                    '(:kind :daily)))
-    (should (= (plist-get (etaf-ncm-tests--request :jump) :index) 1))
+    (should (= (plist-get (etaf-ncm-tests--request :play) :start) 1))
     (etaf-ncm-play app 42)
     (should (equal (plist-get (etaf-ncm-tests--request :play) :target)
                    '(:kind :song :id 42)))
@@ -397,17 +399,19 @@ silently doing nothing against the real backend."
                     (format "printf '%%s\\n' \"$*\" >> %s\n" (shell-quote-argument log))
                     "printf '{\"ok\": true, \"state\": \"playing\"}\\n'\n"))
           (set-file-modes script #o755)
-          (let* ((client (etaf-ncm-make-client :skill-directory directory :timeout 10))
-                 (deadline (+ (float-time) 10)))
-            (etaf-ncm-client-call
-             client (list :op :play :target (list :kind :song :id 4242))
-             (lambda (result) (setq reply result)))
-            (while (and (null reply) (< (float-time) deadline))
-              (accept-process-output nil 0.05))
-            (should (eq (car-safe reply) :ok))
-            (should (with-temp-buffer
-                      (insert-file-contents log)
-                      (string-match-p "play 4242" (buffer-string))))))
+          (let ((client (etaf-ncm-make-client :skill-directory directory :timeout 10)))
+            (dolist (case '(((:op :play :target (:kind :song :id 4242)) "play 4242")
+                            ((:op :play :target (:kind :fm) :ids (7 2 7) :start 3)
+                             "play-ids 7,2,7 --start 3")))
+              (setq reply nil)
+              (let ((deadline (+ (float-time) 10)))
+                (etaf-ncm-client-call client (car case) (lambda (result) (setq reply result)))
+                (while (and (null reply) (< (float-time) deadline))
+                  (accept-process-output nil 0.05)))
+              (should (eq (car-safe reply) :ok))
+              (should (with-temp-buffer
+                        (insert-file-contents log)
+                        (string-match-p (regexp-quote (cadr case)) (buffer-string)))))))
       (delete-directory directory t))))
 
 (ert-deftest etaf-ncm-tests-theme-tokens-cover-both-palettes ()
@@ -534,7 +538,8 @@ publishing a selection can delay it past any fixed window."
     (etaf-ncm-press-row app 3)
     (should (equal (plist-get (etaf-ncm-tests--request :play) :target)
                    '(:kind :daily)))
-    (should (= (plist-get (etaf-ncm-tests--request :jump) :index) 3))))
+    (should (= (plist-get (etaf-ncm-tests--request :play) :start) 3))
+    (should-not (etaf-ncm-tests--request :jump))))
 
 (ert-deftest etaf-ncm-tests-press-selects-another-row-before-playing ()
   "A press on a different row selects it; the next press plays it."
@@ -549,7 +554,8 @@ publishing a selection can delay it past any fixed window."
     (etaf-ncm-press-row app 4)
     (should (equal (plist-get (etaf-ncm-tests--request :play) :target)
                    '(:kind :daily)))
-    (should (= (plist-get (etaf-ncm-tests--request :jump) :index) 4))))
+    (should (= (plist-get (etaf-ncm-tests--request :play) :start) 4))
+    (should-not (etaf-ncm-tests--request :jump))))
 
 (ert-deftest etaf-ncm-tests-toggle-starts-the-selected-song-when-nothing-is-loaded ()
   "SPC with an empty queue plays the selected row instead of a no-op toggle."
@@ -765,19 +771,18 @@ The synthetic wheel event carries pixels, just like an Emacs mouse event."
     (should (= (plist-get (etaf-ncm-state app) :list-total) 500))
     (should (eq (plist-get (etaf-ncm-state app) :section) :liked))))
 
-(ert-deftest etaf-ncm-tests-song-row-waits-for-library-before-jump ()
-  "A song in each playable library waits for play, then jumps by its full-list index."
+(ert-deftest etaf-ncm-tests-song-row-starts-in-one-command ()
+  "Each library plays the exact loaded ids, independent of later navigation."
   (dolist (section '(:daily :liked :fm))
     (let* ((etaf-ncm-page-size 8)
            (songs (etaf-ncm-tests--songs 200))
-           requests play-reply jump-reply
+           requests play-reply
            (app (etaf-ncm-create
                  :client (lambda (request callback)
                            (push request requests)
                            (pcase (plist-get request :op)
                              (:browse (funcall callback (list :ok (list :songs songs))))
                              (:play (setq play-reply callback))
-                             (:jump (setq jump-reply callback))
                              (:queue (funcall callback
                                               (list :ok (list :songs songs :count 200 :pos 137))))
                              (_ (etaf-ncm-tests--client request callback)))))))
@@ -786,20 +791,19 @@ The synthetic wheel event carries pixels, just like an Emacs mouse event."
       (should (= (plist-get (etaf-ncm-state app) :selection) 136))
       (setq requests nil)
       (etaf-ncm-press-row app 137)
-      (should (equal requests (list (list :op :play :target (list :kind section)))))
-      ;; Navigation while the request is in flight must not change the jump.
+      (should (equal requests (list (list :op :play :target (list :kind section)
+                                          :ids (number-sequence 1 200) :start 137))))
+      (should (= (plist-get (plist-get (etaf-ncm-state app) :status) :song-id) 137))
+      ;; Navigation while the request is in flight must not change its start.
       (etaf-ncm-move-selection app 10)
       (funcall play-reply '(:ok (:ok t)))
-      (should (equal (mapcar (lambda (request) (plist-get request :op))
-                            (reverse requests)) '(:play :jump)))
-      (should (= (plist-get (car requests) :index) 137))
-      (funcall jump-reply '(:ok (:ok t)))
+      (should-not (seq-find (lambda (request) (eq (plist-get request :op) :jump)) requests))
       (should (= (plist-get (plist-get (etaf-ncm-state app) :queue) :count) 200))
       (should (= (plist-get (plist-get (etaf-ncm-state app) :queue) :pos) 137))
       (should (equal (plist-get (etaf-ncm-state app) :message) "正在播放：长列表137")))))
 
 (ert-deftest etaf-ncm-tests-song-row-failure-and-supersession ()
-  "Failed or superseded list play never jumps over another playback request."
+  "A failed or late play reply never sends a second playback command."
   (let* (pending jumps
          (app (etaf-ncm-create
                :client (lambda (request callback)
@@ -824,8 +828,7 @@ The synthetic wheel event carries pixels, just like an Emacs mouse event."
     (should-not jumps)
     (etaf-ncm-activate-selection app)
     (funcall (car pending) '(:ok (:ok t)))
-    (should (= (plist-get (car jumps) :index) 1))
-    (should (equal (plist-get (etaf-ncm-state app) :error) "跳转失败"))))
+    (should-not jumps)))
 
 (ert-deftest etaf-ncm-tests-other-libraries-play-rows-directly ()
   "Recent, search and list-of-lists rows keep their individual play targets."
@@ -1475,7 +1478,7 @@ not just `etaf-ncm-mode-map', must find the player command."
     (should (plist-get (etaf-ncm-tests--request :download) :force))))
 
 (ert-deftest etaf-ncm-tests-row-action-dispatches-by-key ()
-  "The row menu resolves the row when chosen and dispatches by key."
+  "Inline row actions dispatch without opening a menu or playing the row."
   (setq etaf-ncm-tests--requests nil)
   (let ((app (etaf-ncm-tests--session)))
     (etaf-ncm-refresh app)
@@ -1489,7 +1492,16 @@ not just `etaf-ncm-mode-map', must find the player command."
     (etaf-ncm-row-action app 1 'play)
     (should (eq (plist-get (etaf-ncm-tests--request :play) :op) :play))
     (should-error (etaf-ncm-row-action app 999 'play) :type 'etaf-ncm-error)
-    (should-error (etaf-ncm-row-action app 1 'bogus) :type 'etaf-ncm-error)))
+    (should-error (etaf-ncm-row-action app 1 'bogus) :type 'etaf-ncm-error)
+    (etaf-ncm-tests--with-player app
+      (setq etaf-ncm-tests--requests nil)
+      (etaf-ncm-tests--press-help "下载到本地（勾号表示已下载，点击可重新下载）")
+      (should (etaf-ncm-tests--request :download))
+      (should-not (etaf-ncm-tests--request :play))
+      (setq etaf-ncm-tests--requests nil)
+      (etaf-ncm-tests--press-help "加入队列")
+      (should (etaf-ncm-tests--request :add))
+      (should-not (etaf-ncm-tests--request :play)))))
 
 (ert-deftest etaf-ncm-tests-download-key-uses-the-selection ()
   "The d key downloads the row the library selection points at."
@@ -1545,7 +1557,7 @@ makes the whole list look as if every song were playing."
     (etaf-ncm-tests--with-player app
       (etaf-ncm-refresh app)
       (let ((text (etaf-ncm-tests--rendered-text)))
-        (should (string-match-p ">   曲目 1" text))
+        (should (string-match-p "> +曲目 1" text))
         (should (string-match-p "3  曲目 3" text))
         (should (string-match-p "4  曲目 4" text))))))
 

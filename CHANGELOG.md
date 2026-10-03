@@ -4,8 +4,12 @@ All notable user-visible changes to ETAF NCM.
 
 ## Unreleased
 
-- Rows have an options menu (the `...` button; the `d` key downloads the
-  selection) with play, add to queue and download.  A downloaded row carries a
+- Double-click starts directly on the selected song using the loaded list,
+  rather than playing its first entry and issuing a later jump.
+- Sidebar highlighting and library rows have independent drawing areas;
+  switching cached lists updates retained text and colours.
+- Row download and queue actions are visible inline; the options popup is
+  removed. The `d` key downloads the selection. A downloaded row carries a
   check mark, and the backend plays the local file on the next queue instead of
   fetching a fresh stream URL and never lets the URL keepalive replace it.  The
   registry is the backend's `downloads` truth, so files downloaded from the

@@ -27,8 +27,8 @@ tabs:
 - Search by song, with a playlist scope; results behave like any library.
 - Playback: play a row or a whole list, pause, skip, stop, volume, relative
   seek, shuffle, repeat, like and unlike.
-- Local library: a row's options menu downloads the song (the `d` key does the
-  selection), downloaded rows carry a check mark, and the next queue plays the
+- Local library: inline download and queue icons act directly, without menus.
+  The `d` key downloads the selection; a check marks local songs. The next queue plays the
   local file instead of fetching a fresh stream URL.
 - Queue: a window that follows the playing song, wheel through every loaded
   entry, jump to any of them, append songs.

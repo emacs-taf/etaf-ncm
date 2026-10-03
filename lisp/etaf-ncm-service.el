@@ -97,6 +97,8 @@ REQUEST is a plist whose `:op' selects one backend operation:
   :status       (:op :status)                  playback truth from mpv
   :queue        (:op :queue)                   queue count, index and tracks
   :play         (:op :play :target (:kind chart :id 19723756))
+                Optional :ids (ID...) and :start N play the loaded order;
+                N is 1-based. This uses play-ids instead of refetching a list.
   :add          (:op :add :id 5231190)         append one song to the queue
   :jump         (:op :jump :index 12)          play queue entry by index
   :volume       (:op :volume :value 60)        read the volume when VALUE is nil
@@ -273,17 +275,28 @@ the rest are the arguments.  Signal `etaf-ncm-error' for an unknown request."
     (:queue (list "queue" "--limit" (number-to-string (etaf-ncm--limit request 200))))
     (:play
      (let* ((target (plist-get request :target))
+            (ids (plist-get request :ids))
             (kind (plist-get target :kind))
-            (command (cdr (assq kind etaf-ncm--play-commands))))
+            (command (if ids "play-ids" (cdr (assq kind etaf-ncm--play-commands)))))
        (unless command
          (signal 'etaf-ncm-error (list (format "Cannot play: %S" target))))
-       (let ((argument (plist-get target :id)))
+       (let ((argument (plist-get target :id))
+             (start (plist-get request :start)))
+         (when (and start (not (and ids (integerp start) (> start 0)
+                                    (<= start (length ids)))))
+           (signal 'etaf-ncm-error (list (format "Invalid start: %S" start))))
+         (when (and ids (not (and (proper-list-p ids)
+                                  (cl-every (lambda (id) (and (integerp id) (> id 0))) ids))))
+           (signal 'etaf-ncm-error '("Play ids must be positive integers")))
          (when (memq kind '(:song :query :playlist :album :artist :chart :podcast :episode))
            (unless (and argument (not (string-empty-p (format "%s" argument))))
              (signal 'etaf-ncm-error (list (format "Cannot play: %S" target)))))
          (append (list command)
-                 (when (memq kind '(:song :query :playlist :album :artist :chart :podcast :episode))
-                   (list (etaf-ncm--id argument)))))))
+                 (if ids
+                     (list (mapconcat #'number-to-string ids ","))
+                   (when (memq kind '(:song :query :playlist :album :artist :chart :podcast :episode))
+                     (list (etaf-ncm--id argument))))
+                 (when start (list "--start" (number-to-string start)))))))
     (:add
      (let ((id (plist-get request :id)))
        (unless id (signal 'etaf-ncm-error '("Add needs a song id")))

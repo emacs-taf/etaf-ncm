@@ -95,21 +95,23 @@ hold snapshots without keeping the player alive or accidentally mutating it.
 
 ## Interaction feedback
 
-- A row's options trigger is an ordinary icon button: its press only opens (or
-  closes) that row's popover, because Ebox dispatches a press to the target
-  Host and never runs an ancestor's `:on-press`, so opening the menu cannot
-  also select or play the row.  The app root carries the one `:on-press-capture`
-  hook and dismisses any open popover the press did not land in.
+- Row actions are inline icon buttons, without popovers or a root dismissal
+  handler. Press dispatch targets the icon, not the ancestor row, so downloading
+  or adding to the queue cannot also select or play it. The retained download
+  toggle shares the catalog icon path with its check mark.
+- Sidebar and library rows have fixed, independently addressable drawing areas.
+  Title, text and active colours update retained Hosts rather than rebuilding
+  the sidebar. Structural flags (footer and play-all visibility) store booleans,
+  not row lists: replacing rows must not invalidate unchanged topology.
 - A press on a row selects it; a press on the row that is already selected
   plays it.  The gesture does not consult a timing window, so a slow repaint
   cannot turn a double click into two selections.
 - A song row belonging to a playable origin (`:daily`, `:liked`, `:fm`) sends
-  `:play` for that origin, then `:jump` with its captured 1-based loaded-list
-  index from the successful callback. Reconciliation waits for the jump reply.
-  A failed list request never jumps; another play, skip, stop, queue jump or
-  disposal suppresses the pending continuation. Search, recent and list-of-lists
-  rows retain their individual targets. The header receives `on-play-all` only when the origin
-  kind is in the service's play-command table.
+  `:play` with the loaded ids and captured 1-based start. The service reuses
+  `play-ids --start`, which loads paused, positions the queue and then resumes.
+  No freshly fetched FM list or second jump can change the selected song.
+  Search, recent and list-of-lists rows retain their individual targets. The
+  header offers play-all only for kinds in the service's play-command table.
 - The queue projection uses `:queue-rows` and a zero-based `:queue-start`.
   A nil stored start centres the loaded window on the playing entry. A wheel
   gesture stores an explicit clamped start; unchanged queue replies preserve
