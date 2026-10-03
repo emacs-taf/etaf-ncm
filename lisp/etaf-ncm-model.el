@@ -433,9 +433,9 @@ and a reply from an earlier library is discarded.  Unknown SECTION signals
       (etaf-ncm--write app :subtitle (or (cdr (assq section etaf-ncm--section-subtitles)) ""))
       (etaf-ncm--write app :origin (list :kind section))
       (setf (plist-get app :list-key) key)
-      (etaf-ncm--show-cached-list app key same-p))
-    (etaf-ncm--load app key (etaf-ncm--browse-request app section)
-                    (and (etaf-ncm--list-entry app key) t) same-p)))
+      (etaf-ncm--show-cached-list app key same-p)
+      (etaf-ncm--load app key (etaf-ncm--browse-request app section)
+                      (and (etaf-ncm--list-entry app key) t) same-p))))
 
 (defun etaf-ncm-search (app keyword &optional scope)
   "Search KEYWORD in APP and show the matches.

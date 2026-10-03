@@ -23,6 +23,8 @@
 (require 'etaf-ncm-theme)
 (require 'etaf-ncm-model)
 
+(declare-function etaf-ncm--view-entries "etaf-ncm-app" (model))
+
 ;;; ---------------------------------------------------------------------------
 ;;; Shared geometry
 ;;; ---------------------------------------------------------------------------
@@ -170,10 +172,15 @@ rendered output."
           (expr glyph))))
 
 (etaf-define-component etaf-ncm--view-sidebar
-    (&key groups section account compact on-locate)
-  "Render the library sidebar from GROUPS with SECTION highlighted.
-COMPACT renders the glyph-only rail a medium layout has room for."
-  :view
+    (&key model groups compact on-locate)
+  "Render the library sidebar with MODEL's current SECTION highlighted.
+COMPACT renders the glyph-only rail a medium layout has room for.  The
+component reads the session sources itself, so a library switch repaints the
+sidebar instead of the whole application."
+  :render
+  (let* ((section (etaf-ncm--read model :section))
+         (account (etaf-ncm--read model :account)))
+    (etaf-view
   (flex :flex-direction 'column
         :width (if compact etaf-ncm--rail-width etaf-ncm--sidebar-width)
         :height 'stretch
@@ -217,14 +224,17 @@ COMPACT renders the glyph-only rail a medium layout has room for."
                                  (if (etaf-ncm--truthy-string-p
                                       (plist-get account :vip))
                                      " ·VIP" ""))
-                       "未登录")))))))
+                       "未登录")))))))))
 
 (etaf-define-component etaf-ncm--view-chips
-    (&key groups section on-locate)
+    (&key model groups on-locate)
   "Render the libraries as a strip of glyph chips, as a narrow layout does.
 The strip replaces the sidebar: every library stays one press away while the
-header keeps showing the current library's name."
-  :view
+header keeps showing the current library's name.  The component reads the
+session source itself, so a library switch repaints the chips only."
+  :render
+  (let* ((section (etaf-ncm--read model :section)))
+    (etaf-view
   (flex :width 'stretch :height '(lh 2) :gap '((lh 0) (ch 1))
         :align-items 'center :overflow 'hidden
     (flex :for (entry (apply #'append (mapcar #'cdr groups))) :key (car entry)
@@ -239,13 +249,21 @@ header keeps showing the current library's name."
       (etaf-ui-icon :name (or (nth 2 entry) 'music) :set 'svg :size 1.0 :min-width 3
                     :color (if (eq (car entry) section)
                                (etaf-ncm-color :accent)
-                             (etaf-ncm-color :dim))))))
+                             (etaf-ncm-color :dim))))))))
 
 (etaf-define-component etaf-ncm--view-header
-    (&key title subtitle query loading compact on-search on-play-all on-refresh)
-  "Render the content header for TITLE with its actions.
-COMPACT stacks the search field under the title, the shape a narrow frame needs."
-  :view
+    (&key model compact on-search on-play-library on-refresh)
+  "Render the content header for MODEL's current library.
+COMPACT stacks the search field under the title, the shape a narrow frame
+needs.  The component reads the session sources itself, so a title or loading
+change repaints the header instead of the whole application."
+  :render
+  (let* ((title (etaf-ncm--read model :title))
+         (subtitle (etaf-ncm--read model :subtitle))
+         (query (etaf-ncm--read model :query))
+         (loading (etaf-ncm--read model :loading))
+         (on-play-all (and (etaf-ncm--playable-origin model) on-play-library)))
+    (etaf-view
   (column :width 'stretch :height (if compact '(lh 3) '(lh 2)) :item-gap '(lh 0)
     (flex :if compact :width 'stretch :height '(lh 1) :gap '((lh 0) (ch 1))
           :align-items 'center
@@ -279,7 +297,7 @@ COMPACT stacks the search field under the title, the shape a narrow frame needs.
       (etaf-button :if on-play-all :label "播放全部" :variant 'primary :pointer 'hand
                    :help-echo "播放整个列表" :on-press on-play-all)
       (etaf-button :label (if loading "正在加载" "换一批") :variant 'ghost
-                   :on-press on-refresh))))
+                   :on-press on-refresh))))))
 
 (defun etaf-ncm--pane-tab-source (key pane-list lyrics queue)
   "Return KEY's reactive active source among the pane switch flags."
@@ -335,12 +353,21 @@ rebuilding the view."
                           (t "l 切换面板"))))))))
 
 (etaf-define-component etaf-ncm--view-list
-    (&key entries start total loaded compact selection empty-note on-press)
-  "Render the visible library ENTRIES and a page footer.
+    (&key model compact selection on-press)
+  "Render MODEL's visible library rows and a page footer.
 SELECTION is the player's reactive selection source, passed down so each row
 can read it inside its own Host paint bindings.  ON-PRESS is called with a
-row's page index when that row is clicked."
-  :view
+row's page index when that row is clicked.  The component reads the session
+rows itself, so a list reply repaints the list instead of the application."
+  :render
+  (let* ((entries (etaf-ncm--view-entries model))
+         (start (1+ (nth 1 (etaf-ncm--page-rows model))))
+         (total (etaf-ncm--read model :list-total))
+         (loaded (length (etaf-ncm--read model :rows)))
+         (empty-note (if (etaf-ncm--read model :loading)
+                         "正在加载…"
+                       "这里还没有内容：g 刷新，s 搜索")))
+    (etaf-view
   (flex :flex-direction 'column :width 'stretch :flex-grow 1 :flex-basis '(lh 0)
         :min-height '(lh 0) :gap '((lh 0) (px 0)) :overflow 'hidden
     (etaf-ncm--view-note :if (null entries) :text empty-note)
@@ -366,7 +393,7 @@ row's page index when that row is clicked."
              :flex-grow 1 :flex-basis '(px 0) :min-width '(ch 0)
           (text "j/k 或滚轮选择 · 双击播放 · a 入队 · / 搜索 · l 歌词 · ? 帮助")))
       (box :if (< loaded total) :height '(lh 1)
-        (text (expr (format "已加载 %s / 共 %s 首" loaded total)))))))
+        (text (expr (format "已加载 %s / 共 %s 首" loaded total)))))))))
 
 (etaf-define-component etaf-ncm--view-list-panel
     (&key layout columns window-rows visible)

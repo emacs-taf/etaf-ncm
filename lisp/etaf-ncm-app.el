@@ -539,16 +539,14 @@ releases the polling timer and the session's pending backend requests."
           :min-height '(lh 0) :align-items 'stretch
       (etaf-ncm--view-sidebar
        :if (eq (etaf-ncm--read session :layout) 'wide)
+       :model session
        :groups etaf-ncm-sections
-       :section (etaf-ncm--read session :section)
-       :account (etaf-ncm--read session :account)
        :on-locate on-locate)
       (etaf-ncm--view-sidebar
        :if (eq (etaf-ncm--read session :layout) 'medium)
        :compact t
+       :model session
        :groups etaf-ncm-sections
-       :section (etaf-ncm--read session :section)
-       :account (etaf-ncm--read session :account)
        :on-locate on-locate))
       (etaf-ncm--view-list-panel
        :layout (etaf-ncm--read session :layout)
@@ -556,18 +554,15 @@ releases the polling timer and the session's pending backend requests."
        :window-rows (etaf-ncm--read session :window-rows)
        :visible list-visible
         (etaf-ncm--view-header
-         :title (etaf-ncm--read session :title)
-         :subtitle (etaf-ncm--read session :subtitle)
-         :query (etaf-ncm--read session :query)
-         :loading (etaf-ncm--read session :loading)
+         :model session
          :compact (etaf-ncm--compact-layout-p session)
          :on-search on-search
-         :on-play-all (and (etaf-ncm--playable-origin session) on-play-library)
+         :on-play-library on-play-library
          :on-refresh on-refresh)
         (etaf-ncm--view-chips
          :if (eq (etaf-ncm--read session :layout) 'narrow)
+         :model session
          :groups etaf-ncm-sections
-         :section (etaf-ncm--read session :section)
          :on-locate on-locate)
         (flex :if (etaf-ncm--read session :error) :width 'stretch :height '(lh 1)
               :align-items 'center :padding '((lh 0) (ch 1))
@@ -576,15 +571,9 @@ releases the polling timer and the session's pending backend requests."
           (box :height '(lh 1) :overflow 'hidden
             (text (expr (or (etaf-ncm--reactive-text (etaf-ncm--ref session :message)) "")))))
         (etaf-ncm--view-list
-         :entries (etaf-ncm--view-entries session)
-         :start (1+ (nth 1 (etaf-ncm--page-rows session)))
-         :total (etaf-ncm--read session :list-total)
-         :loaded (length (etaf-ncm--read session :rows))
+         :model session
          :compact (etaf-ncm--compact-layout-p session)
          :selection (etaf-ncm--ref session :selection)
-         :empty-note (if (etaf-ncm--read session :loading)
-                         "正在加载…"
-                       "这里还没有内容：g 刷新，s 搜索")
          :on-press on-press-row))
       (etaf-ncm--view-aside
        :kind 'lyrics :visible lyrics-visible
