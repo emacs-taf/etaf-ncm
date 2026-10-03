@@ -182,6 +182,12 @@ complete headless player for tests and other Lisp callers."
           :liked-ids (make-hash-table :test 'eql)
           :liked-ids-loaded nil
           :liked-ids-at 0
+          ;; Local library: the backend's download registry keyed by song id.
+          ;; A song with a live local file gets a list marker and the backend
+          ;; queue plays it from disk instead of fetching a fresh URL.
+          :downloads (make-hash-table :test 'eql)
+          :downloads-loaded nil
+          :downloads-at 0
           :section (etaf-ref :daily :name 'etaf-ncm-section)
           :title (etaf-ref "每日推荐" :name 'etaf-ncm-title)
           :subtitle (etaf-ref "根据你的口味生成，每天更新" :name 'etaf-ncm-subtitle)
@@ -733,9 +739,18 @@ whole current library."
   (let* ((target (etaf-ncm--target app item))
          (origin (etaf-ncm--playable-origin app))
          (rows (etaf-ncm--read app :rows))
+         (item-id (and (listp item) (plist-get item :id)))
+         ;; The list, tests and other callers may hand over a decorated copy
+         ;; of a row (the download marker is folded in outside `:rows'), so
+         ;; identity first, then kind and id.
          (index (and origin (listp item) (eq (plist-get item :kind) :song)
                      (or (cl-position item rows :test #'eq)
-                         (cl-position item rows :test #'equal))))
+                         (and item-id
+                              (cl-position-if
+                               (lambda (row)
+                                 (and (eq (plist-get row :kind) :song)
+                                      (equal (plist-get row :id) item-id)))
+                               rows)))))
          (generation (cl-incf (plist-get app :play-generation)))
          (message (format "正在播放：%s" (etaf-ncm--target-label app item))))
     (etaf-ncm--command
@@ -760,6 +775,62 @@ whole current library."
       (signal 'etaf-ncm-error '("只能把单曲加入队列")))
     (etaf-ncm--command app (list :op :add :id id)
                        (format "已加入队列：%s" (etaf-ncm--item-name item)))))
+
+(defun etaf-ncm-download (app item)
+  "Download the song ITEM into APP's local library.
+The backend fetches the best quality the account can play, stores the file
+under its configured download directory and registers it, so the next queue
+for that song plays the local copy.  A song that is already downloaded is
+refreshed in place.  A non-song ITEM signals `etaf-ncm-error'."
+  (let* ((target (etaf-ncm--target app item))
+         (id (plist-get target :id)))
+    (unless (and (eq (plist-get target :kind) :song)
+                 (numberp id) (> id 0))
+      (signal 'etaf-ncm-error (list (format "只能下载单曲：%S" item))))
+    (let* ((label (etaf-ncm--target-label app item))
+           (already (gethash id (plist-get app :downloads))))
+      (etaf-ncm--note app (if already
+                              (format "重新下载：%s" label)
+                            (format "开始下载：%s" label)))
+      (etaf-ncm--call
+       app (list :op :download :id id :force (and already t))
+       :on-ok (lambda (data)
+                (let ((entry (list :id id
+                                   :name (or (etaf-ncm--string (plist-get data :name)) label)
+                                   :artist (etaf-ncm--string (plist-get data :artist))
+                                   :file (etaf-ncm--string (plist-get data :file))
+                                   :level (etaf-ncm--string (plist-get data :level))
+                                   :br (etaf-ncm--parse-number (plist-get data :br))
+                                   :bytes (etaf-ncm--parse-number (plist-get data :bytes))
+                                   :at (etaf-ncm--string (plist-get data :at)))))
+                  (puthash id entry (plist-get app :downloads))
+                  (setf (plist-get app :downloads-loaded) t
+                        (plist-get app :downloads-at) (float-time))
+                  (etaf-ncm--note app (format "已下载：%s（%s）"
+                                              (plist-get entry :name)
+                                              (plist-get entry :level)))
+                  (etaf-ncm--refresh-slots app)))))))
+
+(defun etaf-ncm-download-selection (app)
+  "Download the library row APP's selection points at.
+An empty library does nothing."
+  (when-let* ((row (etaf-ncm--selected-row app)))
+    (etaf-ncm-download app row)))
+
+(defun etaf-ncm-row-action (app index key)
+  "Run the row-menu action KEY on library row INDEX (counting from 1) in APP.
+KEY is `play', `queue' or `download'; the row is resolved when the menu item
+is chosen, so a list reply that moved between opening and choosing cannot
+act on a stale row.  An out-of-range INDEX or unknown KEY signals
+`etaf-ncm-error'."
+  (let ((row (nth (1- index) (etaf-ncm--read app :rows))))
+    (unless row
+      (signal 'etaf-ncm-error (list (format "没有第 %s 行" index))))
+    (pcase key
+      ('play (etaf-ncm-play app row))
+      ('queue (etaf-ncm-add-to-queue app row))
+      ('download (etaf-ncm-download app row))
+      (_ (signal 'etaf-ncm-error (list (format "未知行菜单动作：%S" key)))))))
 
 (defun etaf-ncm-jump-queue (app index)
   "Play queue entry INDEX (counting from 1) in APP."
@@ -1054,6 +1125,7 @@ refreshes the list the view already shows, so the reader's position is kept."
       (etaf-ncm--load app key (etaf-ncm--browse-request app section) nil t)))
   (etaf-ncm--request-status app)
   (etaf-ncm--request-liked-ids app)
+  (etaf-ncm--request-downloads app)
   (etaf-ncm--request-queue app)
   (etaf-ncm--request-account app))
 
@@ -1075,6 +1147,38 @@ player show a filled heart for a song in the liked library."
                       (plist-get app :liked-ids-loaded) t
                       (plist-get app :liked-ids-at) (float-time))
                 (etaf-ncm--reflect-liked app))))))
+
+(defun etaf-ncm--request-downloads (app)
+  "Load APP's local download registry.
+The backend owns the registry (a successful `download' registers its file), so
+this asks for the current truth instead of reading the state directory; a file
+deleted outside the player simply stops being listed."
+  (etaf-ncm--call
+   app (list :op :downloads)
+   :on-ok (lambda (data)
+            (let ((table (make-hash-table :test 'eql)))
+              (dolist (entry (etaf-ncm--list (plist-get data :downloads)))
+                (let ((id (etaf-ncm--parse-number (plist-get entry :id))))
+                  (when id (puthash id entry table))))
+              (setf (plist-get app :downloads) table
+                    (plist-get app :downloads-loaded) t
+                    (plist-get app :downloads-at) (float-time))
+              (etaf-ncm--refresh-slots app)))))
+
+(defun etaf-ncm--decorate-row (app row)
+  "Return a copy of ROW with APP's local-download facts folded in.
+A registered and still-present file adds `:downloaded' (non-nil) and
+`:download-level' (the file's quality); other rows are returned as copies
+without those keys, so a headless caller can read the marker straight from
+`etaf-ncm-state' items and still never touches the session's own plists."
+  (when row
+    (let ((copy (copy-sequence row)))
+      (when (eq (plist-get copy :kind) :song)
+        (let* ((id (plist-get copy :id))
+               (entry (and id (gethash id (plist-get app :downloads)))))
+          (plist-put copy :downloaded (and entry t))
+          (plist-put copy :download-level (and entry (plist-get entry :level)))))
+      copy)))
 
 (defun etaf-ncm--reflect-liked (app)
   "Refresh APP's displayed like state from its liked-id table."
@@ -1522,7 +1626,8 @@ never rebuilds for a reply that changes which songs are on the page."
     (etaf-ncm--ensure-row-slots app size)
     (let ((slots (plist-get app :row-slots)))
       (dotimes (index (length slots))
-        (let ((value (and (< index (length rows)) (nth index rows))))
+        (let ((value (etaf-ncm--decorate-row
+                      app (and (< index (length rows)) (nth index rows)))))
           (unless (equal (etaf-value (aref slots index)) value)
             (etaf-set-value (aref slots index) value)))))
     (let ((song-id (plist-get (etaf-ncm--read app :status) :song-id)))
@@ -1637,7 +1742,9 @@ loaded count), `:queue-rows', `:queue-start' (zero-based loaded window start),
 `:lyric-rows' (display lines including translations), `:status', `:queue',
 `:lyric', `:lyric-line', `:aside',
 `:layout', `:pane', `:viewport-width' (the pixel canvas the player paints),
-`:theme', `:account', `:loading', `:error' and `:message'."
+`:theme', `:account', `:downloads' (the local download registry; song rows in
+`:items' and `:visible' carry `:downloaded'/`:download-level' when the file is
+present), `:loading', `:error' and `:message'."
   (let* ((rows (etaf-ncm--read app :rows))
          (page (etaf-ncm--page-rows app))
          (status (let ((status (plist-put
@@ -1657,8 +1764,8 @@ loaded count), `:queue-rows', `:queue-start' (zero-based loaded window start),
           :subtitle (etaf-ncm--read app :subtitle)
           :mode (etaf-ncm--read app :mode)
           :query (etaf-ncm--read app :query)
-          :items (mapcar #'copy-sequence rows)
-          :visible (mapcar #'copy-sequence (nth 0 page))
+          :items (mapcar (lambda (row) (etaf-ncm--decorate-row app row)) rows)
+          :visible (mapcar (lambda (row) (etaf-ncm--decorate-row app row)) (nth 0 page))
           :window-start (nth 1 page)
           :selection (etaf-ncm--read app :selection)
           :page-size (etaf-ncm--read app :page-size)
@@ -1690,6 +1797,11 @@ loaded count), `:queue-rows', `:queue-start' (zero-based loaded window start),
           :theme (etaf-ncm--read app :theme)
           :account (let ((account (etaf-ncm--read app :account)))
                      (and account (copy-sequence account)))
+          :downloads (let (entries)
+                       (maphash (lambda (_id entry)
+                                  (push (copy-sequence entry) entries))
+                                (plist-get app :downloads))
+                       (nreverse entries))
           :loading (etaf-ncm--read app :loading)
           :error (etaf-ncm--read app :error)
           :message (etaf-ncm--read app :message))))

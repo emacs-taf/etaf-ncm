@@ -46,11 +46,15 @@ on.
 ## State ownership
 
 - Session (model): current library, loaded rows, backend total, selection, page,
-  queue window and panel row budgets, message, error,
+  queue window and panel row budgets, message, error, the local download
+  registry (the backend reports it) and the per-row download marker,
   pending generations, poll timer, `:theme`, `:aside`, `:layout` and `:pane`.
-- Backend state directory: login cookie, queue file, saved queues. The player
-  reads the queue tracks from that file and takes the current index from the
-  backend command, so a stale file cannot invent a playing position.
+- Backend state directory: login cookie, queue file, saved queues and the
+  download registry. The player reads the queue tracks from that file and takes
+  the current index from the backend command, so a stale file cannot invent a
+  playing position; the registry is read through the `downloads` command, not
+  from disk, and a registered song is played from its local path by the
+  backend's queue builder.
 - mpv: playback itself. The player never assumes a command succeeded; after a
   playback command it re-reads status and queue.
 
@@ -91,6 +95,11 @@ hold snapshots without keeping the player alive or accidentally mutating it.
 
 ## Interaction feedback
 
+- A row's options trigger is an ordinary icon button: its press only opens (or
+  closes) that row's popover, because Ebox dispatches a press to the target
+  Host and never runs an ancestor's `:on-press`, so opening the menu cannot
+  also select or play the row.  The app root carries the one `:on-press-capture`
+  hook and dismisses any open popover the press did not land in.
 - A press on a row selects it; a press on the row that is already selected
   plays it.  The gesture does not consult a timing window, so a slow repaint
   cannot turn a double click into two selections.

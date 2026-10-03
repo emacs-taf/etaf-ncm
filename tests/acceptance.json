@@ -284,6 +284,36 @@
       "name": "etaf-ncm-tests-library-failure-pauses-refresh",
       "file": "tests/etaf-ncm-tests.el",
       "purpose": "A background library refresh failing with an auth error pauses the warmer until a foreground load succeeds."
+    },
+    {
+      "name": "etaf-ncm-tests-refresh-marks-downloaded-rows",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "Refreshing asks the backend for the local download registry and folds it into the library rows."
+    },
+    {
+      "name": "etaf-ncm-tests-download-requests-the-row-and-marks-it",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "Downloading a row sends the song id, shows the pending message, then marks the row and records the file from the reply."
+    },
+    {
+      "name": "etaf-ncm-tests-download-refreshes-an-existing-file",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "A second download of a song that is already local asks the backend to refresh the file in place."
+    },
+    {
+      "name": "etaf-ncm-tests-row-action-dispatches-by-key",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "The row-menu action resolves the row when chosen and dispatches play, queue or download by key, rejecting bad input."
+    },
+    {
+      "name": "etaf-ncm-tests-download-key-uses-the-selection",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "The d key downloads the row the library selection points at through the mounted player."
+    },
+    {
+      "name": "etaf-ncm-tests-child-environment-always-has-a-utf8-locale",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "The backend child environment always carries a UTF-8 locale, overriding a missing or non-UTF-8 parent locale."
     }
   ]
 }

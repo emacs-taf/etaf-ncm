@@ -77,7 +77,7 @@
 ;; `:visible', `:window-start', `:selection', `:page-size', `:rows-total',
 ;; `:list-total', `:queue-rows', `:queue-start', `:lyric-rows',
 ;; `:status', `:queue', `:lyric', `:lyric-line', `:aside', `:theme', `:account',
-;; `:layout', `:pane', `:viewport-width' (the pixel canvas the player mounts
+;; `:downloads' (the local download registry), `:layout', `:pane', `:viewport-width' (the pixel canvas the player mounts
 ;; into), `:loading', `:error' and `:message'.  The snapshot copies
 ;; every value, so mutating it never changes the player; use it to render
 ;; outside ETAF or to assert behavior in tests.
@@ -119,6 +119,24 @@
 ;; Append the song ITEM to the queue.
 ;; The queue is the backend's queue file, so the running mpv session keeps
 ;; playing; a non-song ITEM signals `etaf-ncm-error'.
+;;
+;; Function: etaf-ncm-download (app item)
+;; Download the song ITEM into APP's local library.
+;; The backend fetches the best quality the account can play, stores the file
+;; under its configured download directory and registers it.  Downloaded songs
+;; get a check mark in the list, and the next queue for that song plays the
+;; local file instead of fetching a fresh stream URL.  A song that is already
+;; downloaded is refreshed in place; a non-song ITEM signals `etaf-ncm-error'.
+;;
+;; Function: etaf-ncm-download-selection (app)
+;; Download the library row APP's selection points at.
+;; An empty library does nothing.
+;;
+;; Function: etaf-ncm-row-action (app index key)
+;; Run the row-menu action KEY on library row INDEX (counting from 1) in APP.
+;; KEY is `play', `queue' or `download'; the row is resolved when the menu item
+;; is chosen, so a list reply that moved in between cannot act on a stale row.
+;; An out-of-range INDEX or unknown KEY signals `etaf-ncm-error'.
 ;;
 ;; Function: etaf-ncm-jump-queue (app index)
 ;; Play the queue entry at 1-based INDEX.

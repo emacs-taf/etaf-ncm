@@ -38,11 +38,13 @@
 (defconst etaf-ncm--aside-width '(ch 40)
   "Width of the lyrics and queue panel.")
 
-(defconst etaf-ncm--row-columns '((ch 3) (fr 1) (ch 22) (ch 18) (ch 5) (ch 6))
-  "Grid columns of one library row: index, title, artist, album, badge, time.")
+(defconst etaf-ncm--row-columns '((ch 3) (fr 1) (ch 22) (ch 18) (ch 5) (ch 3) (ch 6) (ch 3))
+  "Grid columns of one library row: index, title, artist, album, badge,
+local-download marker, time, options.")
 
-(defconst etaf-ncm--row-columns-compact '((ch 3) (fr 1) (ch 18) (ch 5) (ch 6))
-  "Grid columns of a compact library row: index, title, artist, badge, time.")
+(defconst etaf-ncm--row-columns-compact '((ch 3) (fr 1) (ch 18) (ch 5) (ch 3) (ch 6) (ch 3))
+  "Grid columns of a compact library row: index, title, artist, badge,
+local-download marker, time, options.")
 
 (defun etaf-ncm--view-border (_side color)
   "Return the border value of SIDE drawn with COLOR."
@@ -102,13 +104,51 @@ so a selected entry reads as one highlighted line."
         (text (expr badge))))
     (box :height '(lh 1))))
 
+(etaf-define-component etaf-ncm--view-row-menu (&key index on-select)
+  "Render one row's options trigger and its popover.
+ON-SELECT receives the row INDEX and the chosen key: `play', `queue' or
+`download'.  The trigger is an ordinary icon button, so keyboard focus, mouse
+behaviour and surface dismissal stay shared with every other control."
+  :bindings ((open (etaf-ref nil))
+             (anchor (symbol-name (gensym "etaf-ncm-row-menu-"))))
+  :render
+  (etaf-view
+   (flex :height '(lh 1) :justify-content 'center :align-items 'center
+     (etaf-ui-icon :name 'more :set 'svg :size 1.0 :min-width 3
+                   :id anchor
+                   :color (etaf-ncm-color :muted)
+                   :help-echo "歌曲选项"
+                   :on-press (lambda () (setf (etaf-value open) (not (etaf-value open)))))
+     (etaf-popover :open (etaf-value open)
+                   :anchor anchor
+                   :placement 'bottom-end
+                   :width '(ch 16)
+                   :title "歌曲选项"
+                   :on-close (lambda () (setf (etaf-value open) nil))
+         (etaf-button :label "播放" :variant 'ghost :width 'stretch
+                      :help-echo "播放这首歌"
+                      :on-press (lambda ()
+                                  (setf (etaf-value open) nil)
+                                  (funcall on-select index 'play)))
+         (etaf-button :label "加入队列" :variant 'ghost :width 'stretch
+                      :help-echo "加入播放队列"
+                      :on-press (lambda ()
+                                  (setf (etaf-value open) nil)
+                                  (funcall on-select index 'queue)))
+         (etaf-button :label "下载" :variant 'ghost :width 'stretch
+                      :help-echo "下载到本地"
+                      :on-press (lambda ()
+                                  (setf (etaf-value open) nil)
+                                  (funcall on-select index 'download)))))))
+
 (etaf-define-component etaf-ncm--view-row
-    (&key index row playing selection compact press)
+    (&key index row playing selection compact press on-menu)
   "Render library ROW number INDEX, highlighted when SELECTION names it.
 ROW and PLAYING may be retained reactive sources; the row reads them inside
 its Host text and paint bindings, so a list reply updates prepared values
 instead of rebuilding the row.  COMPACT drops the album column, which a narrow
-frame cannot show.  PRESS is called with INDEX when the row is clicked."
+frame cannot show.  PRESS is called with INDEX when the row is clicked, and
+ON-MENU with INDEX and an action key from the row's options popover."
   :view
   (grid :width 'stretch :height '(lh 1) :role 'button :tab-index 0
         :grid-template-columns (if compact etaf-ncm--row-columns-compact
@@ -152,9 +192,19 @@ frame cannot show.  PRESS is called with INDEX when the row is clicked."
     (box :height '(lh 1) :justify-self 'end :font-weight 'normal
          :color (etaf-ncm-color :gold)
       (text (expr (or (plist-get (etaf-ncm--reactive-text row) :badge) ""))))
+    ;; The local-download marker shares the icon route with the play marker:
+    ;; a text glyph would fall back to a taller font and grow the row.
+    (box :height '(lh 1) :justify-self 'center :min-width '(ch 2)
+      (etaf-ui-icon :if (plist-get (etaf-ncm--reactive-text row) :downloaded)
+                    :name 'check :set 'svg :size 1.0 :min-width 2
+                    :color (etaf-ncm-color :accent)
+                    :help-echo (format "已下载（%s）"
+                                       (or (plist-get (etaf-ncm--reactive-text row) :download-level)
+                                           "本地"))))
     (box :height '(lh 1) :justify-self 'end :font-weight 'normal
          :color (etaf-ncm-color :dim)
-      (text (expr (or (plist-get (etaf-ncm--reactive-text row) :right) ""))))))
+      (text (expr (or (plist-get (etaf-ncm--reactive-text row) :right) ""))))
+    (etaf-ncm--view-row-menu :index index :on-select on-menu)))
 
 (etaf-define-component etaf-ncm--view-note (&key text)
   "Render TEXT as a quiet placeholder filling the content area.
@@ -356,12 +406,13 @@ rebuilding the view."
                           (t "l 切换面板"))))))))
 
 (etaf-define-component etaf-ncm--view-list
-    (&key model compact selection on-press)
+    (&key model compact selection on-press on-menu)
   "Render MODEL's visible rows through retained row slots and a page footer.
 Each visible row keeps its slot identity across library switches, so a reply
 updates prepared row text and paint instead of rebuilding the list.  SELECTION
 is the player's reactive selection source; ON-PRESS is called with a row's
-page index when that row is clicked."
+page index when that row is clicked, and ON-MENU with that index plus an
+action key from the row's options popover."
   :render
   (let* ((slots (plist-get model :row-slots))
          (playing (plist-get model :row-playing))
@@ -384,7 +435,8 @@ page index when that row is clicked."
          :playing (aref playing offset)
          :selection selection
          :compact compact
-         :press on-press)
+         :press on-press
+         :on-menu on-menu)
        (box :if (not (zerop count)) :flex-grow 1 :flex-basis '(lh 0)
             :min-height '(lh 0))
        (flex :if (etaf-value footer-visible) :flex-direction 'column
@@ -397,7 +449,7 @@ page index when that row is clicked."
              (text (expr (etaf-ncm--reactive-text page-label))))
            (box :if (not compact) :height '(lh 1) :overflow 'hidden
                 :flex-grow 1 :flex-basis '(px 0) :min-width '(ch 0)
-             (text "j/k 或滚轮选择 · 双击播放 · a 入队 · / 搜索 · l 歌词 · ? 帮助")))
+             (text "j/k 或滚轮选择 · 双击播放 · a 入队 · d 下载 · / 搜索 · l 歌词 · ? 帮助")))
          (box :if (etaf-value more-visible) :height '(lh 1)
            (text (expr (etaf-ncm--reactive-text loaded-label)))))))))
 

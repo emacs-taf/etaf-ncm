@@ -71,6 +71,16 @@
        (:lyric (etaf-ncm-tests--fixture "lyric"))
        (:session (etaf-ncm-tests--fixture "session"))
        (:liked-ids (etaf-ncm-tests--fixture "liked-ids"))
+       (:downloads
+        (list :count 1 :total 1
+              :downloads (list (list :id 1 :name "曲目 1" :artist "歌手 1"
+                                     :file "/tmp/曲目 1.flac" :level "lossless"
+                                     :br 1000 :bytes 10 :at "2026-10-03T00:00:00+0800"))))
+       (:download
+        (let ((id (plist-get request :id)))
+          (list :id id :name (format "曲目 %s" id) :artist "歌手"
+                :file (format "/tmp/曲目 %s.flac" id) :level "lossless"
+                :br 1000 :bytes 10 :at "2026-10-03T00:00:00+0800")))
        (:status (or etaf-ncm-tests--status (etaf-ncm-tests--fixture "status")))
        (:queue (append (etaf-ncm-tests--fixture "queue")
                        (list :songs (plist-get (etaf-ncm-tests--fixture "queue-tracks")
@@ -1427,5 +1437,104 @@ not just `etaf-ncm-mode-map', must find the player command."
                        (> (etaf-ncm-tests--request-count :browse :fm) before))))))
       (etaf-ncm-close))))
 
+(ert-deftest etaf-ncm-tests-refresh-marks-downloaded-rows ()
+  "Refreshing folds the backend download registry into the visible rows."
+  (setq etaf-ncm-tests--requests nil)
+  (let* ((app (etaf-ncm-tests--session))
+         (state (progn (etaf-ncm-refresh app) (etaf-ncm-state app))))
+    (should (= (length (plist-get state :downloads)) 1))
+    (should (plist-get (nth 0 (plist-get state :items)) :downloaded))
+    (should (equal (plist-get (nth 0 (plist-get state :items)) :download-level) "lossless"))
+    (should-not (plist-get (nth 1 (plist-get state :items)) :downloaded))))
+
+(ert-deftest etaf-ncm-tests-download-requests-the-row-and-marks-it ()
+  "Downloading a row asks the backend by id, then marks the row and the state."
+  (setq etaf-ncm-tests--requests nil)
+  (let* ((app (etaf-ncm-tests--session))
+         (state (progn (etaf-ncm-refresh app) (etaf-ncm-state app)))
+         (row (nth 1 (plist-get state :items))))
+    (should-not (plist-get row :downloaded))
+    (etaf-ncm-download app row)
+    (let ((request (etaf-ncm-tests--request :download)))
+      (should request)
+      (should (= (plist-get request :id) 2))
+      (should-not (plist-get request :force)))
+    (should (plist-get (nth 1 (plist-get (etaf-ncm-state app) :items)) :downloaded))
+    (should (= (length (plist-get (etaf-ncm-state app) :downloads)) 2))
+    (should (string-match-p "已下载" (plist-get (etaf-ncm-state app) :message)))))
+
+(ert-deftest etaf-ncm-tests-download-refreshes-an-existing-file ()
+  "A second download of the same song asks the backend to refresh the file."
+  (setq etaf-ncm-tests--requests nil)
+  (let* ((app (etaf-ncm-tests--session))
+         (state (progn (etaf-ncm-refresh app) (etaf-ncm-state app)))
+         (row (nth 0 (plist-get state :items))))
+    (should (plist-get row :downloaded))
+    (setq etaf-ncm-tests--requests nil)
+    (etaf-ncm-download app row)
+    (should (plist-get (etaf-ncm-tests--request :download) :force))))
+
+(ert-deftest etaf-ncm-tests-row-action-dispatches-by-key ()
+  "The row menu resolves the row when chosen and dispatches by key."
+  (setq etaf-ncm-tests--requests nil)
+  (let ((app (etaf-ncm-tests--session)))
+    (etaf-ncm-refresh app)
+    (setq etaf-ncm-tests--requests nil)
+    (etaf-ncm-row-action app 1 'download)
+    (should (= (plist-get (etaf-ncm-tests--request :download) :id) 1))
+    (setq etaf-ncm-tests--requests nil)
+    (etaf-ncm-row-action app 1 'queue)
+    (should (= (plist-get (etaf-ncm-tests--request :add) :id) 1))
+    (setq etaf-ncm-tests--requests nil)
+    (etaf-ncm-row-action app 1 'play)
+    (should (eq (plist-get (etaf-ncm-tests--request :play) :op) :play))
+    (should-error (etaf-ncm-row-action app 999 'play) :type 'etaf-ncm-error)
+    (should-error (etaf-ncm-row-action app 1 'bogus) :type 'etaf-ncm-error)))
+
+(ert-deftest etaf-ncm-tests-download-key-uses-the-selection ()
+  "The d key downloads the row the library selection points at."
+  (setq etaf-ncm-tests--requests nil)
+  (let ((app (etaf-ncm-tests--session)))
+    (etaf-ncm-refresh app)
+    (etaf-ncm-move-selection app 1)
+    (etaf-ncm-tests--with-player app
+      (etaf-ncm-tests--key "d"))
+    (should (= (plist-get (etaf-ncm-tests--request :download) :id) 2))))
+
+(ert-deftest etaf-ncm-tests-child-environment-always-has-a-utf8-locale ()
+  "The backend child runs with a UTF-8 locale even when the parent has none.
+The skill prints and parses Chinese text, so a missing or non-UTF-8 locale
+breaks it; a stub skill records the environment it was spawned with."
+  (let* ((directory (make-temp-file "etaf-ncm-locale" t))
+         (scripts (expand-file-name "scripts" directory))
+         (script (expand-file-name "netease-music.sh" scripts))
+         (log (expand-file-name "env.log" directory))
+         reply)
+    (unwind-protect
+        (progn
+          (make-directory scripts t)
+          (with-temp-file script
+            (insert "#!/bin/sh\n"
+                    (format "env > %s\n" (shell-quote-argument log))
+                    "printf '{\"ok\": true}\\n'\n"))
+          (set-file-modes script #o755)
+          (let ((process-environment '("PATH=/usr/bin" "LC_ALL=en_US.ISO8859-1"))
+                (client (etaf-ncm-make-client :skill-directory directory
+                                              :state-directory directory
+                                              :timeout 10))
+                (deadline (+ (float-time) 10)))
+            (etaf-ncm-client-call client (list :op :downloads)
+                                  (lambda (result) (setq reply result)))
+            (while (and (null reply) (< (float-time) deadline))
+              (accept-process-output nil 0.05))
+            (should (eq (car-safe reply) :ok))
+            (let ((environment (with-temp-buffer
+                                 (insert-file-contents log)
+                                 (buffer-string))))
+              (should (string-match-p "LC_CTYPE=.*UTF-8" environment))
+              (should-not (string-match-p "^LC_ALL=" environment)))))
+      (delete-directory directory t))))
+
 (provide 'etaf-ncm-tests)
+
 ;;; etaf-ncm-tests.el ends here

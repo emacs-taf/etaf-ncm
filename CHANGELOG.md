@@ -4,6 +4,13 @@ All notable user-visible changes to ETAF NCM.
 
 ## Unreleased
 
+- Rows have an options menu (the `...` button; the `d` key downloads the
+  selection) with play, add to queue and download.  A downloaded row carries a
+  check mark, and the backend plays the local file on the next queue instead of
+  fetching a fresh stream URL and never lets the URL keepalive replace it.  The
+  registry is the backend's `downloads` truth, so files downloaded from the
+  command line show the same mark after `g`; downloading a song that is already
+  local refreshes the file in place.
 - Every interaction the app documents is now retained: play/pause, the
   heart, shuffle, repeat, the status message, the lyrics/queue switch, the
   compact pane switch and the library selection read their own reactive

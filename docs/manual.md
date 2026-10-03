@@ -58,9 +58,11 @@ is revived by its next mount.
 | click or drag the progress bar | Seek to the position under the pointer |
 | click or drag the volume slider | Set volume at the pointer, from 0 to 130% |
 | click the cover / `词` / queue control | Show lyrics / lyrics / the queue, preserving the current selection and queue window |
+| click a row's `...` | Open that row's options: play, add to queue, download |
 | `SPC` | Pause or resume; with an empty queue it plays the selected song |
 | `n` / `p` | Next / previous queue entry |
 | `a` | Append the selected song to the queue |
+| `d` | Download the selected song into the local library |
 | `s`, `/` | Search songs (a `read-string` prompt) |
 | `g` | Refresh the library, playback status, queue and account |
 | `l` | Switch the side panel between the lyric and the queue |
@@ -175,6 +177,25 @@ selection or playback. That window stays where you scrolled through unchanged
 status refreshes; a new playing entry or changed queue centres it on playback
 again. Clicking an entry jumps to it, and visible entries remain reachable by
 `TAB` and `RET`. The current entry is marked in the list.
+
+## Local downloads
+
+A row's `...` button opens that row's options: play it, append it to the queue,
+or download it. `d` downloads the selected row without opening the menu. The
+message line reports the pending and finished command, and a check mark
+appears next to every song whose file is on this machine.
+
+The backend does the downloading: it takes the best quality the account can
+play, stores the file under its own download directory and registers it, so
+the marker is the backend's truth, not a local guess. The Emacs player only
+sends the row's id and reads the registry back, so a file downloaded from the
+command line shows the same check mark after `g`.
+
+Playback prefers the local file: when a queue is built, every registered song
+whose file is still on disk is played from its path instead of fetching a new
+stream URL, and the keepalive never replaces it. A downloaded song therefore
+keeps playing without a network round trip and without the five-minute URL
+expiry. Downloading a song that is already local refreshes the file in place.
 
 ## Lyric, translation and theme
 

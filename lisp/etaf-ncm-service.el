@@ -213,7 +213,7 @@ the rest are the arguments.  Signal `etaf-ncm-error' for an unknown request."
        (cons (etaf-ncm--script music) (list music "status" "--json" "--quiet")))
       ((or :queue :play :add :jump :volume :seek :pause :resume :toggle
            :next :previous :stop :like :unlike :shuffle :repeat
-           :queue-save :queue-load)
+           :queue-save :queue-load :download :downloads)
        (cons (etaf-ncm--script music)
              (append (list music) (etaf-ncm--script-arguments request)
                      (list "--json" "--quiet"))))
@@ -325,6 +325,15 @@ the rest are the arguments.  Signal `etaf-ncm-error' for an unknown request."
        (unless (and name (not (string-empty-p (format "%s" name))))
          (signal 'etaf-ncm-error '("queue-load needs a saved name")))
        (list "queue-load" (format "%s" name))))
+    (:download
+     (let ((id (plist-get request :id)))
+       (unless (and (numberp id) (> id 0))
+         (signal 'etaf-ncm-error (list (format "Invalid song id: %S" id))))
+       (append (list "download" (etaf-ncm--id id))
+               (when-let* ((level (plist-get request :level)))
+                 (list "--level" (format "%s" level)))
+               (when (plist-get request :force) (list "--force")))))
+    (:downloads (list "downloads"))
     (_ (signal 'etaf-ncm-error (list (format "Unknown request: %S" request))))))
 
 (defun etaf-ncm--id (value)
@@ -436,12 +445,24 @@ The callback is skipped when the request was cancelled."
 (defun etaf-ncm--environment (client)
   "Return the process environment for CLIENT's child processes.
 The stored login cookie is exported in the names the skill reads, so the skill
-also works when only the shell environment was configured."
-  (let ((cookie (etaf-ncm--cookie client)))
+also works when only the shell environment was configured.  A UTF-8 locale is
+forced when the parent has none: the backend prints and parses Chinese text,
+and under a C locale its shell reads a multibyte character after a variable
+name as part of that name."
+  (let* ((cookie (etaf-ncm--cookie client))
+         (existing (or (getenv "LC_ALL") (getenv "LC_CTYPE") (getenv "LANG")))
+         (utf8 (and existing (string-match-p "\\(?:UTF-8\\|utf8\\)" existing)))
+         (base (seq-remove (lambda (entry)
+                             (or (string-prefix-p "NETEASE_COOKIE=" entry)
+                                 (and (not utf8)
+                                      (or (string-prefix-p "LC_ALL=" entry)
+                                          (string-prefix-p "LC_CTYPE=" entry)
+                                          (string-prefix-p "LANG=" entry)))))
+                           process-environment)))
     (append
-     (seq-remove (lambda (entry)
-                   (string-prefix-p "NETEASE_COOKIE=" entry))
-                 process-environment)
+     base
+     (unless utf8
+       (list (concat "LC_CTYPE=" (if (eq system-type 'darwin) "en_US.UTF-8" "C.UTF-8"))))
      (when (and cookie (not (string-empty-p cookie)))
        (list (concat "NETEASE_COOKIE=" cookie)
              (concat "PI_SKILL_NETEASE_MUSIC_COOKIE=" cookie))))))

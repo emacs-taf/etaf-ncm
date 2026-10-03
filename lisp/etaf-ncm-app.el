@@ -60,6 +60,7 @@
     (define-key map (kbd "n") #'etaf-ncm--next-track)
     (define-key map (kbd "p") #'etaf-ncm--previous-track)
     (define-key map (kbd "a") #'etaf-ncm--add-to-queue)
+    (define-key map (kbd "d") #'etaf-ncm--download)
     (define-key map (kbd "s") #'etaf-ncm--search)
     (define-key map (kbd "/") #'etaf-ncm--search)
     (define-key map (kbd "g") #'etaf-ncm--refresh)
@@ -100,6 +101,7 @@ j/k move the library selection.")
                 ;; renderer.
                 (define-key map (kbd "n") #'etaf-ncm--next-track)
                 (define-key map (kbd "p") #'etaf-ncm--previous-track)
+                (define-key map (kbd "d") #'etaf-ncm--download)
                 (define-key map (kbd "SPC") #'etaf-ncm--toggle-playback)
                 (define-key map (kbd "<next>") #'etaf-ncm--next-page)
                 (define-key map (kbd "<prior>") #'etaf-ncm--previous-page)
@@ -311,6 +313,11 @@ leaves there; j/k only move the selection, so fall back to it."
         (etaf-ncm-add-to-queue model (etaf-ncm--selected-row model))
       (etaf-ncm-error (etaf-ncm--write model :message (error-message-string error))))))
 
+(defun etaf-ncm--download ()
+  "Download the selected library row into the local library."
+  (interactive)
+  (etaf-ncm-download-selection (etaf-ncm--current-model)))
+
 (defun etaf-ncm--search ()
   "Ask for a keyword and search it."
   (interactive)
@@ -416,7 +423,7 @@ default face shows the player background there instead of the frame's."
   "Show the player's key bindings."
   (interactive)
   (message
-   (concat "j/k 或滚轮选择 · 单击选中 · 双击播放 · RET 播放 · SPC 暂停 · n/p 切歌 · a 加入队列 · s 搜索 · g 刷新"
+   (concat "j/k 或滚轮选择 · 单击选中 · 双击播放 · RET 播放 · SPC 暂停 · n/p 切歌 · a 加入队列 · d 下载 · s 搜索 · g 刷新"
            " · l 歌词/队列 · v 列表/面板 · 1-9 音乐库 · +/- 音量 · ,/. 快退快进"
            " · 队列内滚轮翻动队列 · f/F 喜欢 · r 列表循环 · z 随机 · T 深浅色 · q 关闭")))
 
@@ -447,6 +454,8 @@ releases the polling timer and the session's pending backend requests."
              (on-play-library (lambda () (etaf-ncm-play session)))
              (on-refresh (lambda () (etaf-ncm-refresh session)))
              (on-press-row (lambda (index) (etaf-ncm-press-row session index)))
+             (on-row-action (lambda (index key)
+                              (etaf-ncm-row-action session index key)))
              (on-switch-aside (lambda (panel)
                                 (etaf-ncm--write session :aside panel)))
              (on-jump-queue (lambda (index) (etaf-ncm-jump-queue session index)))
@@ -526,6 +535,9 @@ releases the polling timer and the session's pending backend requests."
         ;; One clear line above the chrome keeps the header off the window
         ;; edge; the layout budget already reserves the root padding.
         :padding-top '(lh 1)
+        ;; A press anywhere dismisses an open popover that does not contain it;
+        ;; the capture hook is the one place that sees every press in the app.
+        :on-press-capture (lambda () (etaf-ui-dismiss-outside-press))
         ;; Rows that show symbol glyphs (the state dot, the transport icons, the
         ;; sidebar glyphs) render a little taller than the frame's line height
         ;; because their fallback font has larger metrics.  Keep the last line
@@ -572,7 +584,8 @@ releases the polling timer and the session's pending backend requests."
          :model session
          :compact (etaf-ncm--compact-layout-p session)
          :selection (etaf-ncm--ref session :selection)
-         :on-press on-press-row))
+         :on-press on-press-row
+         :on-menu on-row-action))
       (etaf-ncm--view-aside
        :kind 'lyrics :visible lyrics-visible
        :layout (etaf-ncm--read session :layout)
