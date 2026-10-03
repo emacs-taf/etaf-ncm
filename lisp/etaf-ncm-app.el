@@ -497,12 +497,6 @@ releases the polling timer and the session's pending backend requests."
              ;; Aside and pane sources are read inside Host bindings, so a panel
              ;; switch publishes retained visibility and paint instead of
              ;; re-rendering the app.
-             (aside-lyrics (etaf-computed
-                            (lambda ()
-                              (eq (etaf-value (etaf-ncm--ref session :aside)) 'lyrics))))
-             (aside-queue (etaf-computed
-                           (lambda ()
-                             (eq (etaf-value (etaf-ncm--ref session :aside)) 'queue))))
              (lyrics-visible (etaf-computed
                               (lambda ()
                                 (and (eq (etaf-value (etaf-ncm--ref session :aside)) 'lyrics)
@@ -555,7 +549,7 @@ releases the polling timer and the session's pending backend requests."
        :compact t
        :model session
        :height (if-let* ((rows (etaf-ncm--read session :window-rows)))
-                   (list 'lh (max 1 (- rows 9))) '(% 100))
+                   (list 'lh (max 1 (- rows 7))) '(% 100))
        :groups etaf-ncm-sections
        :on-locate on-locate)
       (etaf-ncm--view-list-panel
@@ -614,14 +608,16 @@ releases the polling timer and the session's pending backend requests."
     (etaf-ncm--view-pane-tabs
      :if (etaf-ncm--compact-layout-p session)
      :pane-list pane-list
-     :lyrics aside-lyrics
-     :queue aside-queue
+     :lyrics lyrics-visible
+     :queue queue-visible
      :on-pane on-show-pane
      :on-aside on-show-aside)
-    ;; The bar paints the bottom six lines; the positioned host reserves them
+    ;; The bar reserves six lines (five in compact layouts); the positioned host
     ;; in flow and the absolute panel inside is the retained publication
     ;; address, so a control toggle updates its Hosts without a view rebuild.
-    (box :position 'relative :width 'stretch :height '(lh 6) :flex-shrink 0
+    (box :position 'relative :width 'stretch
+         :height (if (etaf-ncm--compact-layout-p session) '(lh 5) '(lh 6))
+         :flex-shrink 0
       (etaf-ncm--view-player
        :compact (etaf-ncm--compact-layout-p session)
        :title (plist-get (etaf-ncm--view-status session) :title)

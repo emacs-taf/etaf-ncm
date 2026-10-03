@@ -4,6 +4,8 @@ All notable user-visible changes to ETAF NCM.
 
 ## Unreleased
 
+- Compact list/lyrics/queue tabs form one left-aligned, equal-width row.
+  Only the visible pane is highlighted; the player follows without a blank row.
 - Double-click starts directly on the selected song using the loaded list,
   rather than playing its first entry and issuing a later jump.
 - Sidebar highlighting and library rows have independent drawing areas;

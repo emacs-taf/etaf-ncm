@@ -1298,6 +1298,23 @@ guard alone would accept as settled."
         (etaf-ncm-tests--press-help "显示歌词 (l)")
         (should (eq (plist-get (etaf-ncm-state app) :aside) 'lyrics))
         (should (eq (plist-get (etaf-ncm-state app) :pane) 'aside))
+        (dolist (label '("列表" "歌词" "队列"))
+          (etaf-ncm-tests--press-help label)
+          (etaf-ncm-tests--rendered-text)
+          (let ((tabs (cl-remove-if-not
+                       (lambda (entry) (member (plist-get (cdr entry) :help-echo)
+                                                '("列表" "歌词" "队列")))
+                       (etaf-runtime-host-props-entries
+                        (etaf-runtime-for-buffer (current-buffer))))))
+            (should (= (length tabs) 3))
+            (dolist (tab tabs)
+              (should (equal (plist-get (cdr tab) :width) '(ch 8)))
+              (should (equal (plist-get (cdr tab) :height) '(lh 1))))
+            (should (equal
+                     (cl-loop for (_ . props) in tabs
+                              when (equal (plist-get props :color) (etaf-ncm-color :accent))
+                              collect (plist-get props :help-echo))
+                     (list label)))))
         (should (equal (plist-get (etaf-ncm-state app) :selection) selected))))))
 
 (ert-deftest etaf-ncm-tests-player-clock-moves-the-elapsed-label-and-meter ()

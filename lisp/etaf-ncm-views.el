@@ -342,21 +342,22 @@ its Host bindings, so switching a pane publishes retained paint instead of
 rebuilding the view."
   :view
   (flex :position 'relative :z-index 2
-        :width 'stretch :height '(lh 2) :gap '((lh 0) (ch 2))
+        :width 'stretch :height '(lh 1) :gap '((lh 0) (ch 1))
         :flex-shrink 0 :align-items 'center :padding '((lh 0) (ch 2))
         :background-color (etaf-ncm-color :panel)
         :border-top (etaf-ncm--view-border 'top (etaf-ncm-color :line))
     (flex :for (tab (list (list 'list "列表")
                           (list 'lyrics "歌词")
                           (list 'queue "队列"))) :key (car tab)
-      :height '(lh 1) :gap '((lh 0) (ch 1)) :align-items 'center
+      :width '(ch 8) :height '(lh 1) :flex-grow 0 :flex-shrink 0
+      :justify-content 'center :align-items 'center
       :padding '((lh 0) (ch 1)) :role 'button :tab-index 0
-     
       :hover-style (etaf-ncm--hover-surface)
       :help-echo (nth 1 tab)
       :background-color (if (etaf-value (etaf-ncm--pane-tab-source
                                          (car tab) pane-list lyrics queue))
-                            (etaf-ncm-color :accent-soft))
+                            (etaf-ncm-color :accent-soft)
+                          (etaf-ncm-color :panel))
       :color (if (etaf-value (etaf-ncm--pane-tab-source
                               (car tab) pane-list lyrics queue))
                  (etaf-ncm-color :accent)
@@ -446,7 +447,7 @@ of rebuilding the view."
          (wide-p (eq layout 'wide))
          (rows (or window-rows 0))
          (height (and (> rows 0)
-                      (max 1 (- rows 1 6 (if wide-p 0 2)))))
+                      (max 1 (- rows 1 (if wide-p 6 5) (if wide-p 0 1)))))
          (left (cond (wide-p sidebar-ch)
                      ((eq layout 'medium) rail-ch)
                      (t 0)))
@@ -602,7 +603,8 @@ already stop the content above it."
          (columns (or columns 0))
          (rows (or window-rows 0))
          (height (and (> rows 0)
-                      (max 1 (- rows 1 6 (if (eq layout 'wide) 0 2)))))
+                      (max 1 (- rows 1 (if (eq layout 'wide) 6 5)
+                                (if (eq layout 'wide) 0 1)))))
          (left (cond ((eq layout 'wide) (max 0 (- columns aside-ch)))
                      ((eq layout 'medium) rail-ch)
                      (t 0)))
@@ -802,11 +804,13 @@ The bar is an absolutely positioned panel: the app reserves its six lines with
 a positioned host, while the panel itself stays a retained publication address
 so its controls update without rebuilding the view.  The bar box is
 border-box: one border row, three content rows and one padding row above and
-below, so its total footprint stays the six lines the page budget reserves."
+below. Compact bars omit the top padding and reserve five lines, meeting
+the one-line pane tabs directly."
   :view
   (box :position 'absolute :left '(px 0) :top '(lh 0)
        :width '(% 100) :height '(% 100) :z-index 1
-       :padding '((lh 1) (ch 2))
+       :padding (if compact '((lh 0) (ch 2) (lh 1) (ch 2))
+                  '((lh 1) (ch 2)))
        :background-color (etaf-ncm-color :panel)
        :border-top (etaf-ncm--view-border 'top (etaf-ncm-color :line))
     (grid :if (not compact) :width 'stretch :height '(lh 3)

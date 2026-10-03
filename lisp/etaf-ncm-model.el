@@ -1439,8 +1439,8 @@ Extra lines stay clear; see `etaf-ncm--reserved-lines'."
                    (frame-height)))
          (chrome (+ etaf-ncm--reserved-lines
                     (pcase layout
-                      ('narrow 19)
-                      ('medium 17)
+                      ('narrow 17)
+                      ('medium 15)
                       (_ 13)))))
     (max 4 (- height chrome))))
 
@@ -1472,9 +1472,9 @@ The result is `wide', `medium' or `narrow'; see `etaf-ncm-wide-columns' and
 (defun etaf-ncm--body-rows-for (height layout)
   "Return the body height below HEIGHT lines of player chrome in LAYOUT.
 The root padding, three player lines and its border stay outside the body;
-compact layouts also have a two-line pane switch and its border."
+compact layouts have a one-line pane switch and no player top padding."
   (max 0 (- height etaf-ncm--reserved-lines 4
-            (if (eq layout 'wide) 0 3))))
+            (if (eq layout 'wide) 0 1))))
 
 (defun etaf-ncm--sync-layout (app &optional window)
   "Match APP's layout, pane visibility and row budgets to WINDOW.
