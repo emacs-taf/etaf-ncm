@@ -141,12 +141,13 @@ complete headless player for tests and other Lisp callers."
                                       collect (etaf-ref nil :name
                                                         (intern (format "etaf-ncm-row-%d" index))))))
          (row-playing (vconcat (cl-loop for slot across row-slots
-                                        collect (etaf-computed
-                                                 (lambda ()
-                                                   (let ((row (etaf-value slot))
-                                                         (played (etaf-value playing-id)))
-                                                     (and row played
-                                                          (equal (plist-get row :id) played)))))))))
+                                        collect (let ((watched slot))
+                                                  (etaf-computed
+                                                   (lambda ()
+                                                     (let ((row (etaf-value watched))
+                                                           (played (etaf-value playing-id)))
+                                                       (and row played
+                                                            (equal (plist-get row :id) played))))))))))
     (list :client client
           :playing-id playing-id
           :row-slots row-slots
@@ -1281,6 +1282,9 @@ is when the answered status request was sent."
       (etaf-ncm--set-clock app elapsed)
       (etaf-ncm--sync-flags app status protected)
       (etaf-ncm--write app :status status))
+    ;; A song change moves the list's play marker; the status stays the source
+    ;; of truth, so publish the new id even when no list reply arrives.
+    (etaf-ncm--sync-playing app)
     (when (and song-id (not (equal song-id (plist-get lyric :id))))
       (etaf-ncm--request-lyric app song-id))
     (when (and previous
@@ -1610,12 +1614,25 @@ rejected repaint, is left alone."
         (plist-put app :row-playing
                    (vconcat (plist-get app :row-playing)
                             (cl-loop for slot across (vconcat extra)
-                                     collect (etaf-computed
-                                              (lambda ()
-                                                (let ((row (etaf-value slot))
-                                                      (played (etaf-value playing-id)))
-                                                  (and row played
-                                                       (equal (plist-get row :id) played))))))))))))
+                                     ;; Each computed must watch its own slot:
+                                     ;; `cl-loop' rebinds one variable, so a
+                                     ;; closure over SLOT directly would make
+                                     ;; every row read the last one.
+                                     collect (let ((watched slot))
+                                               (etaf-computed
+                                                (lambda ()
+                                                  (let ((row (etaf-value watched))
+                                                        (played (etaf-value playing-id)))
+                                                    (and row played
+                                                         (equal (plist-get row :id) played)))))))))))))
+
+(defun etaf-ncm--sync-playing (app)
+  "Publish APP's playing song id to the row markers.
+The list's `:row-playing' sources compare their row against this id, so a song
+change must reach it even when no list reply follows."
+  (let ((song-id (plist-get (etaf-ncm--read app :status) :song-id)))
+    (unless (equal (etaf-value (plist-get app :playing-id)) song-id)
+      (etaf-set-value (plist-get app :playing-id) song-id))))
 
 (defun etaf-ncm--refresh-slots (app)
   "Publish APP's visible row window through its retained slot sources.
@@ -1630,9 +1647,7 @@ never rebuilds for a reply that changes which songs are on the page."
                       app (and (< index (length rows)) (nth index rows)))))
           (unless (equal (etaf-value (aref slots index)) value)
             (etaf-set-value (aref slots index) value)))))
-    (let ((song-id (plist-get (etaf-ncm--read app :status) :song-id)))
-      (unless (equal (etaf-value (plist-get app :playing-id)) song-id)
-        (etaf-set-value (plist-get app :playing-id) song-id)))
+    (etaf-ncm--sync-playing app)
     (let* ((loaded (length (etaf-ncm--read app :rows)))
            (total (etaf-ncm--read app :list-total))
            (page-label (format "第 %s-%s 首 / 共 %s 首"

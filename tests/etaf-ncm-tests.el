@@ -1535,6 +1535,20 @@ breaks it; a stub skill records the environment it was spawned with."
               (should-not (string-match-p "^LC_ALL=" environment)))))
       (delete-directory directory t))))
 
+(ert-deftest etaf-ncm-tests-only-the-playing-row-shows-the-play-marker ()
+  "Non-playing rows keep their numbers; the playing row shows the marker.
+A reactive computed object is truthy on its own, and a closure over a
+`cl-loop' variable would read the last row for every row, so either mistake
+makes the whole list look as if every song were playing."
+  (setq etaf-ncm-tests--requests nil)
+  (let ((app (etaf-ncm-tests--session)))
+    (etaf-ncm-tests--with-player app
+      (etaf-ncm-refresh app)
+      (let ((text (etaf-ncm-tests--rendered-text)))
+        (should (string-match-p ">   曲目 1" text))
+        (should (string-match-p "3  曲目 3" text))
+        (should (string-match-p "4  曲目 4" text))))))
+
 (provide 'etaf-ncm-tests)
 
 ;;; etaf-ncm-tests.el ends here

@@ -314,6 +314,11 @@
       "name": "etaf-ncm-tests-child-environment-always-has-a-utf8-locale",
       "file": "tests/etaf-ncm-tests.el",
       "purpose": "The backend child environment always carries a UTF-8 locale, overriding a missing or non-UTF-8 parent locale."
+    },
+    {
+      "name": "etaf-ncm-tests-only-the-playing-row-shows-the-play-marker",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "Only the playing row shows the play marker while every other row keeps its number, covering both the computed-source read and the per-slot closure."
     }
   ]
 }

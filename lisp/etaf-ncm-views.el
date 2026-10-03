@@ -657,9 +657,11 @@ of subscribing the rendering Component to it."
 
 (defun etaf-ncm--active-value (active)
   "Return ACTIVE's current boolean for a HOST binding.
-A reactive source is read at the call site, which keeps the read inside the
-host property binding instead of subscribing the whole component."
-  (if (etaf-ref-p active) (etaf-value active) active))
+A reactive source, ref or computed, is read at the call site, which keeps the
+read inside the host property binding instead of subscribing the whole
+component.  A computed object is truthy on its own, so failing to read it
+would mark every row as playing."
+  (if (or (etaf-ref-p active) (etaf-computed-p active)) (etaf-value active) active))
 
 (etaf-define-component etaf-ncm--view-control (&key icon icons glyph label help on-press active value ref)
   "Render one compact player action.
