@@ -128,11 +128,36 @@ CLIENT defaults to `etaf-ncm-client-factory' when that is bound, and otherwise
 to `etaf-ncm-make-client'.  The session owns no buffer and no timer until it is
 mounted by `etaf-ncm-app' or started by `etaf-ncm-refresh'; it is also a
 complete headless player for tests and other Lisp callers."
-  (let ((client (or client
-                    (if etaf-ncm-client-factory
-                        (funcall etaf-ncm-client-factory)
-                      (etaf-ncm-make-client)))))
+  (let* ((client (or client
+                     (if etaf-ncm-client-factory
+                         (funcall etaf-ncm-client-factory)
+                       (etaf-ncm-make-client))))
+         ;; One retained source per visible row slot.  A list reply writes
+         ;; these sources, and the row Hosts read them in place, so switching
+         ;; libraries publishes prepared text and paint instead of rebuilding
+         ;; the list view.
+         (playing-id (etaf-ref nil :name 'etaf-ncm-playing-id))
+         (row-slots (vconcat (cl-loop for index from 0 below etaf-ncm-page-size
+                                      collect (etaf-ref nil :name
+                                                        (intern (format "etaf-ncm-row-%d" index))))))
+         (row-playing (vconcat (cl-loop for slot across row-slots
+                                        collect (etaf-computed
+                                                 (lambda ()
+                                                   (let ((row (etaf-value slot))
+                                                         (played (etaf-value playing-id)))
+                                                     (and row played
+                                                          (equal (plist-get row :id) played)))))))))
     (list :client client
+          :playing-id playing-id
+          :row-slots row-slots
+          :row-playing row-playing
+          :page-label (etaf-ref "" :name 'etaf-ncm-page-label)
+          :loaded-label (etaf-ref "" :name 'etaf-ncm-loaded-label)
+          :empty-note (etaf-ref "" :name 'etaf-ncm-empty-note)
+          :visible-count (etaf-ref 0 :name 'etaf-ncm-visible-count)
+          :footer-visible (etaf-ref nil :name 'etaf-ncm-footer-visible)
+          :more-visible (etaf-ref nil :name 'etaf-ncm-more-visible)
+          :selected-album (etaf-ref "" :name 'etaf-ncm-selected-album)
           :buffer nil
           :mounted-width nil
           :page-size (etaf-ref etaf-ncm-page-size :name 'etaf-ncm-page-size)
@@ -490,7 +515,8 @@ they are already looking at."
           (etaf-ncm--clamp-list-position app)
         (etaf-ncm--write app :selection 0)
         (etaf-ncm--write app :window-start 0))
-      (etaf-ncm--write app :loading nil))))
+      (etaf-ncm--write app :loading nil)
+      (etaf-ncm--refresh-slots app))))
 
 (defun etaf-ncm--clamp-list-position (app)
   "Keep APP's selection and page inside its current rows."
@@ -501,7 +527,8 @@ they are already looking at."
                                  (etaf-ncm--read app :selection))))
     (etaf-ncm--write app :window-start
                      (max 0 (min (etaf-ncm--read app :window-start)
-                                 (max 0 (- total size)))))))
+                                 (max 0 (- total size)))))
+    (etaf-ncm--refresh-slots app)))
 
 (defun etaf-ncm--load (app key request &optional background keep-position-p)
   "Load REQUEST for APP, caching its rows under KEY.
@@ -531,7 +558,8 @@ reader is already looking at."
                         (etaf-batch
                           (etaf-ncm--write app :rows rows)
                           (etaf-ncm--write app :list-total total)
-                          (etaf-ncm--clamp-list-position app))))
+                          (etaf-ncm--clamp-list-position app)
+                          (etaf-ncm--refresh-slots app))))
                   (when (and (= generation (etaf-ncm--read app :generation))
                              (equal key (plist-get app :list-key)))
                     (etaf-batch
@@ -542,6 +570,7 @@ reader is already looking at."
                         (etaf-ncm--write app :selection 0)
                         (etaf-ncm--write app :window-start 0))
                       (etaf-ncm--write app :loading nil)
+                      (etaf-ncm--refresh-slots app)
                       (etaf-ncm--note app (format "%s · %d 项"
                                                   (etaf-ncm--read app :title)
                                                   (length rows))))))))
@@ -1370,6 +1399,7 @@ the wide layout, because it has no viewport to adapt to."
                          (frame-height)))
       (etaf-ncm--write app :layout layout)
       (etaf-ncm--write app :page-size size)
+      (etaf-ncm--refresh-slots app)
       (etaf-ncm--write app :queue-rows queue-rows)
       ;; The lyric cover, spacer and footer take seven more lines than the
       ;; queue heading.  Translations share this budget with lyric lines.
@@ -1463,6 +1493,66 @@ rejected repaint, is left alone."
                             (max 0 (- total size))))))
     (list (seq-subseq rows start (min total (+ start size))) start total)))
 
+(defun etaf-ncm--ensure-row-slots (app size)
+  "Grow APP's retained row slots so at least SIZE rows have one."
+  (let ((slots (plist-get app :row-slots)))
+    (when (> size (length slots))
+      (let* ((playing-id (plist-get app :playing-id))
+             (extra (cl-loop for index from (length slots) below size
+                             collect (etaf-ref nil :name
+                                               (intern (format "etaf-ncm-row-%d" index))))))
+        (setq slots (vconcat slots extra))
+        (plist-put app :row-slots slots)
+        (plist-put app :row-playing
+                   (vconcat (plist-get app :row-playing)
+                            (cl-loop for slot across (vconcat extra)
+                                     collect (etaf-computed
+                                              (lambda ()
+                                                (let ((row (etaf-value slot))
+                                                      (played (etaf-value playing-id)))
+                                                  (and row played
+                                                       (equal (plist-get row :id) played))))))))))))
+
+(defun etaf-ncm--refresh-slots (app)
+  "Publish APP's visible row window through its retained slot sources.
+Clearing a slot for an absent row keeps the slot identity, so the list view
+never rebuilds for a reply that changes which songs are on the page."
+  (pcase-let* ((`(,rows ,start ,_loaded) (etaf-ncm--page-rows app))
+               (size (max 1 (etaf-ncm--read app :page-size))))
+    (etaf-ncm--ensure-row-slots app size)
+    (let ((slots (plist-get app :row-slots)))
+      (dotimes (index (length slots))
+        (let ((value (and (< index (length rows)) (nth index rows))))
+          (unless (equal (etaf-value (aref slots index)) value)
+            (etaf-set-value (aref slots index) value)))))
+    (let ((song-id (plist-get (etaf-ncm--read app :status) :song-id)))
+      (unless (equal (etaf-value (plist-get app :playing-id)) song-id)
+        (etaf-set-value (plist-get app :playing-id) song-id)))
+    (let* ((loaded (length (etaf-ncm--read app :rows)))
+           (total (etaf-ncm--read app :list-total))
+           (page-label (format "第 %s-%s 首 / 共 %s 首"
+                               (if rows (1+ start) 0)
+                               (if rows (+ start (length rows)) 0)
+                               total))
+           (loaded-label (format "已加载 %s / 共 %s 首" loaded total))
+           (empty-note (if (etaf-ncm--read app :loading)
+                           "正在加载…"
+                         "这里还没有内容：g 刷新，s 搜索"))
+           (visible-count (length rows))
+           (footer-visible (or rows (> total 0)))
+           (more-visible (< loaded total))
+           (selected-album (or (plist-get (etaf-ncm--selected-row app) :meta) "")))
+      (dolist (pair (list (cons :page-label page-label)
+                          (cons :loaded-label loaded-label)
+                          (cons :empty-note empty-note)
+                          (cons :visible-count visible-count)
+                          (cons :footer-visible footer-visible)
+                          (cons :more-visible more-visible)
+                          (cons :selected-album selected-album)))
+        (let ((ref (plist-get app (car pair))))
+          (unless (equal (etaf-value ref) (cdr pair))
+            (etaf-set-value ref (cdr pair))))))))
+
 (defun etaf-ncm--queue-window-start (app)
   "Return the clamped start of APP's loaded queue window, counting from zero.
 A nil scroll position centres the window on the playing entry."
@@ -1493,7 +1583,8 @@ A nil scroll position centres the window on the playing entry."
         (cond ((< selection start) (setq start selection))
               ((>= selection (+ start size)) (setq start (- (1+ selection) size))))
         (etaf-ncm--write app :selection selection)
-        (etaf-ncm--write app :window-start (max 0 start))))))
+        (etaf-ncm--write app :window-start (max 0 start))
+        (etaf-ncm--refresh-slots app)))))
 
 (defun etaf-ncm--selected-row (app)
   "Return the row APP's selection points at, or nil."

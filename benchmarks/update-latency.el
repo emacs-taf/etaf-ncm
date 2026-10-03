@@ -33,7 +33,10 @@
   (funcall original state))
 
 (defun etaf-ncm-benchmark-latency--measure (label function)
-  "Run FUNCTION once and report its latency and candidate count."
+  "Run FUNCTION once and report its latency and candidate count.
+A short settle keeps a previous interaction's deferred flush out of the
+measurement, so the row attributes only the work it triggered."
+  (sit-for 0.05)
   (setq etaf-ncm-benchmark-latency--candidates 0)
   (let ((started (float-time)))
     (funcall function)

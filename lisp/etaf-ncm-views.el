@@ -105,12 +105,10 @@ so a selected entry reads as one highlighted line."
 (etaf-define-component etaf-ncm--view-row
     (&key index row playing selection compact press)
   "Render library ROW number INDEX, highlighted when SELECTION names it.
-SELECTION is the player's reactive selection source; the row reads it inside
-its Host paint bindings, so moving the highlight publishes retained paint
-instead of rebuilding the list.  COMPACT drops the album column, which a narrow
-frame cannot show.  PRESS is called with INDEX when the row is clicked;
-keeping it stable is what lets a row whose data did not change keep its
-rendered output."
+ROW and PLAYING may be retained reactive sources; the row reads them inside
+its Host text and paint bindings, so a list reply updates prepared values
+instead of rebuilding the row.  COMPACT drops the album column, which a narrow
+frame cannot show.  PRESS is called with INDEX when the row is clicked."
   :view
   (grid :width 'stretch :height '(lh 1) :role 'button :tab-index 0
         :grid-template-columns (if compact etaf-ncm--row-columns-compact
@@ -119,16 +117,19 @@ rendered output."
         ;; The unselected row paints the list background explicitly: a retained
         ;; paint binding needs a declared value, and an absent background
         ;; cannot acquire a prepared slot.
-        :background-color (let ((selected (eq (1- index) (etaf-value selection))))
+        :background-color (let ((playing (etaf-ncm--active-value playing))
+                                (selected (eq (1- index) (etaf-value selection))))
                             (cond (playing (etaf-ncm-color :accent-soft))
                                   (selected (etaf-ncm-color :panel2))
                                   (t (etaf-ncm-color :bg))))
-        :color (if playing (etaf-ncm-color :accent) (etaf-ncm-color :ink))
-        :font-weight (let ((selected (eq (1- index) (etaf-value selection))))
+        :color (if (etaf-ncm--active-value playing)
+                   (etaf-ncm-color :accent)
+                 (etaf-ncm-color :ink))
+        :font-weight (let ((playing (etaf-ncm--active-value playing))
+                           (selected (eq (1- index) (etaf-value selection))))
                        (if (or playing selected) 'bold 'normal))
-       
         :hover-style (etaf-ncm--hover-surface)
-        :help-echo (format "播放 %s" (or (plist-get row :name) "这一行"))
+        :help-echo "播放这一行"
         :on-press (lambda () (funcall press index))
     (box :height '(lh 1) :justify-self 'end
          :color (if (eq (1- index) (etaf-value selection))
@@ -136,30 +137,32 @@ rendered output."
                   (etaf-ncm-color :dim))
       ;; A glyph marker would fall back to a taller symbol font and grow the
       ;; row; the shared SVG icon keeps the row at one line height.
-      (etaf-ui-icon :if playing :name 'play :set 'svg :size 1.0 :min-width 2
+      (etaf-ui-icon :if (etaf-ncm--active-value playing) :name 'play :set 'svg
+                    :size 1.0 :min-width 2
                     :color (etaf-ncm-color :accent))
-      (text :if (not playing) (expr (format "%2s" index))))
+      (text :if (not (etaf-ncm--active-value playing)) (expr (format "%2s" index))))
     (box :height '(lh 1) :overflow 'hidden
-      (text (expr (or (plist-get row :name) ""))))
+      (text (expr (or (plist-get (etaf-ncm--reactive-text row) :name) ""))))
     (box :height '(lh 1) :overflow 'hidden :font-weight 'normal
          :color (etaf-ncm-color :muted)
-      (text (expr (or (plist-get row :subtitle) ""))))
+      (text (expr (or (plist-get (etaf-ncm--reactive-text row) :subtitle) ""))))
     (box :if (not compact) :height '(lh 1) :overflow 'hidden :font-weight 'normal
          :color (etaf-ncm-color :dim)
-      (text (expr (or (plist-get row :meta) ""))))
+      (text (expr (or (plist-get (etaf-ncm--reactive-text row) :meta) ""))))
     (box :height '(lh 1) :justify-self 'end :font-weight 'normal
          :color (etaf-ncm-color :gold)
-      (text (expr (or (plist-get row :badge) ""))))
+      (text (expr (or (plist-get (etaf-ncm--reactive-text row) :badge) ""))))
     (box :height '(lh 1) :justify-self 'end :font-weight 'normal
          :color (etaf-ncm-color :dim)
-      (text (expr (or (plist-get row :right) ""))))))
+      (text (expr (or (plist-get (etaf-ncm--reactive-text row) :right) ""))))))
 
 (etaf-define-component etaf-ncm--view-note (&key text)
-  "Render TEXT as a quiet placeholder filling the content area."
+  "Render TEXT as a quiet placeholder filling the content area.
+TEXT may be a retained reactive source, so the note updates as prepared text."
   :view
   (box :width 'stretch :height '(lh 6) :text-align 'center
        :color (etaf-ncm-color :dim)
-    (text (expr (or text "")))))
+    (text (expr (or (etaf-ncm--reactive-text text) "")))))
 
 (etaf-define-component etaf-ncm--view-cover (&key size glyph (height '(lh 7)))
   "Render a square cover placeholder of SIZE characters."
@@ -354,46 +357,49 @@ rebuilding the view."
 
 (etaf-define-component etaf-ncm--view-list
     (&key model compact selection on-press)
-  "Render MODEL's visible library rows and a page footer.
-SELECTION is the player's reactive selection source, passed down so each row
-can read it inside its own Host paint bindings.  ON-PRESS is called with a
-row's page index when that row is clicked.  The component reads the session
-rows itself, so a list reply repaints the list instead of the application."
+  "Render MODEL's visible rows through retained row slots and a page footer.
+Each visible row keeps its slot identity across library switches, so a reply
+updates prepared row text and paint instead of rebuilding the list.  SELECTION
+is the player's reactive selection source; ON-PRESS is called with a row's
+page index when that row is clicked."
   :render
-  (let* ((entries (etaf-ncm--view-entries model))
-         (start (1+ (nth 1 (etaf-ncm--page-rows model))))
-         (total (etaf-ncm--read model :list-total))
-         (loaded (length (etaf-ncm--read model :rows)))
-         (empty-note (if (etaf-ncm--read model :loading)
-                         "正在加载…"
-                       "这里还没有内容：g 刷新，s 搜索")))
+  (let* ((slots (plist-get model :row-slots))
+         (playing (plist-get model :row-playing))
+         (visible (etaf-value (etaf-ncm--ref model :visible-count)))
+         (start (etaf-value (etaf-ncm--ref model :window-start)))
+         (count (max 0 (min visible (length slots))))
+         (offsets (and (> count 0) (number-sequence 0 (1- count))))
+         (page-label (etaf-ncm--ref model :page-label))
+         (loaded-label (etaf-ncm--ref model :loaded-label))
+         (empty-note (etaf-ncm--ref model :empty-note))
+         (footer-visible (etaf-ncm--ref model :footer-visible))
+         (more-visible (etaf-ncm--ref model :more-visible)))
     (etaf-view
-  (flex :flex-direction 'column :width 'stretch :flex-grow 1 :flex-basis '(lh 0)
-        :min-height '(lh 0) :gap '((lh 0) (px 0)) :overflow 'hidden
-    (etaf-ncm--view-note :if (null entries) :text empty-note)
-    (etaf-ncm--view-row :for (entry entries) :key (plist-get entry :index)
-      :index (plist-get entry :index)
-      :row (plist-get entry :row)
-      :selection selection
-      :playing (plist-get entry :playing)
-      :compact compact
-      :press on-press)
-    (box :if entries :flex-grow 1 :flex-basis '(lh 0) :min-height '(lh 0))
-    (flex :if (or entries (> total 0)) :flex-direction 'column
-          :width 'stretch :height (if (< loaded total) '(lh 2) '(lh 1))
-          :flex-shrink 0 :gap '((lh 0) (px 0))
-          :color (etaf-ncm-color :dim) :font-size 12
-      (flex :width 'stretch :height '(lh 1) :gap '((lh 0) (ch 2))
-        (box :height '(lh 1) :flex-shrink 0
-          (text (expr (format "第 %s-%s 首 / 共 %s 首"
-                              (if entries start 0)
-                              (if entries (+ start (1- (length entries))) 0)
-                              total))))
-        (box :if (not compact) :height '(lh 1) :overflow 'hidden
-             :flex-grow 1 :flex-basis '(px 0) :min-width '(ch 0)
-          (text "j/k 或滚轮选择 · 双击播放 · a 入队 · / 搜索 · l 歌词 · ? 帮助")))
-      (box :if (< loaded total) :height '(lh 1)
-        (text (expr (format "已加载 %s / 共 %s 首" loaded total)))))))))
+     (flex :flex-direction 'column :width 'stretch :flex-grow 1 :flex-basis '(lh 0)
+           :min-height '(lh 0) :gap '((lh 0) (px 0)) :overflow 'hidden
+       (etaf-ncm--view-note :if (zerop count) :text empty-note)
+       (etaf-ncm--view-row :for (offset offsets) :key offset
+         :index (1+ (+ start offset))
+         :row (aref slots offset)
+         :playing (aref playing offset)
+         :selection selection
+         :compact compact
+         :press on-press)
+       (box :if (not (zerop count)) :flex-grow 1 :flex-basis '(lh 0)
+            :min-height '(lh 0))
+       (flex :if (etaf-value footer-visible) :flex-direction 'column
+             :width 'stretch
+             :height (if (etaf-value more-visible) '(lh 2) '(lh 1))
+             :flex-shrink 0 :gap '((lh 0) (px 0))
+             :color (etaf-ncm-color :dim) :font-size 12
+         (flex :width 'stretch :height '(lh 1) :gap '((lh 0) (ch 2))
+           (box :height '(lh 1) :flex-shrink 0
+             (text (expr (etaf-ncm--reactive-text page-label))))
+           (box :if (not compact) :height '(lh 1) :overflow 'hidden
+                :flex-grow 1 :flex-basis '(px 0) :min-width '(ch 0)
+             (text "j/k 或滚轮选择 · 双击播放 · a 入队 · / 搜索 · l 歌词 · ? 帮助")))
+         (box :if (etaf-value more-visible) :height '(lh 1)
+           (text (expr (etaf-ncm--reactive-text loaded-label)))))))))
 
 (etaf-define-component etaf-ncm--view-list-panel
     (&key layout columns window-rows visible)

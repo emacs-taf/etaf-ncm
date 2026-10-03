@@ -507,12 +507,10 @@ releases the polling timer and the session's pending backend requests."
                            (eq (etaf-value (etaf-ncm--ref session :pane)) 'list))))
              (list-visible (etaf-computed
                             (lambda () (etaf-ncm--list-shown-p session))))
-             ;; The lyric panel's album line follows the selection, but the
-             ;; app render must not read the selection itself or a row move
-             ;; would repaint the whole view instead of the retained rows.
-             (selected-album (etaf-computed
-                              (lambda ()
-                                (or (plist-get (etaf-ncm--selected-row session) :meta) "")))))
+             ;; The lyric panel's album line follows the selection through a
+             ;; retained source the model writes, so a row move repaints only
+             ;; that text instead of re-rendering the aside.
+             (selected-album (etaf-ncm--ref session :selected-album)))
   :setup
   (progn
     (etaf-theme-provide palette)
