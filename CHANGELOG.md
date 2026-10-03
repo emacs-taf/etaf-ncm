@@ -8,9 +8,12 @@ All notable user-visible changes to ETAF NCM.
   heart, shuffle, repeat, the status message, the lyrics/queue switch, the
   compact pane switch and the library selection read their own reactive
   sources inside Host bindings, and measuring the scripted fixture gives
-  11-90 ms with zero whole-candidate renders in either order.  Only loading
-  a new library still republishes the view, because the data it changes is
-  structural.  The library, the two aside variants and the player bar are
+  11-90 ms with zero whole-candidate renders in either order.  Loading a new
+  library now publishes its rows, header, sidebar and loading state in one
+  publication, and the components that read those sources repaint instead of
+  the whole view; the scripted benchmark reports about 316 ms for the library
+  switch, down from about 600 ms.  One whole candidate render remains for the
+  flow-column update, which the framework's layer planner still owns.  The library, the two aside variants and the player bar are
   absolutely positioned panels of the root stage; keep their anchors there
   when adding a panel whose Hosts must update in place.
 - Pressing `SPC` or the play pill with an empty queue plays the selected song
