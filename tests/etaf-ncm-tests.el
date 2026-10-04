@@ -1158,11 +1158,17 @@ locate the entry by its help text instead of a character offset."
         (should (= 2 (- item-line label-line)))))))
 
 (ert-deftest etaf-ncm-tests-viewport-width-uses-pixels ()
-  "The mounted canvas is the window body width in pixels, not whole cells."
+  "The first canvas already uses ETAF's display-safe pixel viewport."
   (let ((app (etaf-ncm-tests--session)))
     (etaf-ncm-tests--with-player app
-      (should (= (plist-get (etaf-ncm-state app) :viewport-width)
-                 (window-body-width (selected-window) t))))))
+      (let* ((runtime (etaf-runtime-for-buffer (current-buffer)))
+             (width (plist-get (etaf-ncm-state app) :viewport-width)))
+        (should (= width (car (etaf-runtime-viewport runtime))))
+        ;; A first input must not discover a different canvas and trigger a
+        ;; whole-page resize after the player has already opened.
+        (etaf-refit runtime (selected-window))
+        (should (= width (car (etaf-runtime-viewport runtime))))
+        (should (= width (plist-get (etaf-ncm-state app) :viewport-width)))))))
 
 
 (ert-deftest etaf-ncm-tests-sidebar-entry-click-switches-library ()

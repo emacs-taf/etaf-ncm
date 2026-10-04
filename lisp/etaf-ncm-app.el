@@ -699,14 +699,13 @@ the backend.  A caller-provided MODEL keeps its library, queue and selection."
     ;; the player, so the first paint already fits it.  The player adapts to
     ;; later resizes as well (see `etaf-ncm--sync-layout').
     (etaf-ncm--sync-layout model (selected-window))
-    ;; Remember the canvas this mount paints at: a window that settles at a
-    ;; different size must repaint instead of keeping the mount-time canvas.
-    (plist-put model :mounted-width
-               (plist-get (etaf-ncm--viewport-options (selected-window))
-                          :viewport-width))
-    (etaf-mount buffer (etaf-ncm-view model)
-                 (etaf-ncm--viewport-options (selected-window)))
-    (etaf-runtime-flush (etaf-runtime-for-buffer buffer))
+    ;; Let ETAF choose its display-safe viewport from the visible window.
+    ;; Passing the raw window body width overrides that policy and forces a
+    ;; full refit on the first input when the renderer reserves its margins.
+    (etaf-mount buffer (etaf-ncm-view model))
+    (let ((runtime (etaf-runtime-for-buffer buffer)))
+      (plist-put model :mounted-width (car (etaf-runtime-viewport runtime)))
+      (etaf-runtime-flush runtime))
     buffer))
 
 (defun etaf-ncm-close ()

@@ -228,7 +228,7 @@
     {
       "name": "etaf-ncm-tests-viewport-width-uses-pixels",
       "file": "tests/etaf-ncm-tests.el",
-      "purpose": "The mount viewport uses the window body width in pixels so the background reaches the window edge."
+      "purpose": "The initial canvas uses ETAF's display-safe pixel viewport and a subsequent window refit preserves that same width without discovering a different canvas."
     },
     {
       "name": "etaf-ncm-tests-play-all-only-for-supported-origins",
