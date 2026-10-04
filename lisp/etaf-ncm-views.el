@@ -758,10 +758,12 @@ which a terminal-cell layout cannot round away."
 
 (etaf-define-component etaf-ncm--view-progress
     (&key elapsed duration on-seek)
-  "Render elapsed, a draggable progress range and the duration."
+  "Render elapsed, a draggable progress range and the duration.
+Both ELAPSED and DURATION are read by retained Host bindings: the range
+clamps a reactive :max itself, so a song change updates the meter in place
+instead of re-rendering this Component and republishing the view."
   :render
-  (let ((maximum (max 1 (or (etaf-ncm--active-value duration) 0))))
-   (etaf-view
+  (etaf-view
   (flex :height '(lh 1) :gap '((lh 0) (ch 1)) :align-items 'center
     (box :width '(ch 5) :height '(lh 1) :text-align 'right
          :color (etaf-ncm-color :dim) :flex-shrink 0
@@ -769,14 +771,14 @@ which a terminal-cell layout cannot round away."
             (expr (etaf-ncm--format-seconds (etaf-ncm--active-value elapsed)))))
     (flex :flex-direction 'row :flex-grow 1 :flex-basis '(px 0) :min-width '(ch 0)
           :height '(lh 1)
-      (etaf-range :value elapsed :min 0 :max maximum
+      (etaf-range :value elapsed :min 0 :max duration
                   :ref 'ncm-seek :fill-ref 'ncm-meter
                   :aria-label "播放进度，点击或拖动跳转"
                   :color (etaf-ncm-color :accent)
                   :track-color (etaf-ncm-color :panel3)
                   :on-commit on-seek))
     (box :width '(ch 5) :height '(lh 1) :color (etaf-ncm-color :dim) :flex-shrink 0
-      (text (expr (etaf-ncm--format-seconds (etaf-ncm--active-value duration)))))))))
+      (text (expr (etaf-ncm--format-seconds (etaf-ncm--active-value duration))))))))
 
 (etaf-define-component etaf-ncm--view-player-tools
     (&key quality lyrics volume compact on-lyrics on-queue on-volume)
