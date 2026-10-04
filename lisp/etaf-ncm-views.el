@@ -75,11 +75,12 @@ over, one step above the panel it sits on."
 ;;; Primitive Views
 ;;; ---------------------------------------------------------------------------
 
-(etaf-define-component etaf-ncm--view-nav-item (&key icon label section entry-key badge on-press chip help)
-  "Render one library entry, retaining its active paint across navigation."
+(etaf-define-component etaf-ncm--view-nav-item (&key icon label section entry-key badge on-press chip help tight)
+  "Render one library entry, retaining its active paint across navigation.
+TIGHT drops the spacer line so a height-constrained sidebar shows every entry."
   :bindings ((active (etaf-computed (lambda () (eq (etaf-value section) entry-key)))))
   :view
-  (flex :width (if chip '(ch 5) 'stretch) :height (if chip '(lh 1) '(lh 2)) :flex-direction 'column
+  (flex :width (if chip '(ch 5) 'stretch) :height (if (or chip tight) '(lh 1) '(lh 2)) :flex-direction 'column
         :role 'button :tab-index 0
        
         :help-echo (or help label "音乐库")
@@ -102,7 +103,7 @@ over, one step above the panel it sits on."
       (box :if badge :width '(ch 5) :height '(lh 1) :text-align 'right
            :font-weight 'normal :color (etaf-ncm-color :dim)
         (text (expr badge))))
-    (box :if (not chip) :height '(lh 1))))
+    (box :if (not (or chip tight)) :height '(lh 1))))
 
 (etaf-define-component etaf-ncm--view-row
     (&key offset row playing selection compact press on-action)
@@ -206,18 +207,25 @@ TEXT may be a retained reactive source, so the note updates as prepared text."
 (etaf-define-component etaf-ncm--view-sidebar
     (&key model groups compact height on-locate)
   "Render the library sidebar with MODEL's current SECTION highlighted.
-COMPACT renders the glyph-only rail a medium layout has room for.  The
-component reads the session sources itself, so a library switch repaints the
-sidebar instead of the whole application."
+COMPACT renders the glyph-only rail a medium layout has room for.  A HEIGHT
+that cannot hold the two-line entries switches the sidebar to a tight
+one-line-per-entry form, so every library stays visible in short frames.
+The component reads the session sources itself, so a library switch repaints
+the sidebar instead of the whole application."
   :render
   (let* ((section (etaf-ncm--ref model :section))
-         (account (etaf-ncm--read model :account)))
+         (account (etaf-ncm--read model :account))
+         (rows (and (eq (car-safe height) 'lh) (numberp (cadr height)) (cadr height)))
+         (entries (apply #'append (mapcar #'cdr groups)))
+         (tight (and rows
+                     (< rows (+ 2 (* 2 (length entries))
+                                (* 3 (1- (length groups))))))))
     (etaf-view
   (flex :position 'absolute :left '(px 0) :top '(lh 0)
         :flex-direction 'column
         :width (if compact etaf-ncm--rail-width etaf-ncm--sidebar-width)
         :height height
-        :padding '((lh 1) (ch 1)) :gap '((lh 0) (ch 0))
+        :padding (if tight '((lh 0) (ch 1)) '((lh 1) (ch 1))) :gap '((lh 0) (ch 0))
         :background-color (etaf-ncm-color :panel)
         :border-right (etaf-ncm--view-border 'right (etaf-ncm-color :line))
     (flex :width 'stretch :height '(lh 2) :gap '((lh 0) (ch 1))
@@ -232,15 +240,16 @@ sidebar instead of the whole application."
       ;; A group reads as a section: a blank line, a small bold label, one more
       ;; blank line and then its entries, so the label cannot be mistaken for
       ;; the first entry.
-      (box :if (and (not compact) (not (eq group (car groups)))) :height '(lh 1))
-      (box :if (and (not compact) (not (eq group (car groups)))) :height '(lh 1)
+      (box :if (and (not compact) (not tight) (not (eq group (car groups)))) :height '(lh 1))
+      (box :if (and (not compact) (not tight) (not (eq group (car groups)))) :height '(lh 1)
            :padding '((lh 0) (ch 2)) :font-size 12 :font-weight 'bold
            :color (etaf-ncm-color :muted)
         (text (expr (format "%s" (car group)))))
-      (box :if (and (not compact) (not (eq group (car groups)))) :height '(lh 1))
+      (box :if (and (not compact) (not tight) (not (eq group (car groups)))) :height '(lh 1))
       (etaf-ncm--view-nav-item :for (entry (cdr group)) :key (car entry)
         :icon (nth 2 entry)
         :label (if compact "" (nth 1 entry)) :help (nth 1 entry)
+        :tight tight
         :section section :entry-key (car entry)
         :on-press (lambda () (funcall on-locate (car entry)))))
     (box :flex-grow 1 :flex-basis '(lh 0) :min-height '(lh 0))
@@ -299,6 +308,7 @@ change repaints the header instead of the whole application."
            :font-size 12
         (text (expr (or (etaf-value subtitle) ""))))
       (etaf-button :label "换一批" :variant 'ghost
+                   :help-echo "换一批"
                    :on-press on-refresh))
     (flex :if compact :width 'stretch :height '(lh 2) :gap '((lh 0) (ch 1))
           :align-items 'center
@@ -324,6 +334,7 @@ change repaints the header instead of the whole application."
         (etaf-button :label "播放全部" :variant 'primary :pointer 'hand
                      :help-echo "播放整个列表" :on-press on-play-library))
       (etaf-button :label "换一批" :variant 'ghost
+                   :help-echo "换一批"
                    :on-press on-refresh))))))
 
 (defun etaf-ncm--pane-tab-source (key pane-list lyrics queue)
