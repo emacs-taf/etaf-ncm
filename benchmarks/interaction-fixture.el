@@ -35,7 +35,8 @@
             (let ((reply (etaf-ncm-benchmark-reply state request)))
               (if (memq (plist-get request :op) (plist-get state :hold))
                   (setf (plist-get state :pending)
-                        (append (plist-get state :pending) (list (cons callback reply))))
+                        (append (plist-get state :pending)
+                                (list (list (plist-get request :op) callback reply))))
                 (funcall callback (list :ok reply))))))
     state))
 
@@ -103,7 +104,8 @@
   "Deliver every pending reply in STATE; callbacks may issue follow-up reads."
   (let ((pending (plist-get state :pending)))
     (setf (plist-get state :pending) nil)
-    (dolist (entry pending) (funcall (car entry) (list :ok (cdr entry))))))
+    (dolist (entry pending)
+      (funcall (nth 1 entry) (list :ok (nth 2 entry))))))
 
 (provide 'etaf-ncm-interaction-fixture)
 ;;; interaction-fixture.el ends here

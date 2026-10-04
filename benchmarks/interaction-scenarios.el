@@ -193,6 +193,13 @@ resolved from the live GUI; missing/hidden/unfocusable targets fail the run.")
          (app (etaf-ncm-create :client (plist-get backend :client)))
          (op (plist-get action :op))
          (ops (if (eq op :like-toggle) '(:like :unlike) (and op (list op))))
+         ;; A song-changing reply also asks for the lyric and the queue.  Those
+         ;; follow-up replies arrive after the measured status application in
+         ;; real use, so the reply scenario holds them too; the panel updates
+         ;; have their own scenarios.
+         (held (if (and reply-p (memq op '(:play :next :previous :jump)))
+                   (append ops '(:lyric :queue))
+                 ops))
          buffer runtime ref before focus-before ratio (n 0))
     (set-frame-size nil (cadr layout) (caddr layout))
     (delete-other-windows)
@@ -268,7 +275,7 @@ resolved from the live GUI; missing/hidden/unfocusable targets fail the run.")
                             (cons (plist-put (copy-sequence (car songs)) :name (format "更新的曲目 %d" n)) (cdr songs)))))))
          (redisplay t)
          (setq before (etaf-ncm-state app) focus-before (etaf-focused-host-ref runtime))
-         (setf (plist-get backend :requests) nil (plist-get backend :hold) ops)
+         (setf (plist-get backend :requests) nil (plist-get backend :hold) held)
          (when reply-p
            (etaf-ncm-benchmark-input runtime action ref ratio)
            (unless (plist-get backend :pending) (error "No reply queued for %s" (plist-get action :id))))))
@@ -302,8 +309,12 @@ resolved from the live GUI; missing/hidden/unfocusable targets fail the run.")
                                 (plist-get (car (plist-get backend :songs)) :name)))
                   (_ t))
                 (or (not (plist-get action :queue-scroll)) (not (= (plist-get before :queue-start) (plist-get after :queue-start))))
-                (or (not reply-p) (and (not (plist-get backend :pending))
-                                      (etaf-ncm-benchmark-agrees app backend op)))))))
+                (or (not reply-p) (and (etaf-ncm-benchmark-agrees app backend op)
+                                      ;; Only follow-up reads may remain pending
+                                      ;; after the primary reply is applied.
+                                      (cl-every (lambda (entry)
+                                                  (memq (car entry) '(:lyric :queue :status)))
+                                                (plist-get backend :pending))))))))
      :observe
      (lambda (sink)
        (etaf-performance-start runtime)
