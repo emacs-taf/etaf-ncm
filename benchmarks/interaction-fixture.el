@@ -91,8 +91,10 @@
       (:seek (setf (plist-get state :elapsed) (max 0 (+ (plist-get state :elapsed) (plist-get request :seconds)))) t)
       (:shuffle (setf (plist-get state :shuffle) (plist-get request :on)) t)
       (:repeat (setf (plist-get state :repeat) (plist-get request :on)) t)
-      (:like (cl-pushnew (plist-get request :id) (plist-get state :likes)) t)
-      (:unlike (setf (plist-get state :likes) (remove (plist-get request :id) (plist-get state :likes))) t)
+      ;; The app's like/unlike commands target the currently playing song and
+      ;; carry no id of their own; mirror the service and use the queue song.
+      (:like (cl-pushnew (plist-get song :id) (plist-get state :likes)) t)
+      (:unlike (setf (plist-get state :likes) (remove (plist-get song :id) (plist-get state :likes))) t)
       (:add (setf (plist-get state :queue) (append queue (list (seq-find (lambda (s) (equal (plist-get request :id) (plist-get s :id))) songs)))) t)
       (:download
        (let ((entry (list :id (plist-get request :id) :name "离线验证" :artist "演示"
