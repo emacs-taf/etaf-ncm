@@ -317,7 +317,7 @@ the sidebar instead of the whole application."
       ;; the first entry.
       (box :if (and (not compact) (not tight) (not (eq group (car groups)))) :height '(lh 1))
       (box :if (and (not compact) (not tight) (not (eq group (car groups)))) :height '(lh 1)
-           :padding '((lh 0) (ch 2)) :font-size 12 :font-weight 'bold
+           :padding '((lh 0) (ch 2)) :font-size 13 :font-weight 'bold
            :color (etaf-ncm-color :muted)
         (text (expr (format "%s" (car group)))))
       (box :if (and (not compact) (not tight) (not (eq group (car groups)))) :height '(lh 1))
@@ -380,7 +380,7 @@ change repaints the header instead of the whole application."
            :overflow 'hidden :font-weight 'bold
         (text (expr (or (etaf-value title) ""))))
       (box :height '(lh 1) :overflow 'hidden :color (etaf-ncm-color :muted)
-           :font-size 12
+           :font-size 13
         (text (expr (or (etaf-value subtitle) ""))))
       (etaf-button :label "换一批" :variant 'ghost
                    :help-echo "换一批"
@@ -399,7 +399,7 @@ change repaints the header instead of the whole application."
       (column :flex-grow 1 :flex-basis '(px 0) :min-width '(ch 10) :item-gap '(lh 0)
         (text :font-weight 'bold (expr (or (etaf-value title) "")))
         (box :height '(lh 1) :overflow 'hidden :color (etaf-ncm-color :muted)
-             :font-size 12
+             :font-size 13
           (text (expr (or (etaf-value subtitle) "")))))
       (box :width '(ch 30) :height '(lh 1)
         (etaf-text-input :value query :label "搜索"
@@ -457,7 +457,7 @@ rebuilding the view."
         (text (expr (nth 1 tab)))))
     (box :flex-grow 1 :flex-basis '(px 0) :min-width '(ch 0)
          :height '(lh 1) :text-align 'right :color (etaf-ncm-color :dim)
-         :font-size 12 :overflow 'hidden
+         :font-size 13 :overflow 'hidden
       (text (expr (let ((list-p (etaf-value pane-list))
                         (lyrics-p (etaf-value lyrics))
                         (queue-p (etaf-value queue)))
@@ -514,7 +514,7 @@ inline action key."
              :visibility (if (etaf-value footer-visible) 'visible 'hidden)
              :width 'stretch :height '(lh 2)
              :flex-shrink 0 :gap '((lh 0) (px 0))
-             :color (etaf-ncm-color :dim) :font-size 12
+             :color (etaf-ncm-color :dim) :font-size 13
          (flex :width 'stretch :height '(lh 1) :gap '((lh 0) (ch 2))
            (box :height '(lh 1) :flex-shrink 0
              (text (expr (etaf-ncm--reactive-text page-label))))
@@ -572,7 +572,7 @@ paint never re-render when the other variant becomes visible."
   (flex :width 'stretch :height '(lh 2) :gap '((lh 0) (ch 2))
         :align-items 'center
         :border-bottom (etaf-ncm--view-border 'bottom (etaf-ncm-color :line))
-    (box :height '(lh 2) :padding '((lh 0) (ch 0)) :role 'button :tab-index 0
+    (box :height '(lh 1) :padding '((lh 0) (ch 0)) :role 'button :tab-index 0
         
          :hover-style (etaf-ncm--hover-surface)
          :help-echo "看歌词"
@@ -584,7 +584,7 @@ paint never re-render when the other variant becomes visible."
                                                     (etaf-ncm-color :accent)))
          :on-press (lambda () (funcall on-switch 'lyrics))
       (text "歌词"))
-    (box :height '(lh 2) :role 'button :tab-index 0
+    (box :height '(lh 1) :role 'button :tab-index 0
         
          :hover-style (etaf-ncm--hover-surface)
          :help-echo "看播放队列"
@@ -626,14 +626,14 @@ paint never re-render when the other variant becomes visible."
         (box :height '(lh 1) :overflow 'hidden :color (etaf-ncm-color :muted)
           (text (expr (or (etaf-ncm--reactive-text artist) ""))))
         (box :height '(lh 1) :overflow 'hidden :color (etaf-ncm-color :dim)
-             :font-size 12
+             :font-size 13
           (text (expr (or (etaf-ncm--reactive-text album) ""))))))
     (box :height '(lh 1))
     (flex :flex-direction 'column :width 'stretch :flex-grow 1
           :min-height '(lh 0) :gap '((lh 0) (px 0)) :overflow 'hidden
       (etaf-ncm--view-lyric-cell :for (index offsets) :key index :projection projection :index index))
     (box :width 'stretch :height '(lh 1) :color (etaf-ncm-color :dim)
-         :font-size 12 :text-align 'center
+         :font-size 13 :text-align 'center
       (text (expr (let ((data (etaf-value projection)))
                     (if (plist-get data :lines)
                         (format "%s / %s" (or (plist-get data :position) 0) (or (plist-get data :total) 0)) "")))))))))
