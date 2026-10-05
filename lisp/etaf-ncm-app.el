@@ -678,6 +678,10 @@ the backend.  A caller-provided MODEL keeps its library, queue and selection."
     (with-current-buffer buffer
       (setq-local etaf-ncm--model model)
       (setq-local truncate-lines t)
+      ;; The player is an absolutely positioned canvas: a horizontal window
+      ;; scroll (C-e on a wide row, a narrower resize with point off screen)
+      ;; would shift every region, so never let redisplay auto-scroll it.
+      (setq-local auto-hscroll-mode nil)
       (setq-local mode-line-format nil)
       (setq-local emulation-mode-map-alists
                   (cons 'etaf-ncm--command-maps
