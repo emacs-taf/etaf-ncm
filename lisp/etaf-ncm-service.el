@@ -109,6 +109,9 @@ REQUEST is a plist whose `:op' selects one backend operation:
   :repeat       (:op :repeat :on nil)
   :queue-save   (:op :queue-save :name \"晚上\")
   :queue-load   (:op :queue-load :name \"晚上\")
+  :cover        (:op :cover :id 5231190 :file PATH)
+                download the song's cover art to PATH and reply with the
+                saved :file; only requested for songs with a cover URL
 
 CALLBACK receives exactly one of (:ok DATA), where DATA is the decoded JSON
 plist, or (:error MESSAGE :hint HINT) when the command failed, timed out or
@@ -288,7 +291,7 @@ the rest are the arguments.  Signal `etaf-ncm-error' for an unknown request."
        (cons (etaf-ncm--script music) (list music "status" "--json" "--quiet")))
       ((or :queue :play :add :jump :volume :seek :pause :resume :toggle
            :next :previous :stop :like :unlike :shuffle :repeat
-           :queue-save :queue-load :download :downloads)
+           :queue-save :queue-load :download :downloads :cover)
        (cons (etaf-ncm--script music)
              (append (list music) (etaf-ncm--script-arguments request)
                      (list "--json" "--quiet"))))
@@ -346,6 +349,14 @@ the rest are the arguments.  Signal `etaf-ncm-error' for an unknown request."
   "Return the netease-music.sh arguments for REQUEST."
   (pcase (plist-get request :op)
     (:queue (list "queue" "--limit" (number-to-string (etaf-ncm--limit request 200))))
+    (:cover
+     (let ((id (plist-get request :id))
+           (file (plist-get request :file)))
+       (unless (and (integerp id) (> id 0))
+         (signal 'etaf-ncm-error (list (format "Cover needs a song id: %S" id))))
+       (unless (and (stringp file) (not (string-empty-p file)))
+         (signal 'etaf-ncm-error (list (format "Cover needs a destination file: %S" file))))
+       (list "cover" (etaf-ncm--id id) "--download" file "--force")))
     (:play
      (let* ((target (plist-get request :target))
             (ids (plist-get request :ids))
@@ -591,7 +602,8 @@ playing position."
           :artist (etaf-ncm--string (plist-get track :artist))
           :album (etaf-ncm--string (plist-get track :album))
           :ms (etaf-ncm--number (plist-get track :ms))
-          :vip (eq t (plist-get track :vip)))))
+          :vip (eq t (plist-get track :vip))
+          :cover (etaf-ncm--string (plist-get track :cover)))))
 
 (defun etaf-ncm--list (value)
   "Return VALUE as a proper list of elements.

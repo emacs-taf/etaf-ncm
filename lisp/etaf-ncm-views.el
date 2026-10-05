@@ -194,15 +194,105 @@ TEXT may be a retained reactive source, so the note updates as prepared text."
        :color (etaf-ncm-color :dim)
     (text (expr (or (etaf-ncm--reactive-text text) "")))))
 
-(etaf-define-component etaf-ncm--view-cover (&key size glyph (height '(lh 7)))
-  "Render a square cover placeholder of SIZE characters."
+(defvar etaf-ncm--cover-images nil
+  "Downloaded cover-art images keyed by (FILE WIDTH HEIGHT).
+The cache is bounded: adding past the limit flushes the oldest entry.")
+
+(defconst etaf-ncm--cover-image-cache-limit 12)
+
+(defun etaf-ncm--cover-image (file width height)
+  "Return FILE scaled to fit WIDTH x HEIGHT pixels, cached per size."
+  (unless etaf-ncm--cover-images
+    (setq etaf-ncm--cover-images (make-hash-table :test #'equal)))
+  (let ((key (list file width height)))
+    (or (gethash key etaf-ncm--cover-images)
+        (let* ((head (with-temp-buffer
+                       (set-buffer-multibyte nil)
+                       (insert-file-contents-literally file nil 0 16)
+                       (buffer-string)))
+               (image (create-image file (image-type-from-data head) nil
+                                    :max-width width :max-height height)))
+          (when (>= (hash-table-count etaf-ncm--cover-images)
+                    etaf-ncm--cover-image-cache-limit)
+            (let (old)
+              (maphash (lambda (k _v) (setq old k)) etaf-ncm--cover-images)
+              (when old
+                (ignore-errors (image-flush (gethash old etaf-ncm--cover-images)))
+                (remhash old etaf-ncm--cover-images))))
+          (puthash key image etaf-ncm--cover-images)
+          image))))
+
+(defun etaf-ncm--cover-rows (file chars lines)
+  "Return LINES propertized cells showing FILE inside a CHARS x LINES cover.
+The image is scaled to fit, centered, and sliced on row boundaries; nil tells
+the caller to draw its placeholder instead."
+  (when (and (stringp file) (file-readable-p file) (display-graphic-p)
+             (integerp chars) (> chars 0) (integerp lines) (> lines 0))
+    (let* ((char-w (frame-char-width))
+           (char-h (frame-char-height))
+           (width (* chars char-w))
+           (height (* lines char-h))
+           (image (condition-case nil
+                      (etaf-ncm--cover-image file width height)
+                    (error nil))))
+      (when (and image (imagep image))
+        (let* ((size (image-size image t))
+               (image-w (car size))
+               (image-h (cdr size))
+               (lead (max 0 (round (/ (- width image-w) 2.0 char-w))))
+               (top (max 0 (* char-h (floor (/ (- height image-h) 2.0 char-h)))))
+               rows)
+          (dotimes (row lines)
+            (let* ((cell-y (* row char-h))
+                   (start (max 0 (- cell-y top)))
+                   (end (min image-h (- (+ cell-y char-h) top))))
+              (push (if (<= end start)
+                        (make-string chars ?\s)
+                      (concat (make-string lead ?\s)
+                              (propertize " " 'display
+                                          (if (and (= start 0) (= end image-h))
+                                              image
+                                            (list (list 'slice 0 start image-w (- end start))
+                                                  image)))))
+                    rows)))
+          (nreverse rows))))))
+
+(defun etaf-ncm--cover-flush ()
+  "Flush cached cover images; the next render rebuilds them from disk."
+  (when etaf-ncm--cover-images
+    (maphash (lambda (_key image)
+               (ignore-errors (image-flush image)))
+             etaf-ncm--cover-images)
+    (clrhash etaf-ncm--cover-images)))
+
+(etaf-define-component etaf-ncm--view-cover-row (&key cell)
+  "Render one cover-art row cell inside the cover block."
   :view
-  (flex :width size :height height :bgcolor (etaf-ncm-color :panel3)
-        :align-items 'center :justify-content 'center
-    (etaf-ui-icon :if (not glyph) :name 'music :set 'svg :size 1.0 :min-width 2
-                  :color (etaf-ncm-color :accent))
-    (text :if glyph :height '(lh 1) :text-align 'center
-          (expr glyph))))
+  (box :width 'stretch :height '(lh 1) :text-align 'center
+    (text (expr cell))))
+
+(etaf-define-component etaf-ncm--view-cover
+    (&key size glyph (height '(lh 7)) file (chars 10) (lines 7))
+  "Render FILE's album art, or a square placeholder of SIZE characters.
+FILE is a reactive source or a literal path; CHARS and LINES must match the
+cell the caller reserves so the image never exceeds its canvas."
+  :render
+  (let* ((value (and file (if (or (etaf-ref-p file) (etaf-computed-p file))
+                              (etaf-value file)
+                            file)))
+         (rows (and value (etaf-ncm--cover-rows value chars lines)))
+         (indices (and rows (number-sequence 0 (1- (length rows))))))
+    (etaf-view
+     (flex :flex-direction 'column :width size :height height
+           :bgcolor (etaf-ncm-color :panel3)
+           :align-items 'center :justify-content 'center
+       (column :if indices :width 'stretch :item-gap '(lh 0)
+         (etaf-ncm--view-cover-row :for (index indices) :key index
+                                   :cell (nth index rows)))
+       (etaf-ui-icon :if (and (not indices) (not glyph)) :name 'music :set 'svg
+                     :size 1.0 :min-width 2 :color (etaf-ncm-color :accent))
+       (text :if (and (not indices) glyph) :height '(lh 1) :text-align 'center
+             (expr glyph))))))
 
 (etaf-define-component etaf-ncm--view-sidebar
     (&key model groups compact height on-locate)
@@ -536,7 +626,7 @@ paint never re-render when the other variant becomes visible."
                   (if (plist-get row :translation) (propertize text 'face '(:height 0.85)) text))))))
 
 (etaf-define-component etaf-ncm--view-lyrics
-    (&key title artist album projection rows)
+    (&key title artist album cover projection rows)
   "Render retained metadata and a viewport-sized lyric row pool."
   :render
   (let ((offsets (and (> rows 0) (number-sequence 0 (1- rows)))))
@@ -544,7 +634,7 @@ paint never re-render when the other variant becomes visible."
   (flex :flex-direction 'column :width 'stretch :flex-grow 1 :flex-basis '(lh 0)
         :min-height '(lh 0) :gap '((lh 0) (px 0)) :overflow 'hidden
     (flex :width 'stretch :gap '((lh 0) (ch 1)) :align-items 'center
-      (etaf-ncm--view-cover :size '(ch 10))
+      (etaf-ncm--view-cover :size '(ch 10) :chars 10 :lines 7 :file cover)
       (column :flex-grow 1 :flex-basis '(px 0) :min-width '(ch 0) :item-gap '(lh 0)
         (box :height '(lh 1) :overflow 'hidden :font-weight 'bold
           (text (expr (or (etaf-ncm--reactive-text title) "还没有播放"))))
@@ -609,7 +699,7 @@ paint never re-render when the other variant becomes visible."
     (etaf-ncm--view-queue-cell :for (index offsets) :key index :projection projection :index index :on-jump on-jump)))))
 
 (etaf-define-component etaf-ncm--view-aside
-    (&key kind visible layout columns window-rows title artist album projection rows on-switch on-jump)
+    (&key kind visible layout columns window-rows title artist album cover projection rows on-switch on-jump)
   "Render one absolute aside variant: KIND is `lyrics' or `queue'.
 Both variants are panels of the root stage; VISIBLE is the reactive source
 that reveals this one, so switching panels publishes retained visibility
@@ -644,7 +734,8 @@ already stop the content above it."
              :min-width '(ch 0) :gap '((lh 0) (px 0))
          (etaf-ncm--view-tabs :kind kind :on-switch on-switch)
          (etaf-ncm--view-lyrics :if (eq kind 'lyrics)
-           :title title :artist artist :album album :projection projection :rows rows)
+           :title title :artist artist :album album :cover cover
+           :projection projection :rows rows)
          (etaf-ncm--view-queue :if (eq kind 'queue)
            :projection projection :rows rows :on-jump on-jump))))))
 
@@ -701,7 +792,7 @@ pictures.  LABEL appends a small count or state next to the icon."
             (if (string-empty-p performer) "" (concat " - " performer)))))
 
 (etaf-define-component etaf-ncm--view-track
-    (&key title artist vip queue-count compact shuffle message liked
+    (&key title artist vip queue-count compact shuffle message liked cover
           on-lyrics on-add on-like on-shuffle on-stop on-queue)
   "Render the cover, one-line track identity and the small action row."
   :view
@@ -712,7 +803,8 @@ pictures.  LABEL appends a small count or state next to the icon."
          :role 'button :tab-index 0
          :help-echo "显示歌词"
          :on-press on-lyrics
-      (etaf-ncm--view-cover :size '(ch 6) :height '(lh 3)))
+      (etaf-ncm--view-cover :size '(ch 6) :height '(lh 3) :chars 6 :lines 3
+                            :file (and (not compact) cover)))
     (box :if compact :height '(lh 1) :width 'stretch
          :min-width '(ch 0) :overflow 'hidden :font-weight 'bold
       (text :ref 'ncm-track-title (expr (etaf-ncm--track-label title artist vip))))
@@ -828,7 +920,7 @@ Controls sit in separated groups so the right edge reads as three ideas
 
 (etaf-define-component etaf-ncm--view-player
     (&key title artist vip quality playing elapsed duration volume shuffle repeat lyrics message
-          queue-count compact liked on-toggle on-next on-previous on-stop on-like on-add
+          queue-count compact liked cover on-toggle on-next on-previous on-stop on-like on-add
           on-volume on-seek on-shuffle on-repeat
           on-lyrics on-queue)
   "Render a native-style three-column bar, or three compact rows.
@@ -848,7 +940,7 @@ the one-line pane tabs directly."
     (grid :if (not compact) :width 'stretch :height '(lh 3)
           :grid-template-columns '((fr 1) (fr 1) (fr 1)) :gap '((lh 0) (ch 2))
       (etaf-ncm--view-track :title title :artist artist :vip vip :queue-count queue-count
-                            :message message :shuffle shuffle :liked liked
+                            :message message :shuffle shuffle :liked liked :cover cover
                             :on-lyrics on-lyrics :on-add on-add
                             :on-like on-like :on-shuffle on-shuffle :on-stop on-stop :on-queue on-queue)
       (flex :flex-direction 'column :width 'stretch :height '(lh 3)
@@ -862,7 +954,7 @@ the one-line pane tabs directly."
                                    :on-volume on-volume)))
     (flex :if compact :width 'stretch :height '(lh 3) :flex-direction 'column
       (etaf-ncm--view-track :title title :artist artist :vip vip :queue-count queue-count
-                            :compact t :shuffle shuffle :liked liked
+                            :compact t :shuffle shuffle :liked liked :cover cover
                             :on-add on-add :on-like on-like
                             :on-shuffle on-shuffle :on-stop on-stop :on-queue on-queue)
       (flex :width 'stretch :height '(lh 1) :gap '((lh 0) (ch 2))

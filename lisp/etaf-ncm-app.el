@@ -452,6 +452,7 @@ releases the polling timer and the session's pending backend requests."
                           (signal 'etaf-ncm-error
                                   '("etaf-ncm-app needs the :model from `etaf-ncm-create'"))))
              (palette (etaf-ncm--ref session :theme))
+             (cover-file (etaf-ncm--ref session :cover-file))
              (track-title (etaf-ncm--status-source session :title))
              (track-artist (etaf-ncm--status-source session :artist))
              (track-vip (etaf-ncm--status-source session :vip))
@@ -609,7 +610,7 @@ releases the polling timer and the session's pending backend requests."
        :layout (etaf-ncm--read session :layout)
        :columns (etaf-ncm--read session :columns)
        :window-rows (etaf-ncm--read session :window-rows)
-       :title track-title :artist track-artist :album selected-album
+       :title track-title :artist track-artist :album selected-album :cover cover-file
        :projection lyric-panel :rows (etaf-ncm--read session :lyric-rows)
        :on-switch on-switch-aside)
       (etaf-ncm--view-aside
@@ -636,6 +637,7 @@ releases the polling timer and the session's pending backend requests."
       (etaf-ncm--view-player
        :compact (etaf-ncm--compact-layout-p session)
        :title track-title :artist track-artist :vip track-vip :quality track-quality
+       :cover cover-file
        :playing playing
        :elapsed position :duration track-duration
        :volume (etaf-ncm--ref session :volume-ref)
@@ -713,6 +715,7 @@ the backend.  A caller-provided MODEL keeps its library, queue and selection."
   (interactive)
   (when-let* ((runtime (etaf-runtime-for-buffer etaf-ncm-buffer-name)))
     (etaf-unmount runtime))
+  (etaf-ncm--cover-flush)
   (when-let* ((buffer (get-buffer etaf-ncm-buffer-name)))
     (kill-buffer buffer)))
 

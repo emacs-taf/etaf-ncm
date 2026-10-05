@@ -196,6 +196,7 @@ client persists in its state directory; function clients default to memory."
           :downloads (make-hash-table :test 'eql)
           :downloads-loaded nil
           :downloads-at 0
+          :cover-requested-id nil
           :section (etaf-ref :daily :name 'etaf-ncm-section)
           :title (etaf-ref "每日推荐" :name 'etaf-ncm-title)
           :subtitle (etaf-ref "根据你的口味生成，每天更新" :name 'etaf-ncm-subtitle)
@@ -225,6 +226,8 @@ client persists in its state directory; function clients default to memory."
           ;; the playing entry or queue contents change.
           :queue-start (etaf-ref nil :name 'etaf-ncm-queue-start)
           :lyric (etaf-ref nil :name 'etaf-ncm-lyric)
+          ;; Playing song's downloaded cover art path; nil is the placeholder.
+          :cover-file (etaf-ref nil :name 'etaf-ncm-cover-file)
           :aside (etaf-ref 'lyrics :name 'etaf-ncm-aside)
           :theme (etaf-ref (etaf-ncm-theme-defaults) :name 'etaf-ncm-theme)
           :account (etaf-ref nil :name 'etaf-ncm-account)
@@ -1342,6 +1345,42 @@ is when the answered status request was sent."
           :repeat (etaf-ncm--truthy-string-p (plist-get data :repeat))
           :as-of (etaf-ncm--string (plist-get data :as_of)))))
 
+(defun etaf-ncm--cover-file (id)
+  "Return the local cover-art cache path for song ID."
+  (expand-file-name (format "covers/%s" id) etaf-ncm-state-directory))
+
+(defun etaf-ncm--request-cover (app song)
+  "Load SONG's cover art for APP when the playing song changed.
+The previous cover is cleared as soon as playback moves on; a song without a
+cover URL, or a failed download, keeps the placeholder and is not retried
+until playback changes again."
+  (let ((id (plist-get song :id)))
+    (when (and id (not (equal id (plist-get app :cover-requested-id))))
+      (setf (plist-get app :cover-requested-id) id)
+      (etaf-ncm--write app :cover-file nil)
+      (let ((url (plist-get song :cover))
+            (file (and id (etaf-ncm--cover-file id))))
+        (when (and id file (stringp url) (not (string-empty-p url)))
+          (condition-case nil
+              (make-directory (file-name-directory file) t)
+            (error nil))
+          (etaf-ncm--call
+           app (list :op :cover :id id :file file)
+           :on-ok (lambda (data)
+                    (let ((saved (plist-get data :file)))
+                      (when (and (stringp saved) (file-readable-p saved))
+                        (etaf-ncm--write app :cover-file saved))))
+           :on-error (lambda (_message _hint _code) nil)))))))
+
+(defun etaf-ncm--queue-current-song (app queue)
+  "Return QUEUE's entry matching APP's playing song, or the backend position."
+  (let* ((songs (plist-get queue :songs))
+         (status-id (plist-get (etaf-ncm--read app :status) :song-id))
+         (pos (plist-get queue :pos)))
+    (or (and status-id
+             (seq-find (lambda (entry) (equal (plist-get entry :id) status-id)) songs))
+        (and (integerp pos) (> pos 0) (nth (1- pos) songs)))))
+
 (defun etaf-ncm--request-queue (app)
   "Load APP's queue count, index and track list."
   (etaf-ncm--call
@@ -1357,7 +1396,8 @@ is when the answered status request was sent."
                 (unless (and (equal (plist-get previous :pos) (plist-get queue :pos))
                              (equal (plist-get previous :songs) (plist-get queue :songs)))
                   (etaf-ncm--write app :queue-start nil))
-                (etaf-ncm--write app :queue queue))))))
+                (etaf-ncm--write app :queue queue))
+              (etaf-ncm--request-cover app (etaf-ncm--queue-current-song app queue))))))
 
 (defun etaf-ncm--request-lyric (app song-id)
   "Fetch the lyric of SONG-ID for APP."

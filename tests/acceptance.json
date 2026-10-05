@@ -339,6 +339,31 @@
       "name": "etaf-ncm-tests-only-the-playing-row-shows-the-play-marker",
       "file": "tests/etaf-ncm-tests.el",
       "purpose": "Only the playing row shows the play marker while every other row keeps its number, covering both the computed-source read and the per-slot closure."
+    },
+    {
+      "name": "etaf-ncm-tests-cover-request-downloads-through-the-skill-entry",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "The cover request downloads the song's art to the caller's file through the skill entry."
+    },
+    {
+      "name": "etaf-ncm-tests-queue-tracks-keep-the-cover-url",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "Normalized queue tracks keep the backend cover URL and default it to an empty string."
+    },
+    {
+      "name": "etaf-ncm-tests-mounted-player-publishes-the-cover-art",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "Downloaded cover art is published as image content in the mounted player."
+    },
+    {
+      "name": "etaf-ncm-tests-playing-song-cover-is-downloaded-to-the-state-directory",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "Refreshing downloads the playing song's cover into the local cache exactly once."
+    },
+    {
+      "name": "etaf-ncm-tests-cover-clears-when-the-playing-song-has-none",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "Moving to a song without a cover clears the previous art immediately without retrying."
     }
   ]
 }

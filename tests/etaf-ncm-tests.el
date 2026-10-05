@@ -1702,6 +1702,244 @@ makes the whole list look as if every song were playing."
         (should (string-match-p "3  曲目 3" text))
         (should (string-match-p "4  曲目 4" text))))))
 
+(defconst etaf-ncm-tests--cover-png
+  (concat "iVBORw0KGgoAAAANSUhEUgAAABAAAAAoCAIAAAB4uO32AAAEkUlEQVR4nA3LEdMCMACA4SgKdlH0"
+          "3SCKRlGwi6LuhSgaRcEuirpBFI2iYBdF3SCKRlGwi6JuEEX7Cd8efzqdDqKD7KA66A50MB1sB9fB"
+          "dwgdYofUIXcoHWqHTqeL6CK7qC66C11MF9vFdfFdQpfYJXXJXUqX2m2hh+ghe6geugc9TA/bw/Xw"
+          "PUKP2CP1yD1Kj9proY/oI/uoProPfUwf28f18X1Cn9gn9cl9Sp/ab2GAGCAHqAF6AAPMADvADfAD"
+          "woA4IA3IA8qAOmjhD/GH/EP9of/gD/OH/cP94f8If8Q/0h/5j/JH/WthiBgih6gheghDzBA7xA3x"
+          "Q8KQOCQNyUPKkDpsYYQYIUeoEXoEI8wIO8KN8CPCiDgijcgjyog6akEhFFKhFFqBwiiswim8Iiii"
+          "IimyoiiqamGMGCPHqDF6DGPMGDvGjfFjwpg4Jo3JY8qYOm5hgpggJ6gJegITzAQ7wU3wE8KEOCFN"
+          "yBPKhDppYYqYIqeoKXoKU8wUO8VN8VPClDglTclTypQ6bWGGmCFnqBl6BjPMDDvDzfAzwow4I83I"
+          "M8qMOmthjpgj56g5eg5zzBw7x83xc8KcOCfNyXPKnDpvYYFYIBeoBXoBC8wCu8At8AvCgrggLcgL"
+          "yoK6aGGJWCKXqCV6CUvMErvELfFLwpK4JC3JS8qSumzBIAzSoAzagMEYrMEZvCEYoiEZsqEYqmlh"
+          "hVghV6gVegUrzAq7wq3wK8KKuCKtyCvKirpqYY1YI9eoNXoNa8wau8at8WvCmrgmrclrypq6bmGD"
+          "2CA3qA16AxvMBrvBbfAbwoa4IW3IG8qGumlhi9git6gtegtbzBa7xW3xW8KWuCVtyVvKlrptYYfY"
+          "IXeoHXoHO8wOu8Pt8DvCjrgj7cg7yo66a2GP2CP3qD16D3vMHrvH7fF7wp64J+3Je8qeum/hgDgg"
+          "D6gD+gAHzAF7wB3wB8KBeCAdyAfKgXpowSM80qM82oPHeKzHebwneKInebKneKpv4Yg4Io+oI/oI"
+          "R8wRe8Qd8UfCkXgkHclHypF6bOGEOCFPqBP6BCfMCXvCnfAnwol4Ip3IJ8qJemrhjDgjz6gz+gxn"
+          "zBl7xp3xZ8KZeCadyWfKmXpu4YK4IC+oC/oCF8wFe8Fd8BfChXghXcgXyoV6aeGKuCKvqCv6ClfM"
+          "FXvFXfFXwpV4JV3JV8qVem3hhrghb6gb+gY3zA17w93wN8KNeCPdyDfKjXpr4Y64I++oO/oOd8wd"
+          "e8fd8XfCnXgn3cl3yp16byEhEjKhEjpBwiRswiV8IiRiIiVyoiRqauGBeCAfqAf6AQ/MA/vAPfAP"
+          "woP4ID3ID8qD+mjhiXgin6gn+glPzBP7xD3xT8KT+CQ9yU/Kk/ps4YV4IV+oF/oFL8wL+8K98C/C"
+          "i/givcgvyov6auGNeCPfqDf6DW/MG/vGvfFvwpv4Jr3Jb8qb+m7hg/ggP6gP+gMfzAf7wX3wH8KH"
+          "+CF9yB/Kh/pp4Yv4Ir+oL/oLX8wX+8V98V/Cl/glfclfypf6beGH+CF/qB/6Bz/MD/vD/fA/wo/4"
+          "I/3IP8qP+uMfR7YYrqg8tOcAAAAASUVORK5CYII=")
+  "A 16x40 PNG used to verify cover scaling, centering and slicing.")
+
+(defun etaf-ncm-tests--write-cover (file)
+  "Write the test cover PNG to FILE."
+  (with-temp-file file
+    (set-buffer-multibyte nil)
+    (insert (base64-decode-string etaf-ncm-tests--cover-png))))
+
+(defun etaf-ncm-tests--stub-cover-skill (directory)
+  "Create a stub netease-music skill in DIRECTORY; return its script path.
+The script records its arguments, materializes the requested cover download,
+and answers with the documented JSON shapes.  A queue.json in the same
+directory drives the queue track list."
+  (let ((scripts (expand-file-name "scripts" directory))
+        (log (expand-file-name "calls.log" directory)))
+    (make-directory scripts t)
+    (with-temp-file (expand-file-name "netease-music.sh" scripts)
+      (insert "#!/bin/sh\n"
+              (format "printf '%%s\\n' \"$*\" >> %s\n" (shell-quote-argument log))
+              "case \"$1\" in\n"
+              "  cover)\n"
+              "    prev=\"\"\n"
+              "    for arg in \"$@\"; do\n"
+              "      if [ \"$prev\" = \"--download\" ]; then target=\"$arg\"; fi\n"
+              "      prev=\"$arg\"\n"
+              "    done\n"
+              "    : > \"$target\"\n"
+              "    printf '{\"id\":%s,\"cover\":\"https://example.invalid/a.jpg\",\"file\":\"%s\",\"bytes\":0}\\n' \"$2\" \"$target\"\n"
+              "    ;;\n"
+              "  *) printf '{\"ok\":true}\\n' ;;\n"
+              "esac\n"))
+    (set-file-modes (expand-file-name "netease-music.sh" scripts) #o755)
+    (expand-file-name "netease-music.sh" scripts)))
+
+(ert-deftest etaf-ncm-tests-cover-request-downloads-through-the-skill-entry ()
+  "The cover request records the skill command and reports the saved file."
+  (let* ((directory (make-temp-file "ncm-cover-skill" t))
+         (target (expand-file-name "art.img" directory))
+         reply)
+    (unwind-protect
+        (progn
+          (etaf-ncm-tests--stub-cover-skill directory)
+          (let* ((client (etaf-ncm-make-client :skill-directory directory :timeout 10))
+                 (deadline (+ (float-time) 10)))
+            (etaf-ncm-client-call client (list :op :cover :id 7 :file target)
+                                  (lambda (result) (setq reply result)))
+            (while (and (null reply) (< (float-time) deadline))
+              (accept-process-output nil 0.05))
+            (should (eq (car-safe reply) :ok))
+            (should (equal 7 (plist-get (cadr reply) :id)))
+            (should (equal target (plist-get (cadr reply) :file)))
+            (should (file-readable-p target))
+            (should (with-temp-buffer
+                      (insert-file-contents (expand-file-name "calls.log" directory))
+                      (string-match-p
+                       (regexp-quote (format "cover 7 --download %s --force" target))
+                       (buffer-string))))))
+      (delete-directory directory t))))
+
+(ert-deftest etaf-ncm-tests-queue-tracks-keep-the-cover-url ()
+  "Queue tracks normalized from the skill state carry the cover URL."
+  (let* ((directory (make-temp-file "ncm-cover-queue" t))
+         reply)
+    (unwind-protect
+        (progn
+          (etaf-ncm-tests--stub-cover-skill directory)
+          (let* ((client (etaf-ncm-make-client :skill-directory directory
+                                               :state-directory directory
+                                               :timeout 10))
+                 (ask (lambda ()
+                        (setq reply nil)
+                        (let ((deadline (+ (float-time) 10)))
+                          (etaf-ncm-client-call client (list :op :queue :limit 5)
+                                                (lambda (result) (setq reply result)))
+                          (while (and (null reply) (< (float-time) deadline))
+                            (accept-process-output nil 0.05)))
+                        reply)))
+            (with-temp-file (expand-file-name "queue.json" directory)
+              (insert "{\"songs\":[{\"id\":1,\"name\":\"曲目\",\"artist\":\"歌手\","
+                      "\"album\":\"专辑\",\"ms\":1000,\"vip\":false,"
+                      "\"cover\":\"https://example.invalid/a.jpg\"}]}"))
+            (let ((result (funcall ask)))
+              (should (eq (car-safe result) :ok))
+              (should (equal "https://example.invalid/a.jpg"
+                             (plist-get (car (plist-get (cadr result) :songs)) :cover))))
+            (with-temp-file (expand-file-name "queue.json" directory)
+              (insert "{\"songs\":[{\"id\":1,\"name\":\"曲目\"}]}"))
+            (should (equal "" (plist-get (car (plist-get (cadr (funcall ask)) :songs)) :cover)))))
+      (delete-directory directory t))))
+
+(ert-deftest etaf-ncm-tests-mounted-player-publishes-the-cover-art ()
+  "A downloaded cover is published as image content in the mounted player.
+Image cells need a real window system, so the batch acceptance run skips
+this case; the GUI verification covers it on a graphic frame."
+  (skip-unless (and (display-graphic-p) (image-type-available-p 'png)))
+  (let* ((directory (make-temp-file "ncm-cover-mount" t))
+         (client (lambda (request callback)
+                   (pcase (plist-get request :op)
+                     (:cover
+                      (etaf-ncm-tests--write-cover (plist-get request :file))
+                      (funcall callback
+                               (list :ok (list :id (plist-get request :id)
+                                               :file (plist-get request :file)))))
+                     (_
+                      (etaf-ncm-tests--client
+                       request
+                       (lambda (reply)
+                         (when (and (eq (plist-get request :op) :queue)
+                                    (eq (car reply) :ok))
+                           (let ((songs (plist-get (cadr reply) :songs)))
+                             (when songs
+                               (plist-put (car songs) :cover
+                                          "https://example.invalid/a.jpg"))))
+                         (funcall callback reply)))))))
+         (etaf-ncm-state-directory directory)
+         (app (etaf-ncm-tests--session client)))
+    (unwind-protect
+        (etaf-ncm-tests--with-player app
+          (etaf-ncm-tests--rendered-text)
+          (let ((position (text-property-not-all (point-min) (point-max) 'display nil)))
+            (should position)
+            (let ((display (get-text-property position 'display)))
+              (should display)
+              (should (or (imagep display)
+                          (and (listp display) (imagep (car (last display)))))))))
+      (delete-directory directory t))))
+
+(ert-deftest etaf-ncm-tests-playing-song-cover-is-downloaded-to-the-state-directory ()
+  "Refreshing downloads the playing song's cover into the local cache once."
+  (setq etaf-ncm-tests--requests nil)
+  (let* ((state-dir (make-temp-file "ncm-cover-state" t))
+         (client (lambda (request callback)
+                   (pcase (plist-get request :op)
+                     (:cover
+                      (push request etaf-ncm-tests--requests)
+                      (etaf-ncm-tests--write-cover (plist-get request :file))
+                      (funcall callback
+                               (list :ok (list :id (plist-get request :id)
+                                               :file (plist-get request :file)))))
+                     (_
+                      (etaf-ncm-tests--client
+                       request
+                       (lambda (reply)
+                         (when (and (eq (plist-get request :op) :queue)
+                                    (eq (car reply) :ok))
+                           (let ((songs (plist-get (cadr reply) :songs)))
+                             (when songs
+                               (plist-put (car songs) :cover
+                                          "https://example.invalid/a.jpg"))))
+                         (funcall callback reply)))))))
+         (etaf-ncm-state-directory state-dir)
+         (app (etaf-ncm-tests--session client)))
+    (unwind-protect
+        (progn
+          (etaf-ncm-refresh app)
+          (let ((request (etaf-ncm-tests--request :cover)))
+            (should request)
+            (should (equal 1 (plist-get request :id)))
+            (should (equal (expand-file-name "covers/1" state-dir)
+                           (plist-get request :file)))
+            (should (file-readable-p (plist-get request :file))))
+          (should (equal (expand-file-name "covers/1" state-dir)
+                         (etaf-value (plist-get app :cover-file))))
+          ;; The same song is not requested twice by later refreshes.
+          (etaf-ncm-refresh app)
+          (should (= 1 (cl-count-if (lambda (entry) (eq (plist-get entry :op) :cover))
+                                    etaf-ncm-tests--requests))))
+      (delete-directory state-dir t))))
+
+(ert-deftest etaf-ncm-tests-cover-clears-when-the-playing-song-has-none ()
+  "Moving to a song without a cover clears the previous art immediately."
+  (setq etaf-ncm-tests--requests nil)
+  (let* ((state-dir (make-temp-file "ncm-cover-state" t))
+         (second-song nil)
+         (client (lambda (request callback)
+                   (pcase (plist-get request :op)
+                     (:cover
+                      (push request etaf-ncm-tests--requests)
+                      (etaf-ncm-tests--write-cover (plist-get request :file))
+                      (funcall callback
+                               (list :ok (list :id (plist-get request :id)
+                                               :file (plist-get request :file)))))
+                     (_
+                      (etaf-ncm-tests--client
+                       request
+                       (lambda (reply)
+                         (when (and (eq (plist-get request :op) :queue)
+                                    (eq (car reply) :ok))
+                           (if second-song
+                               (progn
+                                 (plist-put (cadr reply) :songs
+                                            (list (list :id 9 :name "曲目 9")))
+                                 (plist-put (cadr reply) :pos 1))
+                             (let ((songs (plist-get (cadr reply) :songs)))
+                               (when songs
+                                 (plist-put (car songs) :cover
+                                            "https://example.invalid/a.jpg")))))
+                         (funcall callback reply)))))))
+         (etaf-ncm-state-directory state-dir)
+         (app (etaf-ncm-tests--session client)))
+    (unwind-protect
+        (progn
+          (etaf-ncm-refresh app)
+          (should (etaf-value (plist-get app :cover-file)))
+          (setq second-song t)
+          (setq etaf-ncm-tests--status
+                (let ((status (copy-sequence (etaf-ncm-tests--fixture "status"))))
+                  (plist-put status :song_id "9")))
+          (etaf-ncm-refresh app)
+          (should-not (etaf-value (plist-get app :cover-file)))
+          (should (= 1 (cl-count-if (lambda (entry) (eq (plist-get entry :op) :cover))
+                                    etaf-ncm-tests--requests))))
+      (setq etaf-ncm-tests--status nil)
+      (delete-directory state-dir t))))
+
 (provide 'etaf-ncm-tests)
 
 ;;; etaf-ncm-tests.el ends here
