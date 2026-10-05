@@ -4,6 +4,10 @@ All notable user-visible changes to ETAF NCM.
 
 ## Unreleased
 
+- Library rows compose in flow order instead of absolute offsets: a row paint
+  change (selection or playing marker) no longer re-renders the whole list
+  plane, so selecting in a long library stays cheap. Wide and compact layouts
+  paint identically.
 - The mouse wheel scrolls a visible library window one row per tick without
   moving the selection; `j`/`k`, `RET` and clicks still select and bring the
   row back into view. Queue scrolling and its hit test are unchanged.

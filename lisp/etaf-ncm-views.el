@@ -122,7 +122,7 @@ the row is clicked, and ON-ACTION with INDEX plus the action key (`download' or
              (index (etaf-computed
                      (lambda () (or (plist-get (etaf-ncm--reactive-text row) :display-index) 0)))))
   :view
-  (grid :position 'absolute :z-index 0 :left '(ch 0) :top (list 'lh offset)
+  (grid :z-index 0
         :width 'stretch :height '(lh 1) :role 'button :tab-index 0
         :visibility (if (etaf-ncm--reactive-text row) 'visible 'hidden)
         :grid-template-columns (if compact etaf-ncm--row-columns-compact
@@ -499,8 +499,8 @@ inline action key."
             :width 'stretch :height '(lh 6)
             :visibility (if (zerop (etaf-value visible)) 'visible 'hidden)
          (etaf-ncm--view-note :text empty-note))
-       (box :position 'absolute :z-index 0 :left '(ch 0) :top '(lh 0)
-            :width 'stretch :height (list 'lh count)
+       (column :position 'absolute :z-index 0 :left '(ch 0) :top '(lh 0)
+               :width 'stretch :height (list 'lh count) :item-gap '(lh 0)
          (etaf-ncm--view-row :for (offset offsets) :key offset
            :offset offset
            :row (aref slots offset)
