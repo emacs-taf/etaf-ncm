@@ -223,12 +223,11 @@ dimensions stay cell-aligned and every row is fully covered."
                                               (* (float image-w) cell-h)))))))
     (cons cols rows)))
 
-(defun etaf-ncm--cover-rows (file chars lines)
-  "Return LINES rows of CHARS cells showing FILE, or nil for the placeholder.
-Ebox prepares the raster for the chosen cell grid: the image is scaled onto
-cells, every cell carries its immutable slice, and the grid is centered with
-blank cells.  Hand-slicing at row boundaries leaves half-covered rows, which
-paint as seams; the prepared raster is the seam-free path."
+(defun etaf-ncm--cover-block (file chars lines)
+  "Return (COLS ROWS CELLS) showing FILE inside a CHARS x LINES area, or nil.
+COLS and ROWS are the cell-aligned raster that keeps FILE's aspect and
+CELLS is one owned string per row.  The caller sizes its cover box to the
+block, so the art has no empty band above or below it."
   (when (and (stringp file) (file-readable-p file)
              (integerp chars) (> chars 0) (integerp lines) (> lines 0))
     (condition-case nil
@@ -236,16 +235,9 @@ paint as seams; the prepared raster is the seam-free path."
                (cols (car grid))
                (rows (cdr grid))
                (content (ebox-image-content (ebox-image-prepare file cols rows)))
-               (parts (and (stringp content) (split-string content "\n")))
-               (lead (max 0 (/ (- chars cols) 2)))
-               (top (max 0 (/ (- lines rows) 2)))
-               (blank (make-string chars ?\s))
-               (prefix (make-string lead ?\s))
-               result)
-          (dotimes (_ top) (push blank result))
-          (dolist (part parts) (push (concat prefix part) result))
-          (while (< (length result) lines) (push blank result))
-          (seq-take (nreverse result) lines))
+               (cells (and (stringp content) (split-string content "\n"))))
+          (when (and cells (= (length cells) rows))
+            (list cols rows cells)))
       (error nil))))
 
 (etaf-define-component etaf-ncm--view-cover-row (&key cell)
@@ -257,21 +249,26 @@ paint as seams; the prepared raster is the seam-free path."
 (etaf-define-component etaf-ncm--view-cover
     (&key size glyph (height '(lh 7)) file (chars 10) (lines 7))
   "Render FILE's album art, or a square placeholder of SIZE characters.
-FILE is a reactive source or a literal path; CHARS and LINES must match the
-cell the caller reserves so the image never exceeds its canvas."
+FILE is a reactive source or a literal path; CHARS and LINES bound the area
+the art may use.  A usable raster sizes the cover box exactly, so the art
+fills it without an empty band above or below; the placeholder keeps SIZE
+and HEIGHT."
   :render
   (let* ((value (and file (if (or (etaf-ref-p file) (etaf-computed-p file))
                               (etaf-value file)
                             file)))
-         (rows (and value (etaf-ncm--cover-rows value chars lines)))
-         (indices (and rows (number-sequence 0 (1- (length rows))))))
+         (block (and value (etaf-ncm--cover-block value chars lines)))
+         (box-width (if block (list 'ch (nth 0 block)) size))
+         (box-height (if block (list 'lh (nth 1 block)) height))
+         (cells (and block (nth 2 block)))
+         (indices (and cells (number-sequence 0 (1- (length cells))))))
     (etaf-view
-     (flex :flex-direction 'column :width size :height height
+     (flex :flex-direction 'column :width box-width :height box-height
            :bgcolor (etaf-ncm-color :panel3)
            :align-items 'center :justify-content 'center
        (column :if indices :width 'stretch :item-gap '(lh 0)
          (etaf-ncm--view-cover-row :for (index indices) :key index
-                                   :cell (nth index rows)))
+                                   :cell (nth index cells)))
        (etaf-ui-icon :if (and (not indices) (not glyph)) :name 'music :set 'svg
                      :size 1.0 :min-width 2 :color (etaf-ncm-color :accent))
        (text :if (and (not indices) glyph) :height '(lh 1) :text-align 'center
