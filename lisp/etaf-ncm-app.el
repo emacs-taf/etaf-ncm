@@ -544,6 +544,10 @@ releases the polling timer and the session's pending backend requests."
   :setup
   (progn
     (etaf-theme-provide palette)
+    (etaf-watch-effect
+     (lambda ()
+       (etaf-ncm--schedule-list-highlights session
+                                           (etaf-ncm--list-highlights session))))
     (etaf-on-mounted
      (lambda ()
        (etaf-ncm--start session)
@@ -671,6 +675,50 @@ MODEL defaults to a new session, exactly as `etaf-ncm-open' creates one; pass a
 session from `etaf-ncm-create' to embed the player in your own mount."
   (etaf-view (etaf-ncm-app :model (or model (etaf-ncm-create)))))
 
+(defun etaf-ncm--list-highlights (app)
+  "Return APP's (SELECTION-LINE . PLAYING-LINE) inside the visible page.
+Lines count from zero; -1 keeps that bar clipped off the page."
+  (let* ((slots (plist-get app :row-slots))
+         (size (min (max 1 (etaf-ncm--read app :page-size)) (length slots)))
+         (selection (- (etaf-ncm--read app :selection)
+                       (etaf-ncm--read app :window-start)))
+         (played (plist-get (etaf-ncm--read app :status) :song-id))
+         (playing -1))
+    (dotimes (index size)
+      (let ((value (etaf-value (aref slots index))))
+        (when (and value played (equal (plist-get value :id) played))
+          (setq playing index))))
+    (cons (if (and (>= selection 0) (< selection size)) selection -1)
+          playing)))
+
+(defun etaf-ncm--apply-list-highlights (app &optional lines)
+  "Move APP's highlight bars to LINES, defaulting to the current page.
+Each bar is one retained host geometry update: a `:top' translation that
+never republishes the list plane."
+  (setf (plist-get app :highlight-timer) nil)
+  (let ((lines (or lines (plist-get app :highlight-lines))))
+    (when-let* ((buffer (plist-get app :buffer))
+                ((buffer-live-p buffer))
+                (runtime (etaf-runtime-for-buffer buffer))
+                (lines lines))
+      (ignore-errors
+        (etaf-runtime-update-host-geometry runtime 'ncm-list-selection
+                                           :top (list 'lh (car lines)))
+        (etaf-runtime-update-host-geometry runtime 'ncm-list-playing
+                                           :top (list 'lh (cdr lines)))))))
+
+(defun etaf-ncm--schedule-list-highlights (app lines)
+  "Coalesce APP's highlight-bar move to LINES onto the next tick.
+Line changes are the only reason to schedule: a slot write that leaves both
+bars where they are must not publish geometry.  Deferring keeps the move out
+of the reactive batch that reported the change."
+  (unless (equal lines (plist-get app :highlight-lines))
+    (setf (plist-get app :highlight-lines) lines)
+    (when (plist-get app :highlight-timer)
+      (cancel-timer (plist-get app :highlight-timer)))
+    (setf (plist-get app :highlight-timer)
+          (run-at-time 0 nil #'etaf-ncm--apply-list-highlights app))))
+
 (defun etaf-ncm-open (&optional model)
   "Open the NetEase Cloud Music player and return its buffer.
 MODEL defaults to a session from `etaf-ncm-create', so the player opens on the
@@ -717,6 +765,7 @@ the backend.  A caller-provided MODEL keeps its library, queue and selection."
     (let ((runtime (etaf-runtime-for-buffer buffer)))
       (plist-put model :mounted-width (car (etaf-runtime-viewport runtime)))
       (etaf-runtime-flush runtime))
+    (etaf-ncm--apply-list-highlights model (etaf-ncm--list-highlights model))
     buffer))
 
 (defun etaf-ncm-close ()

@@ -4,6 +4,10 @@ All notable user-visible changes to ETAF NCM.
 
 ## Unreleased
 
+- The selection and playing highlight are two overlay bars moved as retained
+  host geometry. Moving the selection or changing the playing song no longer
+  repaints the list plane; a row update costs content only, so a long list
+  stays responsive.
 - Library rows compose in flow order instead of absolute offsets: a row paint
   change (selection or playing marker) no longer re-renders the whole list
   plane, so selecting in a long library stays cheap. Wide and compact layouts

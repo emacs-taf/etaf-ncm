@@ -108,13 +108,15 @@ TIGHT drops the spacer line so a height-constrained sidebar shows every entry."
 
 (etaf-define-component etaf-ncm--view-row
     (&key offset row playing selection compact press on-action)
-  "Render library ROW number INDEX, highlighted when SELECTION names it.
-ROW and PLAYING may be retained reactive sources; the row reads them inside
-its Host text and paint bindings, so a list reply updates prepared values
-instead of rebuilding the row.  COMPACT drops the album and add-to-queue
-columns, which a narrow frame cannot show.  PRESS is called with INDEX when
-the row is clicked, and ON-ACTION with INDEX plus the action key (`download' or
-`queue') of the inline action the reader pressed."
+  "Render library ROW number INDEX with content-driven text only.
+The selection and playing highlight live on the list's overlay bars, so this
+row has no paint bindings to repaint a whole plane.  ROW and PLAYING may be
+retained reactive sources; the row reads them inside its Host text bindings,
+so a list reply updates prepared values instead of rebuilding the row.
+COMPACT drops the album and add-to-queue columns, which a narrow frame cannot
+show.  PRESS is called with INDEX when the row is clicked, and ON-ACTION with
+INDEX plus the action key (`download' or `queue') of the inline action the
+reader pressed."
   :bindings ((play-glyph (car (etaf-ui-icon-lines 'play :set 'svg :size 1.0
                                                   :color (etaf-ncm-color :accent))))
              (downloaded (etaf-computed
@@ -128,28 +130,16 @@ the row is clicked, and ON-ACTION with INDEX plus the action key (`download' or
         :grid-template-columns (if compact etaf-ncm--row-columns-compact
                                  etaf-ncm--row-columns)
         :gap '((lh 0) (ch 1)) :align-items 'center :padding '((lh 0) (ch 1))
-        ;; The unselected row paints the list background explicitly: a retained
-        ;; paint binding needs a declared value, and an absent background
-        ;; cannot acquire a prepared slot.
-        :background-color (let ((playing (etaf-ncm--active-value playing))
-                                (selected (eq (1- (etaf-ncm--active-value index)) (etaf-value selection))))
-                            (cond (playing (etaf-ncm-color :accent-soft))
-                                  (selected (etaf-ncm-color :panel2))
-                                  (t (etaf-ncm-color :bg))))
-        :color (if (etaf-ncm--active-value playing)
-                   (etaf-ncm-color :accent)
-                 (etaf-ncm-color :ink))
-        :font-weight (let ((playing (etaf-ncm--active-value playing))
-                           (selected (eq (1- (etaf-ncm--active-value index)) (etaf-value selection))))
-                       (if (or playing selected) 'bold 'normal))
+        ;; The selection and playing highlight are painted by the list's two
+        ;; overlay bars.  The row keeps only content-driven changes, so a
+        ;; marker move does not repaint the whole list plane.
+        :color (etaf-ncm-color :ink)
         :hover-style (etaf-ncm--hover-surface)
         :help-echo "播放这一行"
         :on-press (lambda () (when (etaf-ncm--reactive-text row)
                                (funcall press (etaf-ncm--active-value index))))
     (box :width '(ch 3) :height '(lh 1) :justify-self 'end
-         :color (if (eq (1- (etaf-ncm--active-value index)) (etaf-value selection))
-                    (etaf-ncm-color :muted)
-                  (etaf-ncm-color :dim))
+         :color (etaf-ncm-color :dim)
       ;; Both states belong to the same retained text Host. A hidden absolute
       ;; overlay has no initial composition target and poisons the fast cohort.
       (text (expr (let ((active (etaf-ncm--active-value playing))
@@ -470,10 +460,12 @@ rebuilding the view."
     (&key model compact selection on-press on-action)
   "Render MODEL's visible rows through retained row slots and a page footer.
 Each visible row keeps its slot identity across library switches, so a reply
-updates prepared row text and paint instead of rebuilding the list.  SELECTION
-is the player's reactive selection source; ON-PRESS is called with a row's
-page index when that row is clicked, and ON-ACTION with that index plus an
-inline action key."
+updates prepared row text instead of rebuilding the list.  The selection and
+playing highlight are two absolute overlay bars whose `:top' is the only
+thing that moves; rows stay transparent and content-driven, so moving the
+highlight never repaints the whole plane.  SELECTION is the player's reactive
+selection source; ON-PRESS is called with a row's page index when that row is
+clicked, and ON-ACTION with that index plus an inline action key."
   :render
   (let* ((slots (plist-get model :row-slots))
          (playing (plist-get model :row-playing))
@@ -499,16 +491,29 @@ inline action key."
             :width 'stretch :height '(lh 6)
             :visibility (if (zerop (etaf-value visible)) 'visible 'hidden)
          (etaf-ncm--view-note :text empty-note))
-       (column :position 'absolute :z-index 0 :left '(ch 0) :top '(lh 0)
-               :width 'stretch :height (list 'lh count) :item-gap '(lh 0)
-         (etaf-ncm--view-row :for (offset offsets) :key offset
-           :offset offset
-           :row (aref slots offset)
-           :playing (aref playing offset)
-           :selection selection
-           :compact compact
-           :press on-press
-           :on-action on-action))
+       (box :position 'absolute :z-index 0 :left '(ch 0) :top '(lh 0)
+            :width 'stretch :height (list 'lh count) :overflow 'hidden
+         ;; Two static bars behind the rows: selection first, playing on top.
+         ;; The app moves them through retained host geometry (`:top' is
+         ;; their only change), so a highlight move never repaints the plane.
+         (box :position 'absolute :z-index 0 :left '(ch 0) :top '(lh -1)
+              :width 'stretch :height '(lh 1)
+              :ref 'ncm-list-selection :id "ncm-list-selection"
+              :background-color (etaf-ncm-color :panel2))
+         (box :position 'absolute :z-index 0 :left '(ch 0) :top '(lh -1)
+              :width 'stretch :height '(lh 1)
+              :ref 'ncm-list-playing :id "ncm-list-playing"
+              :background-color (etaf-ncm-color :accent-soft))
+         (column :position 'relative :z-index 1 :left '(ch 0) :top '(lh 0)
+                 :width 'stretch :item-gap '(lh 0)
+           (etaf-ncm--view-row :for (offset offsets) :key offset
+             :offset offset
+             :row (aref slots offset)
+             :playing (aref playing offset)
+             :selection selection
+             :compact compact
+             :press on-press
+             :on-action on-action)))
        (flex :position 'absolute :z-index 0 :left '(ch 0) :top (list 'lh (max 0 (- height 2)))
              :flex-direction 'column
              :visibility (if (etaf-value footer-visible) 'visible 'hidden)
