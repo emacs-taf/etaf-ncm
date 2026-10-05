@@ -126,8 +126,10 @@ hold snapshots without keeping the player alive or accidentally mutating it.
   text-cell rectangle test uses the same body budget and the view's aside/rail
   widths, and excludes a hidden pane and the player bar. An app-local emulation
   map overrides only wheel events above the renderer's minor-mode bindings.
-  Other wheel positions keep moving the library selection. Queue entries
-  retain their press callback, focusable button role and normal TAB/RET bindings.
+  Outside the queue the wheel scrolls the visible library window a row at a
+  time and leaves the selection alone; j/k and presses still choose rows.
+  Queue entries retain their press callback, focusable button role and normal
+  TAB/RET bindings.
 - Transport commands publish their local effect before the backend answers: the
   play/pause state, the volume, the shuffle and repeat flags and the message
   line change immediately, and the reply reconciles them with measured facts.

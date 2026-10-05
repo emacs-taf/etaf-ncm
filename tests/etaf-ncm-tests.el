@@ -1010,17 +1010,70 @@ The synthetic wheel event carries pixels, just like an Emacs mouse event."
           (unless (eq layout 'wide) (etaf-ncm-show-pane app 'aside))
           (should (= (plist-get (etaf-ncm-state app) :queue-start)
                      (min (- 59 (/ size 2)) (- 80 size))))
-          ;; The player bar and the library/rail retain selection scrolling.
+          ;; Outside the queue the wheel leaves the selection alone: the
+          ;; daily fixture fits one page, so the library window is at rest.
           (etaf-ncm-tests--wheel window 'wheel-down right (1- (window-body-height window)))
-          (should (= (plist-get (etaf-ncm-state app) :selection) 1))
+          (should (= (plist-get (etaf-ncm-state app) :selection) 0))
           (if (eq layout 'wide)
               (etaf-ncm-tests--wheel window 'wheel-down 2 8)
             (etaf-ncm-show-pane app 'list)
             (etaf-ncm-tests--wheel window 'wheel-down right 8))
-          (should (= (plist-get (etaf-ncm-state app) :selection) 2))
+          (should (= (plist-get (etaf-ncm-state app) :selection) 0))
+          (should (= (plist-get (etaf-ncm-state app) :window-start) 0))
           (etaf-ncm-toggle-aside app)
           (etaf-ncm-tests--wheel window 'wheel-down right 8)
-          (should (= (plist-get (etaf-ncm-state app) :selection) 3)))))))
+          (should (= (plist-get (etaf-ncm-state app) :selection) 0))
+          (should (= (plist-get (etaf-ncm-state app) :window-start) 0)))))))
+
+(ert-deftest etaf-ncm-tests-library-wheel-scrolls-the-window-without-selection ()
+  "Wheel over the library moves the row window and leaves the selection."
+  (let* ((songs (etaf-ncm-tests--songs 120 "曲目"))
+         (app (etaf-ncm-create
+               :client (lambda (request callback)
+                         (if (eq (plist-get request :op) :browse)
+                             (funcall callback (list :ok (list :songs songs :total 120)))
+                           (etaf-ncm-tests--client request callback))))))
+    (etaf-ncm-tests--with-player app
+      (let* ((window (selected-window))
+             (column 40)
+             (size (plist-get (etaf-ncm-state app) :page-size)))
+        (should (= 120 (plist-get (etaf-ncm-state app) :rows-total)))
+        (should (string-match-p (format "第 1-%d 首 / 共 120 首" size)
+                                (etaf-ncm-tests--rendered-text)))
+        ;; One tick moves the window one row and keeps the selection on row 1.
+        (etaf-ncm-tests--wheel window 'wheel-down column 8)
+        (let ((state (etaf-ncm-state app)))
+          (should (= (plist-get state :selection) 0))
+          (should (= (plist-get state :window-start) 1))
+          (should (= (plist-get (car (plist-get state :visible)) :id) 2))
+          (should (string-match-p (format "第 2-%d 首 / 共 120 首" (1+ size))
+                                  (etaf-ncm-tests--rendered-text))))
+        ;; The whole loaded list is reachable and the window clamps at the end.
+        (etaf-batch
+          (dotimes (_ 200) (etaf-ncm-tests--wheel window 'wheel-down column 8)))
+        (let ((state (etaf-ncm-state app)))
+          (should (= (plist-get state :selection) 0))
+          (should (= (plist-get state :window-start) (- 120 size)))
+          (should (= (plist-get (car (last (plist-get state :visible))) :id) 120))
+          (should (string-match-p (format "第 %d-120 首 / 共 120 首" (- 121 size))
+                                  (etaf-ncm-tests--rendered-text))))
+        ;; A gesture at the top clamps too.
+        (etaf-batch
+          (dotimes (_ 200) (etaf-ncm-tests--wheel window 'wheel-up column 8)))
+        (should (= (plist-get (etaf-ncm-state app) :window-start) 0))
+        (should (= (plist-get (etaf-ncm-state app) :selection) 0))
+        ;; Scrolling away and then arrowing still brings the selection back.
+        (etaf-batch
+          (dotimes (_ 10) (etaf-ncm-tests--wheel window 'wheel-down column 8)))
+        (should (= (plist-get (etaf-ncm-state app) :window-start) 10))
+        (etaf-ncm-move-selection app 1)
+        (let ((state (etaf-ncm-state app)))
+          (should (= (plist-get state :selection) 1))
+          (should (= (plist-get state :window-start) 1)))
+        ;; A status reply republishes the rows without snapping the window
+        ;; back to the selection.
+        (etaf-ncm-refresh app)
+        (should (= (plist-get (etaf-ncm-state app) :window-start) 1))))))
 
 (ert-deftest etaf-ncm-tests-panel-budgets-fit-resized-windows ()
   "Queue and translated lyric windows shrink with their own panel height."

@@ -238,7 +238,12 @@
     {
       "name": "etaf-ncm-tests-queue-wheel-scrolls-only-the-event-panel",
       "file": "tests/etaf-ncm-tests.el",
-      "purpose": "Active wheel bindings in all layouts reach every loaded queue entry, use the event window, preserve library selection, display backend count, retain manual scrolling across unchanged polls, recenter on track advance, and select library rows outside the queue."
+      "purpose": "Active wheel bindings in all layouts reach every loaded queue entry, use the event window, leave the library selection and window alone outside the queue, display backend count, retain manual scrolling across unchanged polls, and recenter on track advance."
+    },
+    {
+      "name": "etaf-ncm-tests-library-wheel-scrolls-the-window-without-selection",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "Wheel over the library scrolls the row window one row per tick without moving the selection, clamps at both ends, keeps the page range true, and keyboard selection still brings the row back into view."
     },
     {
       "name": "etaf-ncm-tests-panel-budgets-fit-resized-windows",

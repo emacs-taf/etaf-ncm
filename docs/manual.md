@@ -50,7 +50,7 @@ is revived by its next mount.
 | Key | Action |
 | --- | --- |
 | `j` / `k`, `C-n` / `C-p`, `↓` / `↑` | Move the library selection, scrolling a page at the ends |
-| wheel | Scroll the queue window when over the visible queue panel; elsewhere, move the library selection |
+| wheel | Scroll the queue window when over the visible queue panel; otherwise scroll the visible library window without moving the selection |
 | click a row | Select it; pressing the selected row plays it |
 | `RET` | Play the selected row |
 | `Home` / `End` | Jump to the first / last loaded row of the library |
@@ -78,10 +78,10 @@ is revived by its next mount.
 | `TAB` / `S-TAB` | Cycle focus through buttons, the search field, panel tabs and visible queue entries |
 | `q` | Close the player buffer |
 
-`n` and `p` intentionally replace Ebox's line scrolling: the library is
-paginated to the window, so every row has a key and there is nothing to scroll
-to. Resizing the frame updates the layout and re-fits the page; see
-[Window layouts](#window-layouts).
+`n` and `p` intentionally replace Ebox's line scrolling: the player view is
+paginated to the window, and the wheel scrolls the library's row window
+without moving the selection. Resizing the frame updates the layout and
+re-fits the page; see [Window layouts](#window-layouts).
 
 ### Window layouts
 

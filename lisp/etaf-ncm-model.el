@@ -1772,6 +1772,20 @@ A nil scroll position centres the window on the playing entry."
                      (max 0 (min (+ (etaf-ncm--queue-window-start app) delta)
                                  (max 0 (- total size)))))))
 
+(defun etaf-ncm--scroll-list (app delta)
+  "Scroll APP's library window by DELTA rows without moving the selection.
+The rows on the page shift under a fixed selection, so a wheel gesture browses
+the loaded library while j/k and presses still choose rows.  The window stays
+clamped to the loaded rows and a gesture at either end changes nothing."
+  (let* ((total (length (etaf-ncm--read app :rows)))
+         (size (max 1 (etaf-ncm--read app :page-size)))
+         (start (etaf-ncm--read app :window-start))
+         (target (max 0 (min (+ start delta) (max 0 (- total size))))))
+    (when (/= target start)
+      (etaf-batch
+        (etaf-ncm--write app :window-start target)
+        (etaf-ncm--refresh-slots app)))))
+
 (defun etaf-ncm-move-selection (app delta)
   "Move APP's list selection by DELTA rows and keep it inside the page."
   (let* ((rows (etaf-ncm--read app :rows))

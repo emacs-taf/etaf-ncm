@@ -236,7 +236,10 @@ the player.  This geometry is independent of point and the selected window."
        (< (cdr xy) (etaf-ncm--body-rows-for rows layout))))
 
 (defun etaf-ncm--wheel (event delta)
-  "Move the queue window or library selection by DELTA at EVENT's position."
+  "Scroll the queue or library window by DELTA at EVENT's position.
+A wheel over the visible queue panel moves that window; elsewhere a visible
+library window scrolls while its selection stays where it is, so a gesture can
+browse rows without losing the row j/k and presses still act on."
   (let* ((position (event-start event))
          (window (posn-window position)))
     (when (window-live-p window)
@@ -246,21 +249,23 @@ the player.  This geometry is independent of point and the selected window."
                (xy (and (consp pixels)
                         (cons (/ (float (car pixels)) (window-font-width window))
                               (/ (float (cdr pixels)) (window-font-height window))))))
-          (if (and (null (posn-area position))
-                   (etaf-ncm--queue-hit-p
-                    xy (window-body-width window) (window-body-height window)
-                    (etaf-ncm--read model :layout) (etaf-ncm--read model :pane)
-                    (etaf-ncm--read model :aside)))
-              (etaf-ncm--scroll-queue model delta)
-            (etaf-ncm-move-selection model delta)))))))
+          (cond
+           ((and (null (posn-area position))
+                 (etaf-ncm--queue-hit-p
+                  xy (window-body-width window) (window-body-height window)
+                  (etaf-ncm--read model :layout) (etaf-ncm--read model :pane)
+                  (etaf-ncm--read model :aside)))
+            (etaf-ncm--scroll-queue model delta))
+           ((etaf-ncm--list-shown-p model)
+            (etaf-ncm--scroll-list model delta))))))))
 
 (defun etaf-ncm--wheel-up (event)
-  "Scroll the queue or select the previous library row at EVENT."
+  "Scroll the queue or library window one row up at EVENT."
   (interactive "e")
   (etaf-ncm--wheel event -1))
 
 (defun etaf-ncm--wheel-down (event)
-  "Scroll the queue or select the next library row at EVENT."
+  "Scroll the queue or library window one row down at EVENT."
   (interactive "e")
   (etaf-ncm--wheel event 1))
 
@@ -435,7 +440,7 @@ default face shows the player background there instead of the frame's."
   "Show the player's key bindings."
   (interactive)
   (message
-   (concat "j/k 或滚轮选择 · 单击选中 · 双击播放 · RET 播放 · SPC 暂停 · n/p 切歌 · a 加入队列 · d 下载 · s 搜索 · g 刷新"
+   (concat "j/k 选择 · 滚轮滚动列表 · 单击选中 · 双击播放 · RET 播放 · SPC 暂停 · n/p 切歌 · a 加入队列 · d 下载 · s 搜索 · g 刷新"
            " · l 歌词/队列 · v 列表/面板 · 1-9 音乐库 · +/- 音量 · ,/. 快退快进"
            " · 队列内滚轮翻动队列 · f/F 喜欢 · r 列表循环 · z 随机 · T 深浅色 · q 关闭")))
 

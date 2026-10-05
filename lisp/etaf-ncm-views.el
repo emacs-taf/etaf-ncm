@@ -461,7 +461,7 @@ rebuilding the view."
       (text (expr (let ((list-p (etaf-value pane-list))
                         (lyrics-p (etaf-value lyrics))
                         (queue-p (etaf-value queue)))
-                    (cond (list-p "j/k 或滚轮选择 · 双击播放")
+                    (cond (list-p "j/k 选择 · 滚轮滚动")
                           (queue-p "l 切换面板")
                           (lyrics-p "l 歌词/队列")
                           (t "l 切换面板"))))))))
@@ -520,7 +520,7 @@ inline action key."
              (text (expr (etaf-ncm--reactive-text page-label))))
            (box :if (not compact) :height '(lh 1) :overflow 'hidden
                 :flex-grow 1 :flex-basis '(px 0) :min-width '(ch 0)
-             (text "j/k 或滚轮选择 · 双击播放 · a 入队 · d 下载 · / 搜索 · l 歌词 · ? 帮助")))
+             (text "j/k 选择 · 滚轮滚动 · 双击播放 · a 入队 · d 下载 · / 搜索 · l 歌词 · ? 帮助")))
          (box :height '(lh 1)
               :visibility (if (and (etaf-value footer-visible) (etaf-value more-visible)) 'visible 'hidden)
            (text (expr (etaf-ncm--reactive-text loaded-label)))))))))
