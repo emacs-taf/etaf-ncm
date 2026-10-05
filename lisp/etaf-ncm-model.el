@@ -912,6 +912,40 @@ the progress bar jumps back and forth around the click."
   (etaf-ncm--command app (list :op :repeat :on (and on t))
                      (if on "列表循环：开" "列表循环：关")))
 
+(defun etaf-ncm--sync-liked-list (app song-id liked-p)
+  "Reflect a just-confirmed like of SONG-ID in the cached liked list.
+The row list and total are adjusted in place so switching to the liked
+library shows the change immediately; a quiet reload then reconciles the
+order and total with the backend."
+  (let* ((key (list :browse :liked))
+         (cache (plist-get app :list-cache))
+         (entry (etaf-list-cache-entry cache key)))
+    (when entry
+      (let* ((rows (etaf-list-cache-rows cache key))
+             (present (and song-id
+                           (seq-some (lambda (row) (equal (plist-get row :id) song-id))
+                                     rows)))
+             (delta (if liked-p 1 -1))
+             (total (max 0 (+ (or (etaf-list-cache-total cache key) 0) delta))))
+        (cond
+         ((and liked-p (not present))
+          (let* ((queue (etaf-ncm--read app :queue))
+                 (song (and (listp queue)
+                            (seq-find (lambda (item) (equal (plist-get item :id) song-id))
+                                      (plist-get queue :songs))))
+                 (row (and song (car (etaf-ncm--song-rows (list song))))))
+            (when row (setq rows (cons row rows)))))
+         ((not liked-p)
+          (setq rows (seq-remove (lambda (row) (equal (plist-get row :id) song-id)) rows))))
+        (etaf-list-cache-put cache key rows total)
+        (when (equal key (plist-get app :list-key))
+          (etaf-ncm--write app :rows rows)
+          (etaf-ncm--write app :list-total total)
+          (etaf-ncm--refresh-slots app))
+        ;; The backend list is the authority for order and exact totals.
+        (etaf-ncm--load app key (etaf-ncm--browse-request app :liked) t
+                        (equal key (plist-get app :list-key)))))))
+
 (defun etaf-ncm-like (app &optional unlike)
   "Like the song playing in APP, or unlike it when UNLIKE is non-nil.
 The heart flips before the backend answers; a failed request puts the
@@ -928,7 +962,9 @@ previous state back, and the reply reconciles it with measured facts."
           (plist-get app :optimistic-keys) '(:liked))
     (etaf-ncm--write app :liked-ref (not unlike))
     (etaf-ncm--call app (list :op (if unlike :unlike :like))
-                    :on-ok (lambda (_data) (etaf-ncm--request-status app))
+                    :on-ok (lambda (_data)
+                             (etaf-ncm--sync-liked-list app song-id (not unlike))
+                             (etaf-ncm--request-status app))
                     :on-error (lambda (_message _hint _code)
                                 (when (and song-id (plist-get app :liked-ids-loaded))
                                   (if unlike
