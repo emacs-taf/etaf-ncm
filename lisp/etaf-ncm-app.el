@@ -715,7 +715,6 @@ the backend.  A caller-provided MODEL keeps its library, queue and selection."
   (interactive)
   (when-let* ((runtime (etaf-runtime-for-buffer etaf-ncm-buffer-name)))
     (etaf-unmount runtime))
-  (etaf-ncm--cover-flush)
   (when-let* ((buffer (get-buffer etaf-ncm-buffer-name)))
     (kill-buffer buffer)))
 

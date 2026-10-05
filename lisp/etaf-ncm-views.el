@@ -20,6 +20,7 @@
 (require 'subr-x)
 (require 'etaf)
 (require 'etaf-ui)
+(require 'ebox)
 (require 'etaf-ncm-theme)
 (require 'etaf-ncm-model)
 
@@ -194,76 +195,58 @@ TEXT may be a retained reactive source, so the note updates as prepared text."
        :color (etaf-ncm-color :dim)
     (text (expr (or (etaf-ncm--reactive-text text) "")))))
 
-(defvar etaf-ncm--cover-images nil
-  "Downloaded cover-art images keyed by (FILE WIDTH HEIGHT).
-The cache is bounded: adding past the limit flushes the oldest entry.")
+(defun etaf-ncm--cover-size (file)
+  "Return FILE's (WIDTH . HEIGHT) pixels, or nil when it cannot be read."
+  (let ((head (with-temp-buffer
+                (set-buffer-multibyte nil)
+                (insert-file-contents-literally file nil 0 16)
+                (buffer-string))))
+    (ignore-errors
+      (let ((image (create-image file (image-type-from-data head) nil)))
+        (and image (image-size image t))))))
 
-(defconst etaf-ncm--cover-image-cache-limit 12)
-
-(defun etaf-ncm--cover-image (file width height)
-  "Return FILE scaled to fit WIDTH x HEIGHT pixels, cached per size."
-  (unless etaf-ncm--cover-images
-    (setq etaf-ncm--cover-images (make-hash-table :test #'equal)))
-  (let ((key (list file width height)))
-    (or (gethash key etaf-ncm--cover-images)
-        (let* ((head (with-temp-buffer
-                       (set-buffer-multibyte nil)
-                       (insert-file-contents-literally file nil 0 16)
-                       (buffer-string)))
-               (image (create-image file (image-type-from-data head) nil
-                                    :max-width width :max-height height)))
-          (when (>= (hash-table-count etaf-ncm--cover-images)
-                    etaf-ncm--cover-image-cache-limit)
-            (let (old)
-              (maphash (lambda (k _v) (setq old k)) etaf-ncm--cover-images)
-              (when old
-                (ignore-errors (image-flush (gethash old etaf-ncm--cover-images)))
-                (remhash old etaf-ncm--cover-images))))
-          (puthash key image etaf-ncm--cover-images)
-          image))))
+(defun etaf-ncm--cover-grid (file chars lines)
+  "Return the (COLS . ROWS) cell grid for FILE inside a CHARS x LINES cover.
+The grid keeps FILE's aspect ratio; Ebox scales the raster to it, so both
+dimensions stay cell-aligned and every row is fully covered."
+  (let* ((size (etaf-ncm--cover-size file))
+         (cell-w (max 1 (frame-char-width)))
+         (cell-h (max 1 (frame-char-height)))
+         (image-w (max 1 (or (car-safe size) 1)))
+         (image-h (max 1 (or (cdr-safe size) 1)))
+         (cols (max 1 (round (/ (* (float lines) cell-h image-w)
+                                (* (float image-h) cell-w)))))
+         (rows lines))
+    (when (> cols chars)
+      (setq cols chars
+            rows (max 1 (min lines (round (/ (* (float chars) cell-w image-h)
+                                              (* (float image-w) cell-h)))))))
+    (cons cols rows)))
 
 (defun etaf-ncm--cover-rows (file chars lines)
-  "Return LINES propertized cells showing FILE inside a CHARS x LINES cover.
-The image is scaled to fit, centered, and sliced on row boundaries; nil tells
-the caller to draw its placeholder instead."
-  (when (and (stringp file) (file-readable-p file) (display-graphic-p)
+  "Return LINES rows of CHARS cells showing FILE, or nil for the placeholder.
+Ebox prepares the raster for the chosen cell grid: the image is scaled onto
+cells, every cell carries its immutable slice, and the grid is centered with
+blank cells.  Hand-slicing at row boundaries leaves half-covered rows, which
+paint as seams; the prepared raster is the seam-free path."
+  (when (and (stringp file) (file-readable-p file)
              (integerp chars) (> chars 0) (integerp lines) (> lines 0))
-    (let* ((char-w (frame-char-width))
-           (char-h (frame-char-height))
-           (width (* chars char-w))
-           (height (* lines char-h))
-           (image (condition-case nil
-                      (etaf-ncm--cover-image file width height)
-                    (error nil))))
-      (when (and image (imagep image))
-        (let* ((size (image-size image t))
-               (image-w (car size))
-               (image-h (cdr size))
-               (lead (max 0 (round (/ (- width image-w) 2.0 char-w))))
-               (top (max 0 (* char-h (floor (/ (- height image-h) 2.0 char-h)))))
-               rows)
-          (dotimes (row lines)
-            (let* ((cell-y (* row char-h))
-                   (start (max 0 (- cell-y top)))
-                   (end (min image-h (- (+ cell-y char-h) top))))
-              (push (if (<= end start)
-                        (make-string chars ?\s)
-                      (concat (make-string lead ?\s)
-                              (propertize " " 'display
-                                          (if (and (= start 0) (= end image-h))
-                                              image
-                                            (list (list 'slice 0 start image-w (- end start))
-                                                  image)))))
-                    rows)))
-          (nreverse rows))))))
-
-(defun etaf-ncm--cover-flush ()
-  "Flush cached cover images; the next render rebuilds them from disk."
-  (when etaf-ncm--cover-images
-    (maphash (lambda (_key image)
-               (ignore-errors (image-flush image)))
-             etaf-ncm--cover-images)
-    (clrhash etaf-ncm--cover-images)))
+    (condition-case nil
+        (let* ((grid (etaf-ncm--cover-grid file chars lines))
+               (cols (car grid))
+               (rows (cdr grid))
+               (content (ebox-image-content (ebox-image-prepare file cols rows)))
+               (parts (and (stringp content) (split-string content "\n")))
+               (lead (max 0 (/ (- chars cols) 2)))
+               (top (max 0 (/ (- lines rows) 2)))
+               (blank (make-string chars ?\s))
+               (prefix (make-string lead ?\s))
+               result)
+          (dotimes (_ top) (push blank result))
+          (dolist (part parts) (push (concat prefix part) result))
+          (while (< (length result) lines) (push blank result))
+          (seq-take (nreverse result) lines))
+      (error nil))))
 
 (etaf-define-component etaf-ncm--view-cover-row (&key cell)
   "Render one cover-art row cell inside the cover block."
