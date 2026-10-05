@@ -3,7 +3,7 @@
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 ;; Author: ETAF contributors
 ;; Version: 0.1.0
-;; Package-Requires: ((emacs "29.1") (etaf "0.2.1") (etaf-ui "0.1.0") (ebox "3.0.0"))
+;; Package-Requires: ((emacs "29.1") (etaf "0.2.1") (etaf-ui "0.1.0") (ebox "3.0.0") (etaf-db "0.1.0"))
 ;; Keywords: multimedia, ui
 ;; URL: https://gitea.vhkd.top/geekinney/etaf-ncm
 
@@ -12,7 +12,7 @@
 ;; Public API
 ;;
 ;; Load this package with (require 'etaf-ncm) after adding this repository and
-;; the ETAF, ETAF UI and Ebox roots to `load-path'.  The player is a complete
+;; the ETAF, ETAF UI, Ebox and ETAF DB roots to `load-path'.  The player is a complete
 ;; NetEase Cloud Music client for Emacs: it browses the signed-in account's
 ;; daily recommendation, liked songs, playlists, albums, artists, charts,
 ;; podcasts and recent plays, searches the catalog, drives playback through mpv,

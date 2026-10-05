@@ -21,6 +21,7 @@
 (require 'seq)
 (require 'subr-x)
 (require 'etaf)
+(require 'etaf-ncm-cache)
 (require 'etaf-ncm-service)
 (require 'etaf-ncm-theme)
 
@@ -149,9 +150,17 @@ client persists in its state directory; function clients default to memory."
                                                      (let ((row (etaf-value watched))
                                                            (played (etaf-value playing-id)))
                                                        (and row played
-                                                            (equal (plist-get row :id) played))))))))))
+                                                            (equal (plist-get row :id) played)))))))))
+         (cache-file (or cache-file (etaf-ncm--client-cache-file client)))
+         ;; Lyrics and cover files persist in a SQLite database beside the
+         ;; library snapshot.  A function client without a snapshot path keeps
+         ;; its media in memory, exactly like the list cache.
+         (media-cache (and cache-file
+                           (etaf-ncm-cache-open
+                            (expand-file-name "media-cache.sqlite"
+                                              (file-name-directory cache-file))))))
     (let ((app (list :client client
-          :cache-file (or cache-file (etaf-ncm--client-cache-file client))
+          :cache-file cache-file
           :cache-identity (etaf-ncm--client-cache-identity client)
           :cache-save-timer nil
           :list-in-flight (make-hash-table :test 'equal)
@@ -197,6 +206,7 @@ client persists in its state directory; function clients default to memory."
           :downloads-loaded nil
           :downloads-at 0
           :cover-requested-id nil
+          :media-cache media-cache
           :section (etaf-ref :daily :name 'etaf-ncm-section)
           :title (etaf-ref "每日推荐" :name 'etaf-ncm-title)
           :subtitle (etaf-ref "根据你的口味生成，每天更新" :name 'etaf-ncm-subtitle)
@@ -1390,28 +1400,40 @@ is when the answered status request was sent."
 The previous art stays on screen until the new one is ready, so a cover-to-
 cover switch never flashes a differently sized placeholder.  A song without a
 cover URL clears it immediately, and a failed download clears it only when it
-still belongs to the song that asked for it."
+still belongs to the song that asked for it.  A file already in the media
+cache (or at the song's deterministic path) is published without a request."
   (let ((id (plist-get song :id)))
     (when (and id (not (equal id (plist-get app :cover-requested-id))))
       (setf (plist-get app :cover-requested-id) id)
-      (let ((url (plist-get song :cover))
-            (file (and id (etaf-ncm--cover-file id))))
-        (if (and id (stringp url) (not (string-empty-p url)))
-            (progn
-              (condition-case nil
-                  (make-directory (file-name-directory file) t)
-                (error nil))
-              (etaf-ncm--call
-               app (list :op :cover :id id :file file)
-               :on-ok (lambda (data)
-                        (let ((saved (plist-get data :file)))
-                          (when (and (stringp saved) (file-readable-p saved)
-                                     (equal id (plist-get app :cover-requested-id)))
-                            (etaf-ncm--write app :cover-file saved))))
-               :on-error (lambda (_message _hint _code)
-                           (when (equal id (plist-get app :cover-requested-id))
-                             (etaf-ncm--write app :cover-file nil)))))
-          (etaf-ncm--write app :cover-file nil))))))
+      (let* ((url (plist-get song :cover))
+             (file (and id (etaf-ncm--cover-file id)))
+             (cache (plist-get app :media-cache))
+             (cached (and (stringp url) (not (string-empty-p url))
+                          (or (etaf-ncm-cache-cover cache id url)
+                              ;; Adopt art downloaded before the index existed;
+                              ;; an indexed entry with another URL must reload.
+                              (and (null (etaf-ncm-cache-cover-record cache id))
+                                   (file-readable-p file)
+                                   (progn (etaf-ncm-cache-put-cover cache id url file)
+                                          file))))))
+        (cond
+         (cached (etaf-ncm--write app :cover-file cached))
+         ((and id (stringp url) (not (string-empty-p url)))
+          (condition-case nil
+              (make-directory (file-name-directory file) t)
+            (error nil))
+          (etaf-ncm--call
+           app (list :op :cover :id id :file file)
+           :on-ok (lambda (data)
+                    (let ((saved (plist-get data :file)))
+                      (when (and (stringp saved) (file-readable-p saved))
+                        (etaf-ncm-cache-put-cover cache id url saved)
+                        (when (equal id (plist-get app :cover-requested-id))
+                          (etaf-ncm--write app :cover-file saved)))))
+           :on-error (lambda (_message _hint _code)
+                       (when (equal id (plist-get app :cover-requested-id))
+                         (etaf-ncm--write app :cover-file nil)))))
+         (t (etaf-ncm--write app :cover-file nil)))))))
 
 (defun etaf-ncm--queue-current-song (app queue)
   "Return QUEUE's entry matching APP's playing song, or the backend position."
@@ -1441,21 +1463,35 @@ still belongs to the song that asked for it."
               (etaf-ncm--request-cover app (etaf-ncm--queue-current-song app queue))))))
 
 (defun etaf-ncm--request-lyric (app song-id)
-  "Fetch the lyric of SONG-ID for APP."
-  (etaf-ncm--write app :lyric (list :id song-id :lines nil :trans nil :loading t))
-  (etaf-ncm--call
-   app (list :op :lyric :id song-id)
-   :on-ok (lambda (data)
-            (when (equal song-id (plist-get (etaf-ncm--read app :lyric) :id))
-              (etaf-ncm--write app :lyric
-                               (list :id song-id
-                                     :lines (etaf-ncm-parse-lyric (plist-get data :lyric))
-                                     :trans (etaf-ncm-parse-lyric (plist-get data :trans))
-                                     :loading nil))))
-   :on-error (lambda (_message _hint _code)
-               (when (equal song-id (plist-get (etaf-ncm--read app :lyric) :id))
-                 (etaf-ncm--write app :lyric
-                                  (list :id song-id :lines nil :trans nil :loading nil))))))
+  "Fetch the lyric of SONG-ID for APP, serving a persisted copy when possible.
+Lyrics are immutable, so a SQLite hit publishes the parsed lines without a
+backend request; a miss fetches and stores the text for the next session."
+  (let ((cached (etaf-ncm-cache-lyric (plist-get app :media-cache) song-id)))
+    (if cached
+        (etaf-ncm--write app :lyric
+                         (list :id song-id
+                               :lines (etaf-ncm-parse-lyric (plist-get cached :lyric))
+                               :trans (etaf-ncm-parse-lyric (plist-get cached :trans))
+                               :loading nil))
+      (etaf-ncm--write app :lyric (list :id song-id :lines nil :trans nil :loading t))
+      (etaf-ncm--call
+       app (list :op :lyric :id song-id)
+       :on-ok (lambda (data)
+                (let ((lyric (etaf-ncm--string (plist-get data :lyric)))
+                      (trans (etaf-ncm--string (plist-get data :trans))))
+                  ;; Cache the replied song even when the player moved on.
+                  (etaf-ncm-cache-put-lyric (plist-get app :media-cache)
+                                            song-id lyric trans)
+                  (when (equal song-id (plist-get (etaf-ncm--read app :lyric) :id))
+                    (etaf-ncm--write app :lyric
+                                     (list :id song-id
+                                           :lines (etaf-ncm-parse-lyric lyric)
+                                           :trans (etaf-ncm-parse-lyric trans)
+                                           :loading nil)))))
+       :on-error (lambda (_message _hint _code)
+                   (when (equal song-id (plist-get (etaf-ncm--read app :lyric) :id))
+                     (etaf-ncm--write app :lyric
+                                      (list :id song-id :lines nil :trans nil :loading nil))))))))
 
 (defun etaf-ncm--playing-p (app)
   "Return non-nil when APP currently plays audio.

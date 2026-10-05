@@ -4,6 +4,14 @@ All notable user-visible changes to ETAF NCM.
 
 ## Unreleased
 
+- The mouse wheel scrolls a visible library window one row per tick without
+  moving the selection; `j`/`k`, `RET` and clicks still select and bring the
+  row back into view. Queue scrolling and its hit test are unchanged.
+- Lyrics and downloaded cover art persist across restarts in a
+  `media-cache.sqlite` SQLite database built with ETAF DB beside the sidebar
+  snapshot. A cache hit publishes the lyric or the indexed cover file without a
+  backend request; a changed cover URL or a missing file refreshes normally.
+  Function clients without a snapshot path keep both in memory only.
 - Sidebar libraries restore a private local snapshot before mounting, so
   cached navigation does no network or disk work even after restarting Emacs.
   Periodic refresh deduplicates in-flight requests, skips unchanged replies,

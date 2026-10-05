@@ -11,14 +11,16 @@ owns presentation and interaction.
 | --- | --- |
 | `etaf-ncm-theme.el` | Palettes, `etaf-ncm-color`, `etaf-ncm-theme-defaults` and the mode selection. No ETAF dependency beyond the token plist it produces. |
 | `etaf-ncm-service.el` | The backend client: request translation to skill commands, child processes, timeouts, cookie injection, reply decoding, queue state reading, LRC parsing. |
+| `etaf-ncm-cache.el` | The SQLite media cache built on ETAF DB: lyric text and cover file index keyed by song id, opened beside the library snapshot and failing open. |
 | `etaf-ncm-model.el` | One session: reactive sources, library loading, search, every playback and queue action, selection and paging, status polling, dispose. |
 | `etaf-ncm-views.el` | Pure presentational Components: sidebar, header, list, lyrics, queue, aside, player bar. They receive values and callbacks only. |
 | `etaf-ncm-app.el` | The `etaf-ncm-app` Component (session lifecycle, theme provision, the only place that reads reactive sources), its keymap, its commands and the buffer entry points. |
 | `etaf-ncm.el` | The package entry: public API Commentary, `load-path` bootstrap for `lisp/`, requires and `provide`. |
 
 Dependency direction is one way: `theme` ← `service` ← `model` ← `views` ←
-`app`. A lower layer never calls into a higher one, and only `app` knows about
-buffers, windows and keymaps.
+`app`, with `model` also using `cache` (which depends only on ETAF DB). A
+lower layer never calls into a higher one, and only `app` knows about buffers,
+windows and keymaps.
 
 ## Data flow
 
@@ -152,6 +154,13 @@ hold snapshots without keeping the player alive or accidentally mutating it.
   screen, backs off after a failure and stops when the backend needs a human
   (an expired login), resuming after the next successful load.  The background
   reply never moves the reader's selection.
+- Lyrics and cover art persist in a SQLite database (`media-cache.sqlite`) beside
+  the sidebar snapshot, through `etaf-ncm-cache`.  A lyric is one row keyed by
+  song id with its translation in the validating column; a downloaded cover is
+  one row keyed by song id holding the local file path plus the URL it came
+  from, so a changed URL or a deleted file is a miss.  Lookups are synchronous,
+  fail open, and let `etaf-ncm--request-lyric`/`etaf-ncm--request-cover` publish
+  a hit without starting a backend request.
 
 Browse requests take the maximum of `etaf-ncm-list-limit` (1000), the existing
 `etaf-ncm-fetch-limit` and three pages. The public snapshot preserves
@@ -214,7 +223,8 @@ remain stable across motion and backend replies.
   View publication or a per-tick layout pass. The next ordinary View publication
   supplies the same clock geometry.
 - Idle: one check per `etaf-ncm-idle-poll-interval` (15 s).
-- A lyric is fetched only when the playing song id changes.
+- A lyric is fetched only when the playing song id changes, and then only on a
+  media-cache miss; the reply is stored for later sessions.
 - The queue list is read from the backend's queue file, not re-downloaded.
 
 Costs are therefore bounded by the poll the session selected, and zero when no

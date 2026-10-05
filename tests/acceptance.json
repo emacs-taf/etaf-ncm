@@ -6,7 +6,8 @@
     "../../etaf",
     "../../etaf-ui",
     "../../ebox",
-    "../../ecss"
+    "../../ecss",
+    "../../etaf-db"
   ],
   "support": [],
   "cases": [
@@ -336,6 +337,16 @@
       "purpose": "The d key downloads the row the library selection points at through the mounted player."
     },
     {
+      "name": "etaf-ncm-tests-download-reply-survives-a-track-switch",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "A download reply that lands after the reader switched songs still registers the file by song id, marks the row and reports completion."
+    },
+    {
+      "name": "etaf-ncm-tests-lyric-cache-serves-a-restart",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "The first session stores a lyric in the SQLite media cache beside the snapshot and a fresh session publishes the same lines without asking the backend."
+    },
+    {
       "name": "etaf-ncm-tests-child-environment-always-has-a-utf8-locale",
       "file": "tests/etaf-ncm-tests.el",
       "purpose": "The backend child environment always carries a UTF-8 locale, overriding a missing or non-UTF-8 parent locale."
@@ -369,6 +380,11 @@
       "name": "etaf-ncm-tests-cover-clears-when-the-playing-song-has-none",
       "file": "tests/etaf-ncm-tests.el",
       "purpose": "Moving to a song without a cover clears the previous art immediately without retrying."
+    },
+    {
+      "name": "etaf-ncm-tests-cover-index-serves-the-next-session",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "A downloaded cover is indexed with its URL, a changed URL misses, and a fresh session reuses the indexed file without downloading again."
     }
   ]
 }

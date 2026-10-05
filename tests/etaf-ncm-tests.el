@@ -1707,6 +1707,72 @@ not just `etaf-ncm-mode-map', must find the player command."
       (etaf-ncm-tests--key "d"))
     (should (= (plist-get (etaf-ncm-tests--request :download) :id) 2))))
 
+(ert-deftest etaf-ncm-tests-download-reply-survives-a-track-switch ()
+  "A download reply landing after a song change still registers the file."
+  (setq etaf-ncm-tests--requests nil)
+  (let* ((download-callback nil)
+         (client (lambda (request callback)
+                   (if (eq (plist-get request :op) :download)
+                       (progn (push request etaf-ncm-tests--requests)
+                              (setq download-callback callback))
+                     (etaf-ncm-tests--client request callback))))
+         (app (etaf-ncm-tests--session client)))
+    (unwind-protect
+        (progn
+          (etaf-ncm-refresh app)
+          (let ((row (nth 1 (plist-get (etaf-ncm-state app) :items))))
+            (should-not (plist-get row :downloaded))
+            (etaf-ncm-download app row)
+            (should download-callback)
+            ;; The reader switches off the download while its reply is in flight.
+            (setq etaf-ncm-tests--status
+                  (let ((status (copy-sequence (etaf-ncm-tests--fixture "status"))))
+                    (plist-put status :song_id "3")
+                    (plist-put status :title "曲目 3")
+                    status))
+            (etaf-ncm-next-track app)
+            (should (equal "曲目 3" (plist-get (plist-get (etaf-ncm-state app) :status) :title)))
+            ;; The late reply is keyed by song id, not by the current song or row.
+            (funcall download-callback
+                     (list :ok (list :id 2 :name "曲目 2" :artist "歌手"
+                                     :file "/tmp/曲目 2.flac" :level "lossless"
+                                     :br 1000 :bytes 10 :at "2026-10-05T20:00:00+0800")))
+            (let ((after (etaf-ncm-state app)))
+              (should (plist-get (nth 1 (plist-get after :items)) :downloaded))
+              (should (= 2 (length (plist-get after :downloads))))
+              (should (string-match-p "已下载" (plist-get after :message))))))
+      (setq etaf-ncm-tests--status nil))))
+
+(ert-deftest etaf-ncm-tests-lyric-cache-serves-a-restart ()
+  "A persisted lyric answers the next session without a backend request."
+  (let* ((directory (make-temp-file "ncm-media-cache" t))
+         (cache-file (expand-file-name "library-cache.eld" directory)))
+    (unwind-protect
+        (progn
+          (setq etaf-ncm-tests--requests nil)
+          (let ((app (etaf-ncm-create :client #'etaf-ncm-tests--client
+                                      :cache-file cache-file)))
+            (etaf-ncm-refresh app)
+            (should (= 1 (cl-count-if (lambda (entry)
+                                        (eq (plist-get entry :op) :lyric))
+                                      etaf-ncm-tests--requests)))
+            (should (equal "第五行歌词" (plist-get (etaf-ncm-state app) :lyric-line)))
+            (should (file-readable-p (expand-file-name "media-cache.sqlite" directory))))
+          ;; A fresh session with the same snapshot must not ask for the lyric.
+          (setq etaf-ncm-tests--requests nil)
+          (let* ((lyric-asked nil)
+                 (client (lambda (request callback)
+                           (if (eq (plist-get request :op) :lyric)
+                               (progn (setq lyric-asked t)
+                                      (funcall callback (list :error "offline")))
+                             (etaf-ncm-tests--client request callback))))
+                 (app (etaf-ncm-create :client client :cache-file cache-file)))
+            (etaf-ncm-refresh app)
+            (should-not lyric-asked)
+            (should (equal 1 (plist-get (plist-get (etaf-ncm-state app) :lyric) :id)))
+            (should (equal "第五行歌词" (plist-get (etaf-ncm-state app) :lyric-line)))))
+      (delete-directory directory t))))
+
 (ert-deftest etaf-ncm-tests-child-environment-always-has-a-utf8-locale ()
   "The backend child runs with a UTF-8 locale even when the parent has none.
 The skill prints and parses Chinese text, so a missing or non-UTF-8 locale
@@ -1992,6 +2058,62 @@ this case; the GUI verification covers it on a graphic frame."
                                     etaf-ncm-tests--requests))))
       (setq etaf-ncm-tests--status nil)
       (delete-directory state-dir t))))
+
+(ert-deftest etaf-ncm-tests-cover-index-serves-the-next-session ()
+  "The media cache keeps a cover per URL and reuses it across sessions."
+  (setq etaf-ncm-tests--requests nil)
+  (let* ((state-dir (make-temp-file "ncm-cover-state" t))
+         (cache-dir (make-temp-file "ncm-cover-cache" t))
+         (cache-file (expand-file-name "library-cache.eld" cache-dir))
+         (url "https://example.invalid/a.jpg")
+         (make-client (lambda (cover-url)
+                        (lambda (request callback)
+                          (if (eq (plist-get request :op) :cover)
+                              (progn
+                                (push request etaf-ncm-tests--requests)
+                                (etaf-ncm-tests--write-cover (plist-get request :file))
+                                (funcall callback
+                                         (list :ok (list :id (plist-get request :id)
+                                                         :file (plist-get request :file)))))
+                            (etaf-ncm-tests--client
+                             request
+                             (lambda (reply)
+                               (when (and (eq (plist-get request :op) :queue)
+                                          (eq (car reply) :ok))
+                                 (let ((songs (plist-get (cadr reply) :songs)))
+                                   (when songs (plist-put (car songs) :cover cover-url))))
+                               (funcall callback reply)))))))
+         (etaf-ncm-state-directory state-dir)
+         (cover-requests
+          (lambda ()
+            (cl-count-if (lambda (entry) (eq (plist-get entry :op) :cover))
+                         etaf-ncm-tests--requests))))
+    (unwind-protect
+        (let ((file (expand-file-name "covers/1" state-dir)))
+          ;; The first session downloads the cover and indexes it.
+          (let ((app (etaf-ncm-create :client (funcall make-client url)
+                                      :cache-file cache-file)))
+            (etaf-ncm-refresh app)
+            (should (= 1 (funcall cover-requests)))
+            (should (equal file (etaf-value (plist-get app :cover-file)))))
+          ;; A fresh session with the same URL reuses the indexed file.
+          (setq etaf-ncm-tests--requests nil)
+          (let ((app (etaf-ncm-create :client (funcall make-client url)
+                                      :cache-file cache-file)))
+            (etaf-ncm-refresh app)
+            (should (= 0 (funcall cover-requests)))
+            (should (equal file (etaf-value (plist-get app :cover-file)))))
+          ;; A changed URL invalidates the entry and downloads again.
+          (setq etaf-ncm-tests--requests nil)
+          (let ((app (etaf-ncm-create
+                      :client (funcall make-client "https://example.invalid/b.jpg")
+                      :cache-file cache-file)))
+            (etaf-ncm-refresh app)
+            (should (= 1 (funcall cover-requests)))
+            (should (equal file (etaf-value (plist-get app :cover-file))))))
+      (setq etaf-ncm-tests--status nil)
+      (delete-directory state-dir t)
+      (delete-directory cache-dir t))))
 
 (provide 'etaf-ncm-tests)
 

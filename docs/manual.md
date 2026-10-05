@@ -323,6 +323,14 @@ to the current credential configuration. Reopen after changing accounts.
 Corrupt/incompatible snapshots are ignored and rebuilt; the backend remains
 the authority. Only a never-cached section needs its first network load.
 
+Lyrics and downloaded cover art persist across restarts in a second cache,
+`media-cache.sqlite`, a SQLite database built on ETAF DB beside that snapshot.
+A lyric is stored per song id together with its translation, and a cover is
+indexed per song id with the URL it was downloaded from. A cache hit publishes
+the lyric lines or the cover file immediately without asking the backend; a
+changed cover URL or a deleted file is a miss and downloads again. A session
+without a snapshot path (a function client) keeps both in memory only.
+
 The mounted player warms missing sidebar lists one at a time and revalidates
 lists older than `etaf-ncm-library-refresh-interval` (five minutes). Equal
 replies do not update row sources or repaint; changed replies retain selected
