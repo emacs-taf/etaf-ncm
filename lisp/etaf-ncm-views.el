@@ -247,19 +247,24 @@ block, so the art has no empty band above or below it."
     (text (expr cell))))
 
 (etaf-define-component etaf-ncm--view-cover
-    (&key size glyph (height '(lh 7)) file (chars 10) (lines 7))
+    (&key size glyph height file (chars 10) (lines 7))
   "Render FILE's album art, or a square placeholder of SIZE characters.
 FILE is a reactive source or a literal path; CHARS and LINES bound the area
 the art may use.  A usable raster sizes the cover box exactly, so the art
-fills it without an empty band above or below; the placeholder keeps SIZE
-and HEIGHT."
+fills it without an empty band above or below.  Without art the box keeps the
+standard square cover shape (HEIGHT overrides it), so a cover that is still
+downloading does not change the panel height when it arrives."
   :render
   (let* ((value (and file (if (or (etaf-ref-p file) (etaf-computed-p file))
                               (etaf-value file)
                             file)))
          (block (and value (etaf-ncm--cover-block value chars lines)))
+         (square-rows (max 1 (round (/ (* chars (frame-char-width))
+                                       (max 1 (frame-char-height))))))
          (box-width (if block (list 'ch (nth 0 block)) size))
-         (box-height (if block (list 'lh (nth 1 block)) height))
+         (box-height (cond (block (list 'lh (nth 1 block)))
+                           (height height)
+                           (t (list 'lh square-rows))))
          (cells (and block (nth 2 block)))
          (indices (and cells (number-sequence 0 (1- (length cells))))))
     (etaf-view

@@ -1351,26 +1351,31 @@ is when the answered status request was sent."
 
 (defun etaf-ncm--request-cover (app song)
   "Load SONG's cover art for APP when the playing song changed.
-The previous cover is cleared as soon as playback moves on; a song without a
-cover URL, or a failed download, keeps the placeholder and is not retried
-until playback changes again."
+The previous art stays on screen until the new one is ready, so a cover-to-
+cover switch never flashes a differently sized placeholder.  A song without a
+cover URL clears it immediately, and a failed download clears it only when it
+still belongs to the song that asked for it."
   (let ((id (plist-get song :id)))
     (when (and id (not (equal id (plist-get app :cover-requested-id))))
       (setf (plist-get app :cover-requested-id) id)
-      (etaf-ncm--write app :cover-file nil)
       (let ((url (plist-get song :cover))
             (file (and id (etaf-ncm--cover-file id))))
-        (when (and id file (stringp url) (not (string-empty-p url)))
-          (condition-case nil
-              (make-directory (file-name-directory file) t)
-            (error nil))
-          (etaf-ncm--call
-           app (list :op :cover :id id :file file)
-           :on-ok (lambda (data)
-                    (let ((saved (plist-get data :file)))
-                      (when (and (stringp saved) (file-readable-p saved))
-                        (etaf-ncm--write app :cover-file saved))))
-           :on-error (lambda (_message _hint _code) nil)))))))
+        (if (and id (stringp url) (not (string-empty-p url)))
+            (progn
+              (condition-case nil
+                  (make-directory (file-name-directory file) t)
+                (error nil))
+              (etaf-ncm--call
+               app (list :op :cover :id id :file file)
+               :on-ok (lambda (data)
+                        (let ((saved (plist-get data :file)))
+                          (when (and (stringp saved) (file-readable-p saved)
+                                     (equal id (plist-get app :cover-requested-id)))
+                            (etaf-ncm--write app :cover-file saved))))
+               :on-error (lambda (_message _hint _code)
+                           (when (equal id (plist-get app :cover-requested-id))
+                             (etaf-ncm--write app :cover-file nil)))))
+          (etaf-ncm--write app :cover-file nil))))))
 
 (defun etaf-ncm--queue-current-song (app queue)
   "Return QUEUE's entry matching APP's playing song, or the backend position."
