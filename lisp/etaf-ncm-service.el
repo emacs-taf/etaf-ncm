@@ -526,13 +526,15 @@ The callback is skipped when the request was cancelled."
     (setf (etaf-ncm--client-pending client)
           (delq pending (etaf-ncm--client-pending client)))
     ;; An exited process can still have output in flight: `:stderr' is its own
-    ;; pipe, so the exit event may arrive before its data.  Drain both streams
-    ;; (the pattern the Elisp manual documents) so the buffers below hold
-    ;; everything the backend wrote, not just what happened to arrive first.
+    ;; pipe, so the exit event may arrive before its data.  A zero timeout
+    ;; reads what is already in the pipe without waiting — the exit means the
+    ;; writer finished, so its bytes are in the kernel buffer — and it avoids
+    ;; the "Blocking call to accept-process-output with quit inhibited"
+    ;; warning a timeout-less wait would print from this sentinel.
     (unless cancelled
-      (while (accept-process-output process))
+      (while (accept-process-output process 0))
       (let ((pipe (get-buffer-process stderr)))
-        (while (and pipe (accept-process-output pipe)))))
+        (while (and pipe (accept-process-output pipe 0)))))
     (let ((output (with-current-buffer stdout (buffer-string)))
           (errors (with-current-buffer stderr (buffer-string)))
           (status (process-exit-status process)))
