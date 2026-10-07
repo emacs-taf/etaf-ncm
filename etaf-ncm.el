@@ -297,8 +297,11 @@
 ;; `:like', `:unlike', `:liked-ids', `:shuffle', `:repeat', `:queue-save' or
 ;; `:queue-load').
 ;; CALLBACK receives `(:ok DATA)' on success and `(:error MESSAGE :hint HINT)' on
-;; failure, at most once.  A client that cannot answer calls it neither; a
-;; session that is disposed by `etaf-ncm-cancel' drops late replies.
+;; failure, at most once.  A failure the backend explains itself (the skill's
+;; refusal report) keeps that explanation as MESSAGE and its code as `:code';
+;; only a crash without a report falls back to naming the exit status.  A client
+;; that cannot answer calls it neither; a session that is disposed by
+;; `etaf-ncm-cancel' drops late replies.
 ;;
 ;; Function: etaf-ncm-cancel (client)
 ;; Cancel CLIENT's pending requests and drop their late replies.

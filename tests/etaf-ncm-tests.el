@@ -370,6 +370,48 @@ arrived, and liking a song keeps the session table in step."
       (should (string-match-p "missing" (plist-get state :message)))
       (should-not (plist-get state :loading)))))
 
+(ert-deftest etaf-ncm-tests-skill-refusal-reports-its-own-message ()
+  "A refused skill command reports the backend's own error and hint.
+The netease-music scripts exit non-zero with a report on stderr: the shell
+entry writes `error=' and `hint=' lines, the mpv bridge writes a JSON object.
+Both must reach the caller as the message, and a crash without a report keeps
+the exit status as the message."
+  (let* ((directory (make-temp-file "etaf-ncm-refusal-skill" t))
+         (scripts (expand-file-name "scripts" directory))
+         (script (expand-file-name "netease-music.sh" scripts)))
+    (unwind-protect
+        (progn
+          (make-directory scripts t)
+          (with-temp-file script
+            (insert "#!/bin/sh\n"
+                    "case \"$1\" in\n"
+                    "  play) printf 'error=notfound\\nhint=选中的这首不能播（可能要 VIP 或没有版权），队列未替换\\n' >&2; exit 4;;\n"
+                    "  next) printf '{\"error\":\"external\",\"hint\":\"mpv 连不上（先 play 一下）\"}\\n' >&2; exit 1;;\n"
+                    "  prev) printf 'boom\\n' >&2; exit 3;;\n"
+                    "esac\n"
+                    "exit 1\n"))
+          (set-file-modes script #o755)
+          (let* ((client (etaf-ncm-make-client :skill-directory directory :timeout 10))
+                 (ask (lambda (request)
+                        (let (reply (deadline (+ (float-time) 10)))
+                          (etaf-ncm-client-call client request (lambda (result) (setq reply result)))
+                          (while (and (null reply) (< (float-time) deadline))
+                            (accept-process-output nil 0.05))
+                          reply))))
+            (let ((refusal (funcall ask (list :op :play :target (list :kind :song :id 42)))))
+              (should (equal (car refusal) :error))
+              (should (equal (cadr refusal) "选中的这首不能播（可能要 VIP 或没有版权），队列未替换"))
+              (should (equal (plist-get (cddr refusal) :code) "notfound")))
+            (let ((bridge (funcall ask (list :op :next))))
+              (should (equal (car bridge) :error))
+              (should (equal (cadr bridge) "mpv 连不上（先 play 一下）"))
+              (should (equal (plist-get (cddr bridge) :code) "external")))
+            (let ((crash (funcall ask (list :op :previous))))
+              (should (equal (car crash) :error))
+              (should (string-prefix-p "Backend command failed" (cadr crash)))
+              (should (equal (plist-get (cddr crash) :hint) "boom")))))
+      (delete-directory directory t))))
+
 (ert-deftest etaf-ncm-tests-client-call-reaches-a-function-client ()
   "The documented client protocol works with a plain function."
   (let (seen)

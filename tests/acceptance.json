@@ -152,6 +152,11 @@
       "purpose": "A backend whose scripts are missing lands in the session error and message instead of signaling."
     },
     {
+      "name": "etaf-ncm-tests-skill-refusal-reports-its-own-message",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "A refused skill command surfaces the backend's own stderr report (shell text lines or the mpv bridge's JSON) instead of the bare exit status; a crash without a report keeps the exit status."
+    },
+    {
       "name": "etaf-ncm-tests-client-call-reaches-a-function-client",
       "file": "tests/etaf-ncm-tests.el",
       "purpose": "The documented client protocol drives a plain function client and cancels without error."

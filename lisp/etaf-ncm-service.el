@@ -448,18 +448,25 @@ the rest are the arguments.  Signal `etaf-ncm-error' for an unknown request."
          (pending (etaf-ncm--pending-create :stdout stdout :stderr stderr))
          (timeout (etaf-ncm--client-timeout client)))
     (condition-case error
-        (setf (etaf-ncm--pending-process pending)
-              ;; `make-process' has no :environment keyword, so the child's
-              ;; environment comes from a binding around the call.
-              (let ((process-environment (etaf-ncm--environment client)))
-                (make-process
-                 :name "etaf-ncm"
-                 :buffer stdout
-                 :stderr stderr
-                 :command (cons program arguments)
-                 :connection-type 'pipe
-                 :noquery t
-                 :coding 'utf-8-unix)))
+        (progn
+          (setf (etaf-ncm--pending-process pending)
+                ;; `make-process' has no :environment keyword, so the child's
+                ;; environment comes from a binding around the call.
+                (let ((process-environment (etaf-ncm--environment client)))
+                  (make-process
+                   :name "etaf-ncm"
+                   :buffer stdout
+                   :stderr stderr
+                   :command (cons program arguments)
+                   :connection-type 'pipe
+                   :noquery t
+                   :coding 'utf-8-unix)))
+          ;; The stderr pipe is a process of its own; without a sentinel Emacs
+          ;; appends a "Process ... finished" line to its buffer on exit,
+          ;; which is not backend output.  An ignoring sentinel keeps the
+          ;; buffer to exactly what the backend wrote.
+          (let ((pipe (get-buffer-process stderr)))
+            (when pipe (set-process-sentinel pipe #'ignore))))
       (error
        (kill-buffer stdout)
        (kill-buffer stderr)
@@ -495,12 +502,22 @@ The callback is skipped when the request was cancelled."
       (cancel-timer timer))
     (setf (etaf-ncm--client-pending client)
           (delq pending (etaf-ncm--client-pending client)))
+    ;; An exited process can still have output in flight: `:stderr' is its own
+    ;; pipe, so the exit event may arrive before its data.  Drain both streams
+    ;; (the pattern the Elisp manual documents) so the buffers below hold
+    ;; everything the backend wrote, not just what happened to arrive first.
+    (unless cancelled
+      (while (accept-process-output process))
+      (let ((pipe (get-buffer-process stderr)))
+        (while (and pipe (accept-process-output pipe)))))
     (let ((output (with-current-buffer stdout (buffer-string)))
           (errors (with-current-buffer stderr (buffer-string)))
           (status (process-exit-status process)))
       (kill-buffer stdout)
       (kill-buffer stderr)
-      (unless cancelled
+      ;; Re-read the cancellation flag: draining the streams can run a timer
+      ;; that times this request out, which already delivered the failure.
+      (unless (or cancelled (etaf-ncm--pending-cancelled pending))
         (funcall callback
                  (if (and (eq (process-status process) 'exit) (zerop status))
                      (let ((data (etaf-ncm--decode output)))
@@ -512,8 +529,9 @@ The callback is skipped when the request was cancelled."
                    (let ((data (etaf-ncm--decode output)))
                      (if data
                          (etaf-ncm--failure data errors)
-                       (list :error (format "Backend command failed (exit %s)" status)
-                             :hint (string-trim errors))))))))))
+                       (or (etaf-ncm--stderr-failure errors)
+                           (list :error (format "Backend command failed (exit %s)" status)
+                                 :hint (string-trim errors)))))))))))
 
 (defun etaf-ncm--failure (data errors)
   "Return an (:error ...) result built from backend DATA and ERRORS."
@@ -538,6 +556,36 @@ The callback is skipped when the request was cancelled."
                            :null-object nil
                            :false-object :false)
       (error nil))))
+
+(defun etaf-ncm--stderr-failure (errors)
+  "Return the backend's own failure report in stderr ERRORS as a result plist.
+A netease-music script that refuses a command reports why on stderr and exits
+non-zero: the shell entry writes one `error=CODE' and one `hint=TEXT' line,
+and the mpv bridge writes the same two fields as a JSON object.  That report
+names the failure for a person, so it becomes what the caller sees instead of
+the bare exit status.  Return (:error TEXT [:code CODE]), or nil when ERRORS
+carries no such report."
+  (let* ((data (etaf-ncm--decode errors))
+         (code (etaf-ncm--nonempty-text
+                (or (plist-get data :error) (etaf-ncm--stderr-field errors "error"))))
+         (hint (etaf-ncm--nonempty-text
+                (or (plist-get data :hint) (etaf-ncm--stderr-field errors "hint")))))
+    (when code
+      (let ((message (or hint code)))
+        (append (list :error message)
+                (unless (string-equal code message) (list :code code)))))))
+
+(defun etaf-ncm--nonempty-text (value)
+  "Return VALUE when it is a non-empty string, or nil."
+  (and (stringp value) (not (string-empty-p value)) value))
+
+(defun etaf-ncm--stderr-field (errors name)
+  "Return the value of the first `NAME=' line in stderr ERRORS, or nil.
+The value is the rest of that line."
+  (let ((prefix (concat name "=")))
+    (cl-loop for line in (split-string (or errors "") "\n")
+             when (string-prefix-p prefix line)
+             return (substring line (length prefix)))))
 
 (defun etaf-ncm--environment (client)
   "Return the process environment for CLIENT's child processes.
