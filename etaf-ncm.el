@@ -5,7 +5,7 @@
 ;; Version: 0.1.0
 ;; Package-Requires: ((emacs "29.1") (etaf "0.2.1") (etaf-ui "0.1.0") (ebox "3.0.0") (etaf-db "0.1.0"))
 ;; Keywords: multimedia, ui
-;; URL: https://gitea.vhkd.top/geekinney/etaf-ncm
+;; URL: https://forgejo.vhkd.top/emacs-taf/etaf-ncm
 
 ;;; Commentary:
 
