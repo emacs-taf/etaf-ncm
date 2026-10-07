@@ -337,13 +337,21 @@ A client that signals while turning a request into a command is treated like any
 backend failure, so nothing reaches the caller of a player action."
   (let ((delivered nil)
         (fail (lambda (message hint code)
-                (unless quiet
-                  (etaf-ncm--write model :error message)
-                  (etaf-ncm--write model :message
-                                   (if (and hint (not (string-empty-p hint)))
-                                       (format "%s（%s）" message hint)
-                                     message)))
-                (when on-error (funcall on-error message hint code)))))
+                (if (equal code "auth")
+                    ;; The player can sign in itself; the backend's CLI hint is
+                    ;; not what an in-player reader can act on.
+                    (let ((text "登录已过期：按 L 用短信验证码重新登录"))
+                      (unless quiet
+                        (etaf-ncm--write model :error text)
+                        (etaf-ncm--write model :message text))
+                      (when on-error (funcall on-error text nil code)))
+                  (unless quiet
+                    (etaf-ncm--write model :error message)
+                    (etaf-ncm--write model :message
+                                     (if (and hint (not (string-empty-p hint)))
+                                         (format "%s（%s）" message hint)
+                                       message)))
+                  (when on-error (funcall on-error message hint code))))))
     (condition-case error
         (etaf-ncm-client-call
          (etaf-ncm--client model) request
@@ -351,7 +359,6 @@ backend failure, so nothing reaches the caller of a player action."
            (setq delivered t)
            (if (eq (car result) :ok)
                (progn
-                 (unless quiet (etaf-ncm--write model :error nil))
                  (when on-ok (funcall on-ok (cadr result))))
              (funcall fail (or (cadr result) "请求失败")
                       (plist-get (cddr result) :hint)
@@ -361,8 +368,14 @@ backend failure, so nothing reaches the caller of a player action."
                (funcall fail (error-message-string error) nil nil))))))
 
 (defun etaf-ncm--note (model text)
-  "Show TEXT as the player's status line message."
-  (etaf-ncm--write model :message text))
+  "Show TEXT as the player's status line message.
+A routine note replaces whatever came before, so it also takes the failure
+banner down: `:error' means “the message now shown is a failure”, and only a
+newer message can supersede it.  Routine polls do not write messages, so a
+failure the reader still has to act on survives them."
+  (etaf-batch
+    (etaf-ncm--write model :error nil)
+    (etaf-ncm--write model :message text)))
 
 ;;; ---------------------------------------------------------------------------
 ;;; Formatting helpers
@@ -615,8 +628,10 @@ only warm the cache; disposal invalidates all request tokens."
              (when (equal key (plist-get app :list-key))
                (etaf-ncm--write app :loading nil)
                (unless background
+                 ;; Not `etaf-ncm--note': the failure must raise the banner,
+                 ;; not clear it.
                  (etaf-ncm--write app :error message)
-                 (etaf-ncm--note app message))))))))))
+                 (etaf-ncm--write app :message message))))))))))
 
 (defun etaf-ncm--cache-visible-p (app)
   "Return non-nil when APP's buffer can be seen, or the session is headless.
@@ -1153,6 +1168,54 @@ seeks by offset: show the target immediately, then ask for the difference."
   (cond ((listp item) (or (plist-get item :name) "这一项"))
         ((numberp item) (format "%s" item))
         (t (format "%s" item))))
+
+;;; ---------------------------------------------------------------------------
+;;; Login
+;;; ---------------------------------------------------------------------------
+
+(defun etaf-ncm--login-phone (phone)
+  "Return PHONE as a digits-only string, or signal `etaf-ncm-error'."
+  (let ((text (string-trim (format "%s" (or phone "")))))
+    (unless (string-match-p "\\`[0-9]\\{5,20\\}\\'" text)
+      (signal 'etaf-ncm-error (list (format "手机号应是 5-20 位数字：%S" phone))))
+    text))
+
+(defun etaf-ncm--login-code (code)
+  "Return CODE as a digits-only string, or signal `etaf-ncm-error'."
+  (let ((text (string-trim (format "%s" (or code "")))))
+    (unless (string-match-p "\\`[0-9]\\{3,8\\}\\'" text)
+      (signal 'etaf-ncm-error (list (format "验证码应是 3-8 位数字：%S" code))))
+    text))
+
+(defun etaf-ncm--login-send (app phone done)
+  "Ask the backend to text an SMS code to PHONE for APP.
+DONE is called with (:ok) or (:error MESSAGE) after the visible state was
+updated; the interactive flow uses it to ask for the code when it goes out."
+  (let ((phone (etaf-ncm--login-phone phone)))
+    (etaf-ncm--call
+     app (list :op :login-sms :phone phone)
+     :on-ok (lambda (_data)
+              (etaf-ncm--note app (format "验证码已发到 %s：收到后输入验证码" phone))
+              (when done (funcall done (list :ok))))
+     :on-error (lambda (message _hint _code)
+                 (when done (funcall done (list :error message)))))))
+
+(defun etaf-ncm--login-finish (app phone code done)
+  "Complete APP's sign-in with the SMS CODE sent to PHONE.
+The backend stores the cookie and the account and libraries reload; DONE is
+called with (:ok DATA) or (:error MESSAGE) at the end."
+  (let ((phone (etaf-ncm--login-phone phone))
+        (code (etaf-ncm--login-code code)))
+    (etaf-ncm--call
+     app (list :op :login-sms-code :phone phone :code code)
+     :on-ok (lambda (data)
+              (etaf-ncm--note app (format "登录成功：%s"
+                                          (or (etaf-ncm--string (plist-get data :nick))
+                                              phone)))
+              (etaf-ncm-refresh app)
+              (when done (funcall done (list :ok data))))
+     :on-error (lambda (message _hint _code)
+                 (when done (funcall done (list :error message)))))))
 
 ;;; ---------------------------------------------------------------------------
 ;;; Playback status, queue and lyric

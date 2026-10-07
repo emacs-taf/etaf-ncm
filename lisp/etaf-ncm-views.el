@@ -530,6 +530,28 @@ clicked, and ON-ACTION with that index plus an inline action key."
               :visibility (if (and (etaf-value footer-visible) (etaf-value more-visible)) 'visible 'hidden)
            (text (expr (etaf-ncm--reactive-text loaded-label)))))))))
 
+(defun etaf-ncm--list-panel-width (layout columns)
+  "Return the library panel's inner text width in COLUMNS for LAYOUT.
+It matches the panel `etaf-ncm--view-list-panel' draws, minus that panel's
+horizontal padding, so callers can wrap text the panel shows in the same
+width the reader sees."
+  (let* ((columns (or columns 0))
+         (wide-p (eq layout 'wide))
+         (sidebar-ch (cadr etaf-ncm--sidebar-width))
+         (rail-ch (cadr etaf-ncm--rail-width))
+         (aside-ch (cadr etaf-ncm--aside-width))
+         (width (cond (wide-p (max 1 (- columns sidebar-ch aside-ch)))
+                      ((eq layout 'medium) (max 1 (- columns rail-ch)))
+                      (t (max 1 columns)))))
+    (max 1 (- width (if wide-p 4 2)))))
+
+(defun etaf-ncm--notice-lines (text layout columns)
+  "Return how many wrapped lines TEXT needs in the library panel.
+LAYOUT and COLUMNS come from the session; the result is between one and four
+lines, so a long failure stays fully readable without covering the library."
+  (let ((width (max 8 (etaf-ncm--list-panel-width layout columns))))
+    (max 1 (min 4 (/ (+ (string-width (or text "")) width -1) width)))))
+
 (etaf-define-component etaf-ncm--view-list-panel
     (&key layout columns window-rows visible)
   "Wrap the library column in an absolute stage panel.
@@ -542,7 +564,6 @@ of rebuilding the view."
   :render
   (let* ((sidebar-ch (cadr etaf-ncm--sidebar-width))
          (rail-ch (cadr etaf-ncm--rail-width))
-         (aside-ch (cadr etaf-ncm--aside-width))
          (columns (or columns 0))
          (wide-p (eq layout 'wide))
          (rows (or window-rows 0))
@@ -551,9 +572,8 @@ of rebuilding the view."
          (left (cond (wide-p sidebar-ch)
                      ((eq layout 'medium) rail-ch)
                      (t 0)))
-         (width (cond (wide-p (max 1 (- columns sidebar-ch aside-ch)))
-                      ((eq layout 'medium) (max 1 (- columns rail-ch)))
-                      (t (max 1 columns)))))
+         (width (+ (etaf-ncm--list-panel-width layout columns)
+                   (if wide-p 4 2))))
     (etaf-view
      (box :position 'absolute :left (list 'ch left) :top '(lh 0)
           :width (list 'ch width) :height (if height (list 'lh height) '(% 100)) :z-index 0

@@ -64,6 +64,7 @@ is revived by its next mount.
 | `a` | Append the selected song to the queue |
 | `d` | Download the selected song into the local library |
 | `s`, `/` | Search songs (a `read-string` prompt) |
+| `L` | Sign in with an SMS verification code (a minibuffer prompt for the phone number and then the code) |
 | `g` | Refresh the library, playback status, queue and account |
 | `l` | Switch the side panel between the lyric and the queue |
 | `v` | Switch between the library list and the side panel in a compact layout |
@@ -82,6 +83,31 @@ is revived by its next mount.
 paginated to the window, and the wheel scrolls the library's row window
 without moving the selection. Resizing the frame updates the layout and
 re-fits the page; see [Window layouts](#window-layouts).
+
+### Signing in
+
+```elisp
+M-x etaf-ncm-login
+;; or press L in the player
+```
+
+The command signs in with an SMS verification code. It reads the phone number
+in the minibuffer — the number the backend remembers from the last sign-in is
+offered as the default, so pressing `RET` reuses it — asks the backend to text
+the code, and then reads the code once the backend reports the message went
+out. On success the backend stores the cookie in its own state directory and
+the player reloads its account and libraries; the login state then follows the
+normal backend resolution order (environment, then the stored cookie).
+
+The same sign-in is available in a shell (`pi-skill netease-music login --sms
+<phone>`, then `login --sms-code <code>`), and QR sign-in (`login`) remains
+available there. When a backend reply says the login expired, the player's
+banner says so and names `L`; no shell detour is needed.
+
+A failure the backend explains stays on display in the red banner above the
+library — wrapped over as many lines as it needs — until a newer message
+replaces it, so a message the reader has to act on is never lost to routine
+playback polls.
 
 ### Window layouts
 
@@ -351,6 +377,7 @@ selected.
 | --- | --- |
 | The message line shows `netease-music skill script is missing: ...` | `etaf-ncm-skill-directory` does not point at the skill; set it or install the skill. |
 | The message line shows the backend error | Login, Node.js or mpv is the usual cause. Run `netease-music status` in a shell, then press `g`. |
+| The banner says `登录已过期：按 L 用短信验证码重新登录` | Press `L` (or `M-x etaf-ncm-login`), confirm the phone number, then enter the code from the SMS. |
 | Every library is empty | The backend replied with an error; check `:error` in `etaf-ncm-state`. |
 | The progress bar jumps instead of moving | Only `:elapsed` is interpolated locally; the backend is the truth, so a slow backend shows its own pace. |
 | The window shows fewer rows after a resize | Press `g`; the page count is re-fitted on refresh. |

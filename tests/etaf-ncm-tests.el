@@ -412,6 +412,120 @@ the exit status as the message."
               (should (equal (plist-get (cddr crash) :hint) "boom")))))
       (delete-directory directory t))))
 
+(ert-deftest etaf-ncm-tests-login-reads-phone-and-code-in-the-minibuffer ()
+  "The login command asks for the phone number and the SMS code.
+The phone prompt may reuse the number the backend remembers; the code prompt
+only appears once the backend reports the message went out.  Both backend
+steps carry the caller's values, and a success reloads the player."
+  (setq etaf-ncm-tests--requests nil)
+  (let* ((client (lambda (request callback)
+                   (pcase (plist-get request :op)
+                     (:login-sms
+                      (push request etaf-ncm-tests--requests)
+                      (funcall callback (list :ok (list :conclusion "验证码已发到 138****0000"))))
+                     (:login-sms-code
+                      (push request etaf-ncm-tests--requests)
+                      (funcall callback (list :ok (list :nick "甲" :uid 7))))
+                     (_ (etaf-ncm-tests--client request callback)))))
+         (app (etaf-ncm-tests--session client))
+         (answers '("13800000000" "123456"))
+         (asked nil))
+    (cl-letf (((symbol-function 'read-string)
+               (lambda (prompt &rest _)
+                 (push prompt asked)
+                 (pop answers))))
+      (etaf-ncm-login app))
+    (should (equal (mapcar (lambda (request) (plist-get request :phone))
+                           (list (etaf-ncm-tests--request :login-sms)
+                                 (etaf-ncm-tests--request :login-sms-code)))
+                   '("13800000000" "13800000000")))
+    (should (equal (plist-get (etaf-ncm-tests--request :login-sms-code) :code) "123456"))
+    (should (equal asked '("短信验证码（收到后输入）：" "手机号：")))
+    (should (etaf-ncm-tests--request :browse))
+    (should-not (plist-get (etaf-ncm-state app) :error))))
+
+(ert-deftest etaf-ncm-tests-login-rejects-a-blank-phone () 
+  "A blank phone number stops before any backend request."
+  (setq etaf-ncm-tests--requests nil)
+  (let* ((app (etaf-ncm-tests--session))
+         (answers '("")))
+    (cl-letf (((symbol-function 'read-string) (lambda (&rest _) (pop answers))))
+      (should-error (etaf-ncm-login app) :type 'user-error))
+    (should-not (etaf-ncm-tests--request :login-sms))))
+
+(ert-deftest etaf-ncm-tests-failure-banner-outlives-status-polls ()
+  "A failure stays in the banner through routine polls and clears on a success.
+The status timer is not user action: it must not wipe the message the reader
+still has to act on."
+  (setq etaf-ncm-tests--requests nil)
+  (let* ((etaf-ncm-status-interval 0.05)
+         (etaf-ncm-idle-poll-interval 0.05)
+         (etaf-ncm-buffer-name " *etaf-ncm-tests-banner*")
+         (fail t)
+         (auth-browse nil)
+         (client (lambda (request callback)
+                   (pcase (plist-get request :op)
+                     (:play (if fail
+                                (funcall callback
+                                         (list :error "选中的这首不能播（可能要 VIP 或没有版权），队列未替换"
+                                               :code "notfound"))
+                              (funcall callback (list :ok (list)))))
+                     (:browse (if auth-browse
+                                  (funcall callback (list :error "登录已过期或未登录：跑 pi-skill netease-music login --sms <手机号>" :code "auth"))
+                                (etaf-ncm-tests--client request callback)))
+                     (_ (etaf-ncm-tests--client request callback)))))
+         (app (etaf-ncm-tests--session client)))
+    (unwind-protect
+        (progn
+          (etaf-ncm-open app)
+          (etaf-ncm-refresh app)
+          (should (etaf-ncm-tests--wait (lambda () (etaf-ncm-tests--request :status))))
+          ;; A failed play puts the reason on display.
+          (etaf-ncm-press-row app 1)
+          (should (etaf-ncm-tests--wait
+                   (lambda ()
+                     (equal (plist-get (etaf-ncm-state app) :error)
+                            "选中的这首不能播（可能要 VIP 或没有版权），队列未替换"))))
+          ;; Routine status polls keep it on display.
+          (accept-process-output nil 0.3)
+          (should (equal (plist-get (etaf-ncm-state app) :error)
+                         "选中的这首不能播（可能要 VIP 或没有版权），队列未替换"))
+          ;; A successful action clears it.
+          (setq fail nil)
+          (etaf-ncm-press-row app 1)
+          (should (etaf-ncm-tests--wait (lambda () (null (plist-get (etaf-ncm-state app) :error)))))
+          ;; An expired login names the in-player way out.
+          (setq auth-browse t)
+          (etaf-ncm-locate app :fm)
+          (should (etaf-ncm-tests--wait
+                   (lambda ()
+                     (equal (plist-get (etaf-ncm-state app) :message)
+                            "登录已过期：按 L 用短信验证码重新登录")))))
+      (etaf-ncm-close))))
+
+(ert-deftest etaf-ncm-tests-error-banner-shows-the-whole-message ()
+  "A long failure is wrapped in the banner, not clipped to the bar's slot."
+  (setq etaf-ncm-tests--requests nil)
+  (let* ((long "选中的这首不能播（可能要 VIP 或没有版权），队列没有替换；换一首能播的，或者按 g 刷新看看")
+         (client (lambda (request callback)
+                   (pcase (plist-get request :op)
+                     (:browse (funcall callback (list :error long :code "external")))
+                     (_ (etaf-ncm-tests--client request callback)))))
+         (app (etaf-ncm-tests--session client))
+         (buffer (get-buffer-create " *etaf-ncm-tests-banner-text*")))
+    (unwind-protect
+        (progn
+          (etaf-mount buffer (etaf-ncm-view app)
+                      (list :viewport-width 1200 :viewport-height 40))
+          (should (etaf-ncm-tests--wait
+                   (lambda () (equal (plist-get (etaf-ncm-state app) :error) long))))
+          (with-current-buffer buffer
+            (let ((text (replace-regexp-in-string
+                         "[ \t\n]+" ""
+                         (buffer-substring-no-properties (point-min) (point-max)))))
+              (should (string-match-p (regexp-quote "按g刷新看看") text)))))
+      (kill-buffer buffer))))
+
 (ert-deftest etaf-ncm-tests-client-call-reaches-a-function-client ()
   "The documented client protocol works with a plain function."
   (let (seen)
@@ -444,7 +558,11 @@ silently doing nothing against the real backend."
           (let ((client (etaf-ncm-make-client :skill-directory directory :timeout 10)))
             (dolist (case '(((:op :play :target (:kind :song :id 4242)) "play 4242")
                             ((:op :play :target (:kind :fm) :ids (7 2 7) :start 3)
-                             "play-ids 7,2,7 --start 3")))
+                             "play-ids 7,2,7 --start 3")
+                            ((:op :login-sms :phone "13800000000")
+                             "login --sms 13800000000")
+                            ((:op :login-sms-code :phone "13800000000" :code "123456")
+                             "login --sms 13800000000 --sms-code 123456")))
               (setq reply nil)
               (let ((deadline (+ (float-time) 10)))
                 (etaf-ncm-client-call client (car case) (lambda (result) (setq reply result)))

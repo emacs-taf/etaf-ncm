@@ -64,6 +64,16 @@
 ;; model, so any action or backend reply repaints it; prefer `etaf-ncm-open' or
 ;; `etaf-ncm-view' over mounting the Component directly.
 ;;
+;; Function: etaf-ncm-login (&optional app)
+;;;###autoload (autoload 'etaf-ncm-login "etaf-ncm" nil t)
+;; Sign in to the backend with a phone number and an SMS verification code.
+;; APP defaults to the mounted player or the one in the current buffer.  The
+;; phone number is read in the minibuffer, with the number the backend
+;; remembers as the default; the code is read once the backend reports the text
+;; went out.  On success the backend stores the cookie and the player reloads
+;; its account and libraries.  It signals a `user-error' when no player is
+;; available and `etaf-ncm-error' for a malformed phone number or code.
+;;
 ;; Function: etaf-ncm-create (&key client cache-file)
 ;; Return a new player session that talks to CLIENT.
 ;; CLIENT defaults to `etaf-ncm-client-factory' when that is bound and otherwise
@@ -294,8 +304,8 @@
 ;; REQUEST is a plist starting with `:op' (`:browse', `:search', `:lyric',
 ;; `:session', `:status', `:queue', `:play', `:add', `:jump', `:volume',
 ;; `:seek', `:pause', `:resume', `:toggle', `:next', `:previous', `:stop',
-;; `:like', `:unlike', `:liked-ids', `:shuffle', `:repeat', `:queue-save' or
-;; `:queue-load').
+;; `:like', `:unlike', `:liked-ids', `:shuffle', `:repeat', `:queue-save',
+;; `:queue-load', `:login-sms' or `:login-sms-code').
 ;; CALLBACK receives `(:ok DATA)' on success and `(:error MESSAGE :hint HINT)' on
 ;; failure, at most once.  A failure the backend explains itself (the skill's
 ;; refusal report) keeps that explanation as MESSAGE and its code as `:code';

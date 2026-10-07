@@ -291,7 +291,8 @@ the rest are the arguments.  Signal `etaf-ncm-error' for an unknown request."
        (cons (etaf-ncm--script music) (list music "status" "--json" "--quiet")))
       ((or :queue :play :add :jump :volume :seek :pause :resume :toggle
            :next :previous :stop :like :unlike :shuffle :repeat
-           :queue-save :queue-load :download :downloads :cover)
+           :queue-save :queue-load :download :downloads :cover
+           :login-sms :login-sms-code)
        (cons (etaf-ncm--script music)
              (append (list music) (etaf-ncm--script-arguments request)
                      (list "--json" "--quiet"))))
@@ -311,6 +312,23 @@ the rest are the arguments.  Signal `etaf-ncm-error' for an unknown request."
     (signal 'etaf-ncm-error
             (list (format "netease-music skill script is missing: %s" script))))
   (or (executable-find "bash") "/bin/bash"))
+
+(defun etaf-ncm--login-phone-argument (request)
+  "Return REQUEST's digits-only phone number, or signal `etaf-ncm-error'."
+  (let ((phone (string-trim (or (plist-get request :phone) ""))))
+    (unless (string-match-p "\\`[0-9]\\{5,20\\}\\'" phone)
+      (signal 'etaf-ncm-error
+              (list (format "Login needs a 5-20 digit phone number: %S"
+                            (plist-get request :phone)))))
+    phone))
+
+(defun etaf-ncm--login-code-argument (request)
+  "Return REQUEST's digits-only SMS code, or signal `etaf-ncm-error'."
+  (let ((code (string-trim (or (plist-get request :code) ""))))
+    (unless (string-match-p "\\`[0-9]\\{3,8\\}\\'" code)
+      (signal 'etaf-ncm-error
+              (list (format "Login code must be 3-8 digits: %S" (plist-get request :code)))))
+    code))
 
 (defun etaf-ncm--limit (request fallback)
   "Return the `:limit' of REQUEST, or FALLBACK."
@@ -348,6 +366,11 @@ the rest are the arguments.  Signal `etaf-ncm-error' for an unknown request."
 (defun etaf-ncm--script-arguments (request)
   "Return the netease-music.sh arguments for REQUEST."
   (pcase (plist-get request :op)
+    (:login-sms
+     (list "login" "--sms" (etaf-ncm--login-phone-argument request)))
+    (:login-sms-code
+     (list "login" "--sms" (etaf-ncm--login-phone-argument request)
+           "--sms-code" (etaf-ncm--login-code-argument request)))
     (:queue (list "queue" "--limit" (number-to-string (etaf-ncm--limit request 200))))
     (:cover
      (let ((id (plist-get request :id))
@@ -612,6 +635,20 @@ name as part of that name."
        (list (concat "NETEASE_COOKIE=" cookie)
              (concat "PI_SKILL_NETEASE_MUSIC_COOKIE=" cookie))))))
 
+(defun etaf-ncm--state-value (client key)
+  "Return the string stored under KEY in CLIENT's state config, or nil.
+The backend keeps its login state in that file; a missing file, a missing key
+or a non-string value reads as nil."
+  (let ((file (expand-file-name
+               "config.json" (etaf-ncm--client-state-directory client))))
+    (when (file-readable-p file)
+      (let ((data (etaf-ncm--decode
+                   (with-temp-buffer
+                     (insert-file-contents file)
+                     (buffer-string)))))
+        (let ((value (plist-get data key)))
+          (and (stringp value) (not (string-empty-p value)) value))))))
+
 (defun etaf-ncm--cookie (client)
   "Return the NetEase login cookie known to CLIENT, or nil.
 The skill environment wins over its state file, matching the skill's own
@@ -619,15 +656,14 @@ resolution order; a missing cookie is not an error here, because the backend
 reports the login failure with its own message."
   (or (getenv "PI_SKILL_NETEASE_MUSIC_COOKIE")
       (getenv "NETEASE_COOKIE")
-      (let ((file (expand-file-name
-                   "config.json" (etaf-ncm--client-state-directory client))))
-        (when (file-readable-p file)
-          (let ((data (etaf-ncm--decode
-                       (with-temp-buffer
-                         (insert-file-contents file)
-                         (buffer-string)))))
-            (let ((cookie (plist-get data :cookie)))
-              (and (stringp cookie) (not (string-empty-p cookie)) cookie)))))))
+      (etaf-ncm--state-value client :cookie)))
+
+(defun etaf-ncm--stored-phone (client)
+  "Return the phone number CLIENT's backend remembers, or nil.
+The backend stores it after the first SMS sign-in, so the player can offer it
+as the default when signing in again.  A function client has no state file."
+  (when (etaf-ncm--client-p client)
+    (etaf-ncm--state-value client :phone)))
 
 (defun etaf-ncm--queue-tracks (client)
   "Return the queue track list recorded by the skill for CLIENT.

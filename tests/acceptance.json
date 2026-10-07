@@ -157,6 +157,26 @@
       "purpose": "A refused skill command surfaces the backend's own stderr report (shell text lines or the mpv bridge's JSON) instead of the bare exit status; a crash without a report keeps the exit status."
     },
     {
+      "name": "etaf-ncm-tests-login-reads-phone-and-code-in-the-minibuffer",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "The login command asks for the phone number and the SMS code in the minibuffer, sends both login requests with the caller's values, and reloads the player on success."
+    },
+    {
+      "name": "etaf-ncm-tests-login-rejects-a-blank-phone",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "A blank phone number stops the login command before any backend request."
+    },
+    {
+      "name": "etaf-ncm-tests-failure-banner-outlives-status-polls",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "A failed action keeps its message on display through routine status polls, a successful action clears it, and an expired login names the in-player sign-in."
+    },
+    {
+      "name": "etaf-ncm-tests-error-banner-shows-the-whole-message",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "A long failure message is wrapped inside the banner and stays fully readable instead of being clipped to the bar's message slot."
+    },
+    {
       "name": "etaf-ncm-tests-client-call-reaches-a-function-client",
       "file": "tests/etaf-ncm-tests.el",
       "purpose": "The documented client protocol drives a plain function client and cancels without error."

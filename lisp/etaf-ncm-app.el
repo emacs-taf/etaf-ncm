@@ -61,6 +61,7 @@
     (define-key map (kbd "p") #'etaf-ncm--previous-track)
     (define-key map (kbd "a") #'etaf-ncm--add-to-queue)
     (define-key map (kbd "d") #'etaf-ncm--download)
+    (define-key map (kbd "L") #'etaf-ncm-login)
     (define-key map (kbd "s") #'etaf-ncm--search)
     (define-key map (kbd "/") #'etaf-ncm--search)
     (define-key map (kbd "g") #'etaf-ncm--refresh)
@@ -341,6 +342,38 @@ leaves there; j/k only move the selection, so fall back to it."
   (etaf-ncm--search-text (etaf-ncm--current-model)
                          (read-string "搜索歌曲、歌手、歌单或专辑：")))
 
+(defun etaf-ncm-login (&optional app)
+  "Sign in to the backend with a phone number and an SMS verification code.
+APP defaults to the mounted player or the one in the current buffer.  The
+phone number is read in the minibuffer, with the number the backend remembers
+as the default; once the backend reports the code went out, the minibuffer
+asks for it.  On success the backend stores the cookie and the player reloads
+its account and libraries."
+  (interactive)
+  (let* ((app (or app
+                  (and (bound-and-true-p etaf-ncm--model) etaf-ncm--model)
+                  (let ((buffer (get-buffer etaf-ncm-buffer-name)))
+                    (and buffer (buffer-local-value 'etaf-ncm--model buffer)))
+                  (user-error "没有打开的网易云音乐播放器")))
+         (stored (etaf-ncm--stored-phone (etaf-ncm--client app)))
+         (phone (string-trim
+                 (read-string (if stored
+                                  (format "手机号（回车用上次 %s）：" stored)
+                                "手机号：")
+                              nil nil stored))))
+    (when (string-empty-p phone)
+      (user-error "需要手机号"))
+    (etaf-ncm--login-send
+     app phone
+     (lambda (result)
+       (when (eq (car result) :ok)
+         (condition-case nil
+             (let ((code (string-trim (read-string "短信验证码（收到后输入）："))))
+               (if (string-empty-p code)
+                   (etaf-ncm--note app "没有输入验证码，登录未完成；再按 L 重来")
+                 (etaf-ncm--login-finish app phone code nil)))
+           (quit (etaf-ncm--note app "登录已取消（验证码没输入）"))))))))
+
 (defun etaf-ncm--refresh ()
   "Reload the library, playback status, queue and account."
   (interactive)
@@ -442,7 +475,7 @@ default face shows the player background there instead of the frame's."
   (message
    (concat "j/k 选择 · 滚轮滚动列表 · 单击选中 · 双击播放 · RET 播放 · SPC 暂停 · n/p 切歌 · a 加入队列 · d 下载 · s 搜索 · g 刷新"
            " · l 歌词/队列 · v 列表/面板 · 1-9 音乐库 · +/- 音量 · ,/. 快退快进"
-           " · 队列内滚轮翻动队列 · f/F 喜欢 · r 列表循环 · z 随机 · T 深浅色 · q 关闭")))
+           " · 队列内滚轮翻动队列 · f/F 喜欢 · r 列表循环 · z 随机 · L 短信登录 · T 深浅色 · q 关闭")))
 
 ;;; ---------------------------------------------------------------------------
 ;;; Application Component and entry points
@@ -602,11 +635,17 @@ releases the polling timer and the session's pending backend requests."
         (flex :position 'absolute :z-index 0 :left '(ch 0)
               :top (list 'lh (pcase (etaf-ncm--read session :layout) ('wide 2) ('narrow 6) (_ 3)))
               :visibility (if (etaf-ncm--read session :error) 'visible 'hidden)
-              :width 'stretch :height '(lh 1)
-              :align-items 'center :padding '((lh 0) (ch 1))
+              :width 'stretch
+              ;; Long failures used to be clipped to one third of the bar; the
+              ;; banner wraps them across the library width instead.
+              :height (list 'lh (etaf-ncm--notice-lines
+                                (etaf-ncm--read session :message)
+                                (etaf-ncm--read session :layout)
+                                (etaf-ncm--read session :columns)))
+              :align-items 'start :padding '((lh 0) (ch 1))
               :background-color (etaf-ncm-color :danger-bg)
               :color (etaf-ncm-color :danger)
-          (box :height '(lh 1) :overflow 'hidden
+          (box :height 'stretch :overflow 'hidden :wrap-mode 'word
             (text (expr (or (etaf-ncm--reactive-text (etaf-ncm--ref session :message)) "")))))
         (etaf-ncm--view-list
          :model session
