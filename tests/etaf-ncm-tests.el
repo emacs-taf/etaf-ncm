@@ -864,10 +864,10 @@ The background reply must not move the reader's selection."
         (setq deferred t)
         (etaf-ncm-refresh app)
         (etaf-runtime-flush runtime)
-        (let ((revision (plist-get (etaf-runtime-snapshot runtime) :revision)))
+        (let ((revision (etaf-runtime-revision runtime)))
           (funcall pending (list :ok (list :songs songs :total (length songs))))
           (etaf-runtime-flush runtime)
-          (should (= revision (plist-get (etaf-runtime-snapshot runtime) :revision))))
+          (should (= revision (etaf-runtime-revision runtime))))
         (setq deferred nil)
         (setq songs (cons '(:id 99 :name "新歌" :artist "歌手" :ms 1000) songs))
         (etaf-ncm-refresh app)
@@ -1757,8 +1757,11 @@ not just `etaf-ncm-mode-map', must find the player command."
 (ert-deftest etaf-ncm-tests-library-failure-pauses-refresh ()
   "A library refresh that needs a human pauses the warmer until a load succeeds."
   (setq etaf-ncm-tests--requests nil)
+  ;; The warmer refreshes one stale list per tick and warms an uncached one
+  ;; only while every cached list is fresh, so the freshness interval must
+  ;; span several ticks for the FM list to be reached.
   (let* ((etaf-ncm-status-interval 0.05)
-         (etaf-ncm-library-refresh-interval 0.05)
+         (etaf-ncm-library-refresh-interval 0.3)
          (fail-auth t)
          (app nil)
          (client (lambda (request callback)
