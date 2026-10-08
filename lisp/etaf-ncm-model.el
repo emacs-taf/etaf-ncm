@@ -177,7 +177,6 @@ client persists in its state directory; function clients default to memory."
           :more-visible (etaf-ref nil :name 'etaf-ncm-more-visible)
           :selected-album (etaf-ref "" :name 'etaf-ncm-selected-album)
           :buffer nil
-          :mounted-width nil
           :page-size (etaf-ref etaf-ncm-page-size :name 'etaf-ncm-page-size)
           :queue-rows (etaf-ref etaf-ncm-page-size :name 'etaf-ncm-queue-rows)
           :lyric-rows (etaf-ref (max 0 (- etaf-ncm-page-size 7))
@@ -1718,26 +1717,15 @@ one publication costs, so apply once the drag settles instead of per event.")
                        #'etaf-ncm--window-size-change-apply))))
 
 (defun etaf-ncm--settle-canvas (app window)
-  "Repaint APP's canvas at WINDOW's settled size.
-A player mounted before the window manager finished resizing its frame keeps the
-canvas it painted at mount: Ebox records the window's width in its render state
-while the painted rows still belong to the old viewport, so its own resize path
-sees nothing to do.  Repainting once at a neighbouring width and once at the
-real width replaces that stale canvas.  A session without a mounted view, or a
-rejected repaint, is left alone."
+  "Refit APP's canvas to WINDOW's settled size.
+A player mounted before the window manager finished resizing its frame may
+miss the resize notification; `etaf-refit' re-reads the window and keeps the
+mount following it."
   (let* ((buffer (plist-get app :buffer))
-         (runtime (and (buffer-live-p buffer) (etaf-runtime-for-buffer buffer)))
-         (live (and window (window-live-p window)))
-         (width (and live (* (window-body-width window) (window-font-width window))))
-         (height (and live (window-body-height window)))
-         (mounted (plist-get app :mounted-width)))
-    (when (and runtime width height mounted (> width mounted))
-      (condition-case nil
-          (progn
-            (etaf-runtime-refit runtime (max 1 (1- width)) height)
-            (etaf-runtime-refit runtime width height)
-            (setf (plist-get app :mounted-width) width))
-        (error nil)))))
+         (runtime (and (buffer-live-p buffer) (etaf-runtime-for-buffer buffer))))
+    (when (and runtime (etaf-runtime-mounted-p runtime)
+               window (window-live-p window))
+      (etaf-refit runtime window))))
 
 (defun etaf-ncm--window-size-change-apply ()
   "Adapt every mounted player to its window's settled size."
@@ -1982,7 +1970,11 @@ present), `:loading', `:error' and `:message'."
           :window-start (nth 1 page)
           :selection (etaf-ncm--read app :selection)
           :page-size (etaf-ncm--read app :page-size)
-          :viewport-width (plist-get app :mounted-width)
+          :viewport-width
+          (let ((runtime (and (buffer-live-p (plist-get app :buffer))
+                              (etaf-runtime-for-buffer (plist-get app :buffer)))))
+            (and runtime (etaf-runtime-mounted-p runtime)
+                 (car (etaf-runtime-viewport runtime))))
           :rows-total (length rows)
           :list-total (etaf-ncm--read app :list-total)
           :queue-rows (etaf-ncm--read app :queue-rows)

@@ -801,9 +801,7 @@ the backend.  A caller-provided MODEL keeps its library, queue and selection."
     ;; Passing the raw window body width overrides that policy and forces a
     ;; full refit on the first input when the renderer reserves its margins.
     (etaf-mount buffer (etaf-ncm-view model))
-    (let ((runtime (etaf-runtime-for-buffer buffer)))
-      (plist-put model :mounted-width (car (etaf-runtime-viewport runtime)))
-      (etaf-runtime-flush runtime))
+    (etaf-runtime-flush (etaf-runtime-for-buffer buffer))
     (etaf-ncm--apply-list-highlights model (etaf-ncm--list-highlights model))
     buffer))
 
