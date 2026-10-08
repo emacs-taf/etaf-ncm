@@ -220,8 +220,7 @@ remain stable across motion and backend replies.
   the row its measurable width, and an absolutely positioned fill overlay above
   it carries the played fraction. A playing second changes only the Range's
   value source, so its Fill getter republishes the elapsed fraction without a
-  View publication or a per-tick layout pass. The next ordinary View publication
-  supplies the same clock geometry.
+  View publication or a per-tick layout pass.
 - Idle: one check per `etaf-ncm-idle-poll-interval` (15 s).
 - A lyric is fetched only when the playing song id changes, and then only on a
   media-cache miss; the reply is stored for later sessions.
@@ -240,35 +239,21 @@ particularly, equal-size toy lists can conceal cold admission and topology
 costs. Outstanding slow paths must remain reported as failures, not averaged
 away into a fast median.
 
-An update is only as cheap as the nodes it invalidates, and two numbers decide
-whether a change to the player is affordable:
-
-- Count layout passes per write: advise `ebox--render-layout-in-context` with a
-  counter, perform one ref write, and read the count.  A `:status` write used to
-  cause 19 to 40 passes; a retained clock tick causes none, because it replaces
-  two Hosts in one batched Ebox publication.
-- Sample the process CPU while the demo plays.  Paused playback is the baseline
-  (0 %) and every playing second is the retained clock update, so a change that
-  removes a whole-view repaint from the tick shows up directly.
+An update is only as cheap as the nodes it invalidates.  ETAF binds each
+source read to the Host that made it, so a write repaints those Hosts in
+place; Ebox re-lays out only up to the nearest relayout boundary and writes
+the changed rows directly into the buffer.
 
 - Run `emacs -Q --batch -L . -L lisp -L tests -L ../../etaf -L ../../etaf-ui
-  -L ../../ebox -L ../../ecss -l benchmarks/update-cost.el` for the same numbers
-  as a benchmark: a selection write republishes the whole view (about 250 ms at
-  twelve rows with a byte-compiled framework), while a clock tick inside one
-  lyric line commits a retained update (about 25 ms).
-
-`benchmarks/update-phases.el` splits one update into its phases.  Its reading is
-that the tree walks are cheap (about 5 ms for 5587 child enumerations) while
-`ebox-commit`'s own candidate work costs about 73 ms, the surface projection
-around the layout about 34 ms and the layout itself about 42 ms: the candidate
-rebuilds the tree per update instead of reusing the published one, and that is
-where the smoothness work starts.
-
-The cost is the whole tree being laid out again on every update, and it is
-where the remaining work sits: ETAF hands Ebox a complete tree per update and
-Ebox lays all of it out instead of reusing the subtrees that did not change.
-Byte compilation removes roughly half of it (an interpreted framework doubles
-every number here), which is why the benchmark must run compiled.
+  -L ../../ebox -L ../../ecss -L ../../etaf-db -l benchmarks/update-cost.el`
+  with the framework byte-compiled.  A selection write and a clock tick each
+  take about 1 ms at every viewport size of the twelve-row fixture, because
+  neither rebuilds or re-lays out the view.
+- Sample the process CPU while the demo plays.  Paused playback is the baseline
+  (0 %) and every playing second is one bound update, so a change that
+  widens what a tick invalidates shows up directly.
+- `benchmarks/performance-scenarios.el` registers library switching and
+  opening with the workspace `scripts/performance.py` driver for GUI latency.
 
 ## Backend contract
 

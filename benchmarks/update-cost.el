@@ -9,13 +9,11 @@
 ;;   emacs -Q --batch -L . -L lisp -L tests -L ../../etaf -L ../../etaf-ui \
 ;;         -L ../../ebox -L ../../ecss -l benchmarks/update-cost.el
 ;;
-;; A selection write still republishes the whole view, which is what keeps the
-;; list highlight honest.  A clock tick does not: the elapsed label and the
-;; progress meter are retained Hosts, so a playing second commits one batched
-;; retained update.  Each clock write advances the displayed second, so the
-;; measurement covers a real text change instead of a repeated string.  A tick
-;; that crosses a lyric line republishes the view, because the panel's current
-;; line moves with it.
+;; Each write updates only the Hosts whose bindings read the changed source:
+;; a selection write repaints the two affected rows, and a clock tick
+;; repaints the elapsed label and the progress fill.  Each clock write
+;; advances the displayed second, so the measurement covers a real text
+;; change instead of a repeated string.
 
 ;;; Code:
 (load "tests/etaf-ncm-tests.el")
