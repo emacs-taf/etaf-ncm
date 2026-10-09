@@ -247,6 +247,11 @@
       "purpose": "A selected sidebar library paints one text line, not its whole two-line click cell."
     },
     {
+      "name": "etaf-ncm-tests-sidebar-current-entry-keeps-its-surface-on-hover",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "The active sidebar entry keeps its own surface on hover while an inactive entry declares the hover surface."
+    },
+    {
       "name": "etaf-ncm-tests-sidebar-group-labels-leave-a-gap",
       "file": "tests/etaf-ncm-tests.el",
       "purpose": "A sidebar group label keeps a blank line between itself and its first entry."

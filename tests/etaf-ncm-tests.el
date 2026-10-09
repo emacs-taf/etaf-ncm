@@ -1374,6 +1374,18 @@ locate the entry by its help text instead of a character offset."
           (should-not (equal (etaf-ncm-tests--background spacer)
                              (etaf-ncm-color :accent-soft))))))))
 
+(ert-deftest etaf-ncm-tests-sidebar-current-entry-keeps-its-surface-on-hover ()
+  "The active library entry declares no hover surface over its own background."
+  (let ((app (etaf-ncm-tests--session)))
+    (etaf-ncm-tests--with-player app
+      (etaf-ncm-tests--rendered-text)
+      (let ((current (etaf-ncm-tests--sidebar-label-position "每日推荐"))
+            (other (etaf-ncm-tests--sidebar-label-position "排行榜")))
+        (should current)
+        (should other)
+        (should-not (get-text-property current 'mouse-face))
+        (should (get-text-property other 'mouse-face))))))
+
 (ert-deftest etaf-ncm-tests-sidebar-group-labels-leave-a-gap ()
   "A group label is separated from its first entry by a blank line."
   (let ((app (etaf-ncm-tests--session)))

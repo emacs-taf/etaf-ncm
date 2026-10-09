@@ -90,7 +90,7 @@ spacer line so a height-constrained sidebar shows every entry."
                          (chip '((lh 0) (ch 0)))
                          (compact '((lh 0) (ch 0)))
                          (t '((lh 0) (ch 2))))
-          :hover-style (etaf-ncm--hover-surface)
+          :hover-style (unless (etaf-value active) (etaf-ncm--hover-surface))
           :background-color (if (etaf-value active) (etaf-ncm-color :accent-soft)
                               (etaf-ncm-color :panel))
           :color (if (etaf-value active) (etaf-ncm-color :ink) (etaf-ncm-color :muted))
@@ -137,7 +137,10 @@ key (`download' or `queue') of the inline action the reader pressed."
         ;; overlay bars.  The row keeps only content-driven changes, so a
         ;; marker move does not repaint the whole list plane.
         :color (etaf-ncm-color :ink)
-        :hover-style (etaf-ncm--hover-surface)
+        ;; The playing bar behind the row is its own surface, so hover must not
+        ;; repaint it; the read stays inside this host binding.
+        :hover-style (unless (etaf-ncm--active-value playing)
+                       (etaf-ncm--hover-surface))
         :help-echo "播放这一行"
         :on-press (lambda () (when (etaf-ncm--reactive-text row)
                                (funcall press (etaf-ncm--active-value index))))
@@ -462,7 +465,9 @@ rebuilding the view."
       :width '(ch 8) :height '(lh 1) :flex-grow 0 :flex-shrink 0
       :justify-content 'center :align-items 'center
       :padding '((lh 0) (ch 1)) :role 'button :tab-index 0
-      :hover-style (etaf-ncm--hover-surface)
+      :hover-style (unless (etaf-value (etaf-ncm--pane-tab-source
+                                        (car tab) pane-list lyrics queue))
+                     (etaf-ncm--hover-surface))
       :help-echo (nth 1 tab)
       :background-color (if (etaf-value (etaf-ncm--pane-tab-source
                                          (car tab) pane-list lyrics queue))
@@ -653,7 +658,7 @@ static tab row."
         :align-items 'center
         :border-bottom (etaf-ncm--view-border 'bottom (etaf-ncm-color :line))
     (box :height '(lh 1) :padding '((lh 0) (ch 2)) :role 'button :tab-index 0
-         :hover-style (etaf-ncm--hover-surface)
+         :hover-style (unless (eq kind 'lyrics) (etaf-ncm--hover-surface))
          :help-echo "看歌词"
          :font-weight (if (eq kind 'lyrics) 'bold 'normal)
          :background-color (if (eq kind 'lyrics) (etaf-ncm-color :accent-soft)
@@ -663,7 +668,7 @@ static tab row."
          :on-press (lambda () (funcall on-switch 'lyrics))
       (text "歌词"))
     (box :height '(lh 1) :padding '((lh 0) (ch 2)) :role 'button :tab-index 0
-         :hover-style (etaf-ncm--hover-surface)
+         :hover-style (unless (eq kind 'queue) (etaf-ncm--hover-surface))
          :help-echo "看播放队列"
          :font-weight (if (eq kind 'queue) 'bold 'normal)
          :background-color (if (eq kind 'queue) (etaf-ncm-color :accent-soft)
@@ -724,7 +729,8 @@ static tab row."
         :help-echo (lambda (&rest _)
                      (let ((row (etaf-value entry)))
                        (when row (format "播放队列第 %s 首：%s" (plist-get row :index) (plist-get row :name)))))
-        :hover-style (etaf-ncm--hover-surface)
+        :hover-style (unless (plist-get (etaf-value entry) :current)
+                       (etaf-ncm--hover-surface))
         :gap '((lh 0) (ch 1)) :align-items 'center
         :background-color (if (plist-get (etaf-value entry) :current)
                               (etaf-ncm-color :accent-soft) (etaf-ncm-color :panel))
