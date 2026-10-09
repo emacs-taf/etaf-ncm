@@ -347,8 +347,9 @@ chips only."
          (width (car plan))
          (gap (cdr plan)))
     (etaf-view
-     (flex :position 'absolute :z-index 0 :left '(ch 0) :top '(lh 3)
-           :width 'stretch :height '(lh 2) :gap (list (list 'lh 0) (list 'ch gap))
+     (flex :position 'absolute :z-index 0 :left '(ch 1) :top '(lh 3)
+           :width (list 'ch (etaf-ncm-layout-list-columns 'narrow columns))
+           :height '(lh 2) :gap (list (list 'lh 0) (list 'ch gap))
            :align-items 'center :overflow 'hidden
        (etaf-ncm--view-nav-item :for (entry entries) :key (car entry)
          :chip t :width width :icon (nth 2 entry) :label (nth 1 entry)
@@ -357,30 +358,15 @@ chips only."
 
 (etaf-define-component etaf-ncm--view-header-action
     (&key label primary hidden on-press help)
-  "Render one header action as a plain box.
-The shared `etaf-button' component clipped a multi-character label on the
-first mount of this canvas, while a box with an explicit intrinsic width and
-one text child paints it like any other label.  PRIMARY tints the surface,
-HIDDEN removes the button from view without changing the row."
+  "Render one header action with the shared button component.
+The button sizes itself from its label, and the wrapper refuses to shrink,
+so a cramped row moves the search field instead of clipping the word."
   :view
-  ;; The width is stated in cells from the label itself, with one cell of
-  ;; slack: an `expr' text run composes with a trailing cell, and a box that
-  ;; is exactly the label's width drops its last character.
-  (flex :width (list 'ch (+ 3 (string-width (or label "")) (if primary 4 2)))
-        :height '(lh 1) :flex-shrink 0
-        :align-items 'center :justify-content 'center
-        :padding (list (list 'lh 0) (list 'ch (if primary 2 1)))
-        :role 'button :tab-index 0
-        :visibility (if hidden 'hidden 'visible)
-        :background-color (if primary (etaf-ncm-color :accent)
-                             (etaf-ncm-color :panel))
-        :color (if primary (etaf-ncm-color :ink) (etaf-ncm-color :muted))
-        :font-weight (if primary 'bold 'normal)
-        :hover-style (etaf-ncm--hover-surface)
-        :help-echo help :on-press on-press
-    (box :width (list 'ch (+ 3 (string-width (or label ""))))
-         :height '(lh 1) :overflow 'hidden
-      (text (expr (or label ""))))))
+  (box :flex-shrink 0 :visibility (if hidden 'hidden 'visible)
+    (etaf-button :label label
+                 :variant (if primary 'primary 'ghost)
+                 :pointer (if primary 'hand nil)
+                 :help-echo help :on-press on-press)))
 
 (etaf-define-component etaf-ncm--view-header
     (&key model layout columns short on-search on-play-library on-refresh)
@@ -404,8 +390,10 @@ instead of the whole application."
          (show-subtitle (and (not short)
                              (etaf-ncm-layout-subtitle-p layout columns))))
     (etaf-view
-  (column :position 'absolute :z-index 0 :left '(ch 0) :top '(lh 0)
-          :width 'stretch :height (if compact '(lh 3) '(lh 2)) :item-gap '(lh 0)
+  (column :position 'absolute :z-index 0
+          :left (list 'ch (if compact 1 2)) :top '(lh 0)
+          :width (list 'ch (etaf-ncm-layout-list-columns layout columns))
+          :height (if compact '(lh 3) '(lh 2)) :item-gap '(lh 0)
     (flex :if compact :width 'stretch :height '(lh 1) :gap '((lh 0) (ch 1))
           :align-items 'center
       (box :flex-grow 1 :flex-shrink 1 :flex-basis '(px 0) :min-width title-min
@@ -426,24 +414,28 @@ instead of the whole application."
       (etaf-ncm--view-header-action
        :primary t :label "播放全部" :help-echo "播放整个列表"
        :hidden (not (etaf-value playable)) :on-press on-play-library))
-    (flex :if (not compact) :width 'stretch :height '(lh 2)
-          :gap '((lh 0) (ch 1)) :align-items 'center
-      (column :flex-grow 1 :flex-shrink 1 :flex-basis '(px 0) :min-width title-min
-              :item-gap '(lh 0)
-        (text :font-weight 'bold (expr (or (etaf-value title) "")))
-        (box :if show-subtitle :height '(lh 1) :overflow 'hidden
-             :color (etaf-ncm-color :muted)
-             :font-size etaf-ncm-font-meta
-          (text (expr (or (etaf-value subtitle) "")))))
-      (box :width search-width :height '(lh 1) :flex-shrink 1 :min-width search-min
-        (etaf-text-input :value query :label "搜索"
-                         :placeholder "搜索歌曲、歌手、歌单或专辑"
-                         :hide-label t :on-change on-search))
-      (etaf-ncm--view-header-action
-       :primary t :label "播放全部" :help-echo "播放整个列表"
-       :hidden (not (etaf-value playable)) :on-press on-play-library)
-      (etaf-ncm--view-header-action
-       :label "换一批" :help-echo "换一批" :on-press on-refresh))))))
+    (column :if (not compact) :width 'stretch :height '(lh 2) :item-gap '(lh 0)
+      (flex :width 'stretch :height '(lh 1) :gap '((lh 0) (ch 1))
+            :align-items 'center
+        (box :height '(lh 1) :flex-shrink 1 :min-width title-min :overflow 'hidden
+             :font-weight 'bold
+          (text (expr (or (etaf-value title) ""))))
+        ;; The subtitle follows the title on the same row, one gap column
+        ;; apart; the row below stays clear so the header keeps its air.
+        (box :if show-subtitle :height '(lh 1) :flex-shrink 0 :overflow 'hidden
+             :color (etaf-ncm-color :muted) :font-size etaf-ncm-font-meta
+          (text (expr (or (etaf-value subtitle) ""))))
+        (box :flex-grow 1 :flex-basis '(px 0) :min-width '(ch 1))
+        (box :width search-width :height '(lh 1) :flex-shrink 1 :min-width search-min
+          (etaf-text-input :value query :label "搜索"
+                           :placeholder "搜索歌曲、歌手、歌单或专辑"
+                           :hide-label t :on-change on-search))
+        (etaf-ncm--view-header-action
+         :primary t :label "播放全部" :help-echo "播放整个列表"
+         :hidden (not (etaf-value playable)) :on-press on-play-library)
+        (etaf-ncm--view-header-action
+         :label "换一批" :help-echo "换一批" :on-press on-refresh))
+      (box :flex-grow 1 :flex-basis '(lh 0)))))))
 
 (defun etaf-ncm--pane-tab-source (key pane-list lyrics queue)
   "Return KEY's reactive active source among the pane switch flags."
@@ -546,8 +538,12 @@ that index plus an inline action key."
                                etaf-ncm-layout-bar-rows))
                    (+ count footer-rows))))
     (etaf-view
-     (flex :position 'absolute :z-index 0 :left '(ch 0) :top (list 'lh top)
-           :flex-direction 'column :width 'stretch :height (list 'lh height)
+     (flex :position 'absolute :z-index 0
+           :left (list 'ch (if (eq layout 'wide) 2 1))
+           :top (list 'lh top)
+           :flex-direction 'column
+           :width (list 'ch (etaf-ncm-layout-list-columns layout columns))
+           :height (list 'lh height)
            :min-height '(lh 0) :gap '((lh 0) (px 0)) :overflow 'hidden
        (box :position 'absolute :z-index 0 :left '(ch 0) :top '(lh 0)
             :width 'stretch :height '(lh 6)
@@ -633,10 +629,12 @@ of rebuilding the view."
           :width (list 'ch width) :height (if height (list 'lh height) '(% 100)) :z-index 0
           :visibility (if (etaf-value visible) 'visible 'hidden)
        (flex :position 'absolute :z-index 0 :left '(ch 0) :top '(lh 0)
-             :flex-direction 'column :width 'stretch :height 'stretch
+             :flex-direction 'column
+             :width (list 'ch (+ (etaf-ncm-layout-list-columns layout columns)
+                                 (if wide-p 4 2)))
+             :height 'stretch
              :min-width '(ch 0) :min-height '(lh 0)
-             :padding (if wide-p '((lh 1) (ch 2) (lh 0) (ch 2))
-                      '((lh 1) (ch 1) (lh 0) (ch 1)))
+             :padding '((lh 1) (ch 0) (lh 0) (ch 0))
              :gap '((lh 1) (px 0))
          (expr (etaf-current-slot 'default)))))))
 
@@ -791,7 +789,8 @@ already stop the content above it."
           :padding '((lh 1) (ch 2))
           :background-color (etaf-ncm-color :panel)
           :border-left (etaf-ncm--view-border 'left (etaf-ncm-color :line))
-       (flex :flex-direction 'column :width 'stretch :height 'stretch
+       (flex :flex-direction 'column
+             :width (list 'ch (max 1 (- width 4))) :height 'stretch
              :min-width '(ch 0) :gap '((lh 0) (px 0))
          (etaf-ncm--view-tabs :kind kind :on-switch on-switch)
          (etaf-ncm--view-lyrics :if (eq kind 'lyrics)

@@ -92,15 +92,13 @@ It is the placeholder's width; a narrower pane shrinks the field toward
 (defconst etaf-ncm-layout-search-min-columns 10
   "Smallest search field kept in any header row.")
 
-(defconst etaf-ncm-layout-play-columns 15
-  "Width of the play-all action including its padding and slack.
-\"播放全部\" is eight columns of label, four of button padding and the slack
-an `expr' text run needs before a multi-character label stops clipping.")
+(defconst etaf-ncm-layout-play-columns 10
+  "Width of the play-all action including its padding.
+\"播放全部\" is eight columns of label and one column of padding per side.")
 
-(defconst etaf-ncm-layout-refresh-columns 11
-  "Width of the refresh action including its padding and slack.
-\"换一批\" is six columns of label, two of ghost-button padding and the slack
-an `expr' text run needs before a multi-character label stops clipping.")
+(defconst etaf-ncm-layout-refresh-columns 8
+  "Width of the refresh action including its padding.
+\"换一批\" is six columns of label and one column of padding per side.")
 
 (defconst etaf-ncm-layout-gap-columns 3
   "Total gap columns between the header's title, search and actions.")
@@ -183,15 +181,17 @@ and the action on a second row, so its minimum is the wider of the two."
 The breakpoints add the sidebar or the rail to this sum.")
 
 (defconst etaf-ncm-layout-wide-comfort-columns
-  (+ etaf-ncm-layout-title-comfort-columns
-     etaf-ncm-layout-search-columns
+  (+ etaf-ncm-layout-title-min-columns
+     etaf-ncm-layout-title-comfort-columns
+     etaf-ncm-layout-search-min-columns
      etaf-ncm-layout-play-columns
      etaf-ncm-layout-refresh-columns
      etaf-ncm-layout-gap-columns)
-  "List content width at which the wide header shows every part at its
-natural size: a complete subtitle, the full search placeholder and both
-actions.  Below it the subtitle is dropped rather than clipped, and the
-search field shrinks toward its minimum.")
+  "List content width at which the wide header shows its subtitle.
+The subtitle rides on the title's row, so it stays while the title, the
+subtitle, the smallest search field and both actions fit together; below it
+the subtitle is dropped rather than clipped, and the search field keeps the
+columns the subtitle would have used.")
 
 (defcustom etaf-ncm-wide-columns
   (+ etaf-ncm-layout-sidebar-columns etaf-ncm-layout-aside-columns
@@ -240,8 +240,9 @@ The result is `wide', `medium' or `narrow'; see `etaf-ncm-wide-columns' and
 
 (defun etaf-ncm-layout-header-rows (layout)
   "Return the rows the content header occupies in LAYOUT.
-The wide header stacks a title over its subtitle; a compact one keeps the
-title row and puts the search field and the library action on their own row."
+A compact header keeps the title row and puts the search field and the
+library action on their own row; the wide header keeps two rows, with the
+subtitle on the title's row and the second row left clear."
   (if (eq layout 'wide) 2 3))
 
 (defun etaf-ncm-layout-chips-rows-for (layout)

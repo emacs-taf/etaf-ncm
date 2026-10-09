@@ -644,13 +644,16 @@ releases the polling timer and the session's pending backend requests."
          :columns (etaf-ncm--read session :columns)
          :groups etaf-ncm-sections
          :on-locate on-locate)
-        (flex :position 'absolute :z-index 0 :left '(ch 0)
+        (flex :position 'absolute :z-index 0
               ;; The banner starts where the page starts: under the header in
               ;; every tier, and under the chip strip in the narrow one.
+              :left (list 'ch (if (etaf-ncm--compact-layout-p session) 1 2))
               :top (list 'lh (1- (etaf-ncm-layout-list-top
                                   (etaf-ncm--read session :layout))))
               :visibility (if (etaf-ncm--read session :error) 'visible 'hidden)
-              :width 'stretch
+              :width (list 'ch (etaf-ncm-layout-list-columns
+                                (etaf-ncm--read session :layout)
+                                (etaf-ncm--read session :columns)))
               ;; Long failures used to be clipped to one third of the bar; the
               ;; banner wraps them across the library width instead.
               :height (list 'lh (etaf-ncm--notice-lines
