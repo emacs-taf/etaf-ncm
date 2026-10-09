@@ -116,16 +116,34 @@ frame behaves like a phone instead of squeezing three columns into it:
 
 | Width | Layout | What is visible |
 | --- | --- | --- |
-| `etaf-ncm-wide-columns` (106) and wider | `wide` | Library sidebar, song list and side panel at the same time |
-| `etaf-ncm-medium-columns` (72) up to that width | `medium` | Glyph-only library rail, one pane at a time |
+| `etaf-ncm-wide-columns` and wider | `wide` | Library sidebar, song list and side panel at the same time |
+| `etaf-ncm-medium-columns` up to that width | `medium` | Glyph-only library rail, one pane at a time |
 | Narrower than `etaf-ncm-medium-columns` | `narrow` | Library chips under the header, one full-width pane |
+
+The thresholds are derived from what the panes are made of, not from a screen
+size: the header and a full row declare the columns their labels and actions
+need, the list pane's minimum is the larger of those, and each breakpoint adds
+the sidebar or the rail to it.  Changing a label or an action moves the
+breakpoints with it; the defcustoms remain as overrides.  Rows adapt inside a
+tier too: a narrow list folds the artist into the name cell and drops the
+album, then the badge, while the name column keeps its minimum.  The chip strip
+shrinks its gaps and then its chips, so every library stays reachable.
 
 In `medium` and `narrow` the header gains pane tabs and the player bar stacks
 into three lines, dropping its cover and quality badge while keeping the track,
-transport, pane controls, progress and volume. The page count follows the layout.
-`v` switches between the list and the side panel there, `l` shows the lyric or
-queue panel, and `etaf-ncm-show-pane` does the same from Lisp. `etaf-ncm-state`
-reports the current `:layout` and `:pane`.
+transport, pane controls, progress and volume. The page fills every row the
+window budget leaves after the header, chip strip, pane switch and player bar;
+the wheel scrolls the window through all loaded rows, and the footer labels the
+visible range and the loaded total. `v` switches between the list and the side
+panel there, `l` shows the lyric or queue panel, and `etaf-ncm-show-pane` does
+the same from Lisp. `etaf-ncm-state` reports the current `:layout` and `:pane`.
+
+Two type sizes are used: the frame's default for anything a reader acts on, and
+`etaf-ncm-font-meta` for subtitles, counters, hints and credits.  Emphasis uses
+weight, never a larger size; a very short frame drops the subtitle and the hint
+rather than shrinking the text. The login row shows an account icon with the
+nickname (and `VIP` when the backend reports it) and reads `未登录 · L 登录`
+while signed out; pressing it starts the same sign-in as `L`.
 
 The queue and lyric windows also fit the panel's height. Enlarging the window
 shows more entries; shrinking it keeps the playing queue entry or current lyric

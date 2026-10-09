@@ -24,6 +24,7 @@
 (require 'etaf-ncm-cache)
 (require 'etaf-ncm-service)
 (require 'etaf-ncm-theme)
+(require 'etaf-ncm-layout)
 
 (defconst etaf-ncm-sections
   '((推荐
@@ -59,23 +60,6 @@ by `etaf-ncm-locate', and ICON names an entry of the shared SVG icon set.")
 `etaf-ncm-open' replaces this with the number that fits the window, so the
 player fills the frame it is given; the default only applies to a headless
 model created by `etaf-ncm-create'."
-  :type 'integer
-  :group 'etaf-ncm)
-
-(defcustom etaf-ncm-wide-columns 106
-  "Frame width, in columns, that fits all three player columns.
-At or above this width the player shows the library sidebar, the song list and
-its side panel at the same time (`wide' layout).  Between
-`etaf-ncm-medium-columns' and this width it keeps a narrow library rail and
-shows one pane at a time; below it the libraries become a header strip."
-  :type 'integer
-  :group 'etaf-ncm)
-
-(defcustom etaf-ncm-medium-columns 72
-  "Frame width, in columns, that still fits a library rail.
-At or above this width the player keeps a narrow glyph-only library rail
-(`medium' layout); below it the libraries move into a strip under the header
-(`narrow' layout) and every pane uses the full width."
   :type 'integer
   :group 'etaf-ncm)
 
@@ -1625,27 +1609,14 @@ second for the same second."
 ;;; Keyboard navigation and panels
 ;;; ---------------------------------------------------------------------------
 
-(defconst etaf-ncm--reserved-lines 2
-  "Lines the player bar keeps clear above and below itself.
-The bar reads as a floating surface: one padding row separates it from the
-library above and one closes the window below it (the bar's own vertical
-padding).  The page size must leave both out of its row budget, or the bar's
-last row is pushed past the window edge.")
-
-(defun etaf-ncm--page-size-for (window &optional layout)
+(defun etaf-ncm--page-size-for (window layout)
   "Return the library row count that fits WINDOW's height in LAYOUT.
-LAYOUT is the layout the rows are rendered in: `narrow' and `medium' spend lines
-on chips and pane tabs, while `wide' and an unknown LAYOUT subtract less chrome.
-Extra lines stay clear; see `etaf-ncm--reserved-lines'."
-  (let* ((height (if (and window (window-live-p window))
-                     (window-body-height window)
-                   (frame-height)))
-         (chrome (+ etaf-ncm--reserved-lines
-                    (pcase layout
-                      ('narrow 17)
-                      ('medium 15)
-                      (_ 13)))))
-    (max 4 (- height chrome))))
+The vertical budget lives in `etaf-ncm-layout'; this reads the window and
+delegates, so the model and the views share one decision table."
+  (let ((height (if (and window (window-live-p window))
+                    (window-body-height window)
+                  (frame-height))))
+    (etaf-ncm-layout-page-rows layout height)))
 
 (defun etaf-ncm--window-columns (&optional window)
   "Return WINDOW's body width in columns, or the frame width when it is dead."
@@ -1655,18 +1626,9 @@ Extra lines stay clear; see `etaf-ncm--reserved-lines'."
 
 (defun etaf-ncm--layout-for (columns)
   "Return the layout COLUMNS columns of text can hold.
-The result is `wide', `medium' or `narrow'; see `etaf-ncm-wide-columns' and
-`etaf-ncm-medium-columns'."
-  (cond ((>= columns etaf-ncm-wide-columns) 'wide)
-        ((>= columns etaf-ncm-medium-columns) 'medium)
-        (t 'narrow)))
-
-(defun etaf-ncm--body-rows-for (height layout)
-  "Return the body height below HEIGHT lines of player chrome in LAYOUT.
-The root padding, three player lines and its border stay outside the body;
-compact layouts have a one-line pane switch and no player top padding."
-  (max 0 (- height etaf-ncm--reserved-lines 4
-            (if (eq layout 'wide) 0 1))))
+The result is `wide', `medium' or `narrow'; the breakpoints live in
+`etaf-ncm-layout'."
+  (etaf-ncm-layout-for columns))
 
 (defun etaf-ncm--sync-layout (app &optional window)
   "Match APP's layout, pane visibility and row budgets to WINDOW.
@@ -1678,12 +1640,10 @@ the wide layout, because it has no viewport to adapt to."
          (layout (if window
                      (etaf-ncm--layout-for (etaf-ncm--window-columns window))
                    'wide))
-         (size (etaf-ncm--page-size-for window layout))
          (height (if (and window (window-live-p window))
                      (window-body-height window)
                    (frame-height)))
-         ;; Aside padding, tabs with their border, and the queue heading.
-         (queue-rows (max 0 (- (etaf-ncm--body-rows-for height layout) 7))))
+         (size (etaf-ncm--page-size-for window layout)))
     (etaf-batch
       (when (eq layout 'wide)
         (etaf-ncm--write app :pane 'list))
@@ -1695,10 +1655,10 @@ the wide layout, because it has no viewport to adapt to."
       (etaf-ncm--write app :layout layout)
       (etaf-ncm--write app :page-size size)
       (etaf-ncm--refresh-slots app)
-      (etaf-ncm--write app :queue-rows queue-rows)
+      (etaf-ncm--write app :queue-rows (etaf-ncm-layout-queue-rows layout height))
       ;; The lyric cover, spacer and footer take seven more lines than the
       ;; queue heading.  Translations share this budget with lyric lines.
-      (etaf-ncm--write app :lyric-rows (max 0 (- queue-rows 7))))
+      (etaf-ncm--write app :lyric-rows (etaf-ncm-layout-lyric-rows layout height)))
     layout))
 
 (defvar etaf-ncm--resize-timer nil

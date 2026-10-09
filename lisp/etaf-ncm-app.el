@@ -228,13 +228,13 @@ the player.  This geometry is independent of point and the selected window."
        (or (eq layout 'wide) (eq pane 'aside))
        (consp xy) (numberp (car xy)) (numberp (cdr xy))
        (<= (pcase layout
-             ('wide (max 0 (- columns (cadr etaf-ncm--aside-width))))
-             ('medium (cadr etaf-ncm--rail-width))
+             ('wide (max 0 (- columns etaf-ncm-layout-aside-columns)))
+             ('medium etaf-ncm-layout-rail-columns)
              (_ 0))
            (car xy))
        (< (car xy) columns)
        (<= 0 (cdr xy))
-       (< (cdr xy) (etaf-ncm--body-rows-for rows layout))))
+       (< (cdr xy) (etaf-ncm-layout-aside-rows layout rows))))
 
 (defun etaf-ncm--wheel (event delta)
   "Scroll the queue or library window by DELTA at EVENT's position.
@@ -573,7 +573,10 @@ releases the polling timer and the session's pending backend requests."
              ;; The lyric panel's album line follows the selection through a
              ;; retained source the model writes, so a row move repaints only
              ;; that text instead of re-rendering the aside.
-             (selected-album (etaf-ncm--ref session :selected-album)))
+             (selected-album (etaf-ncm--ref session :selected-album))
+             (on-login (lambda ()
+                         (unless (etaf-ncm--read session :account)
+                           (etaf-ncm-login session)))))
   :setup
   (progn
     (etaf-theme-provide palette)
@@ -590,14 +593,14 @@ releases the polling timer and the session's pending backend requests."
        (etaf-ncm--dispose session))))
   :view
   (flex :position 'relative :flex-direction 'column :width '(vw 100) :height '(vh 100)
-        ;; One clear line above the chrome keeps the header off the window
-        ;; edge; the layout budget already reserves the root padding.
-        :padding-top '(lh 1)
-        ;; Rows that show symbol glyphs (the state dot, the transport icons, the
-        ;; sidebar glyphs) render a little taller than the frame's line height
-        ;; because their fallback font has larger metrics.  Keep the last line
-        ;; clear so those extra pixels land in empty space instead of below the
-        ;; window, which clipped the player bar's control row.
+        ;; The panels carry the top inset themselves: the sidebar, the list
+        ;; header and the aside each keep one clear line above their first
+        ;; text.  A root padding would show as a differently coloured empty
+        ;; row above the panels, which is what this layout removed.
+        :padding-top '(lh 0)
+        ;; The player bar keeps no bottom padding: the window's echo area is
+        ;; the single clear line under the bar, and the last bar content row
+        ;; (the progress line) sits directly above it.
         :padding-bottom '(lh 0)
         :color (etaf-ncm-color :ink) :bgcolor (etaf-ncm-color :bg)
     (box :width 'stretch :flex-grow 1 :flex-basis '(lh 0) :min-height '(lh 0))
@@ -605,17 +608,23 @@ releases the polling timer and the session's pending backend requests."
        :if (eq (etaf-ncm--read session :layout) 'wide)
        :model session
        :height (if-let* ((rows (etaf-ncm--read session :window-rows)))
-                   (list 'lh (max 1 (- rows 7))) '(% 100))
+                   (list 'lh (etaf-ncm-layout-aside-rows
+                              (etaf-ncm--read session :layout) rows))
+                 '(% 100))
        :groups etaf-ncm-sections
-       :on-locate on-locate)
+       :on-locate on-locate
+       :on-login on-login)
       (etaf-ncm--view-sidebar
        :if (eq (etaf-ncm--read session :layout) 'medium)
        :compact t
        :model session
        :height (if-let* ((rows (etaf-ncm--read session :window-rows)))
-                   (list 'lh (max 1 (- rows 7))) '(% 100))
+                   (list 'lh (etaf-ncm-layout-aside-rows
+                              (etaf-ncm--read session :layout) rows))
+                 '(% 100))
        :groups etaf-ncm-sections
-       :on-locate on-locate)
+       :on-locate on-locate
+       :on-login on-login)
       (etaf-ncm--view-list-panel
        :layout (etaf-ncm--read session :layout)
        :columns (etaf-ncm--read session :columns)
@@ -623,17 +632,23 @@ releases the polling timer and the session's pending backend requests."
        :visible list-visible
         (etaf-ncm--view-header
          :model session
-         :compact (etaf-ncm--compact-layout-p session)
+         :layout (etaf-ncm--read session :layout)
+         :columns (etaf-ncm--read session :columns)
+         :short (etaf-ncm-layout-short-p (etaf-ncm--read session :window-rows))
          :on-search on-search
          :on-play-library on-play-library
          :on-refresh on-refresh)
         (etaf-ncm--view-chips
          :if (eq (etaf-ncm--read session :layout) 'narrow)
          :model session
+         :columns (etaf-ncm--read session :columns)
          :groups etaf-ncm-sections
          :on-locate on-locate)
         (flex :position 'absolute :z-index 0 :left '(ch 0)
-              :top (list 'lh (pcase (etaf-ncm--read session :layout) ('wide 2) ('narrow 6) (_ 3)))
+              ;; The banner starts where the page starts: under the header in
+              ;; every tier, and under the chip strip in the narrow one.
+              :top (list 'lh (1- (etaf-ncm-layout-list-top
+                                  (etaf-ncm--read session :layout))))
               :visibility (if (etaf-ncm--read session :error) 'visible 'hidden)
               :width 'stretch
               ;; Long failures used to be clipped to one third of the bar; the
@@ -676,11 +691,11 @@ releases the polling timer and the session's pending backend requests."
      :queue queue-visible
      :on-pane on-show-pane
      :on-aside on-show-aside)
-    ;; The bar reserves six lines (five in compact layouts); the positioned host
-    ;; in flow and the absolute panel inside is the retained publication
-    ;; address, so a control toggle updates its Hosts without a view rebuild.
+    ;; The bar reserves five lines; the positioned host in flow and the
+    ;; absolute panel inside is the retained publication address, so a control
+    ;; toggle updates its Hosts without a view rebuild.
     (box :position 'relative :z-index 0 :width 'stretch
-         :height (if (etaf-ncm--compact-layout-p session) '(lh 5) '(lh 6))
+         :height (list 'lh etaf-ncm-layout-bar-rows)
          :flex-shrink 0
       (etaf-ncm--view-player
        :compact (etaf-ncm--compact-layout-p session)

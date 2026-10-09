@@ -349,6 +349,7 @@
     (add-to-list 'load-path (expand-file-name "lisp" directory))))
 
 (require 'etaf-ncm-theme)
+(require 'etaf-ncm-layout)
 (require 'etaf-ncm-service)
 (require 'etaf-ncm-model)
 (require 'etaf-ncm-views)

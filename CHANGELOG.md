@@ -4,6 +4,34 @@ All notable user-visible changes to ETAF NCM.
 
 ## Unreleased
 
+- The player adapts to the window as one planned system instead of fixed
+  breakpoints and squeezed parts. The tiers (`wide`, `medium`, `narrow`) are
+  still there, but their thresholds are derived from the columns the header
+  and a row actually need, the row variant is chosen by fit, and the chip
+  strip shrinks its gaps and chips so no library falls off a narrow window.
+  A narrow list folds the artist into the name cell and drops the album and
+  badge in a defined order; a playlist or song name never disappears, and a
+  name column always keeps its minimum width.
+- The player bar sits one padding row above its content and none below: the
+  window's echo area is the single clear line under it, so the content ends
+  one row from the window edge. The top strip above the panels is gone; the
+  sidebar, list header and lyric panel each keep their own one-row inset.
+- The library page fills every row the window budget leaves after the header,
+  the chip strip, the pane switch and the player bar; the wheel scrolls the
+  window through all loaded rows and the footer labels the visible range and
+  the loaded total (dropped only in a very short frame).
+- The login row is now a status line: an account icon with the nickname and a
+  `VIP` tag when signed in, `未登录 · L 登录` when not, and pressing it starts
+  the same sign-in as `L`. The green state square is gone; the glyph rail
+  shows the account icon alone with its state in the tooltip.
+- The lyric and queue tabs use a tinted pill for the active tab instead of an
+  underline, matching the compact pane switch.
+- Header actions keep their intrinsic width, so `换一批` and `播放全部` are
+  never clipped into shorter words at the wide-layout boundary.
+- One type scale replaces the scattered small sizes: the frame default for
+  anything a reader acts on, and `etaf-ncm-font-meta` (about 11 pt on a 14 pt
+  frame) for subtitles, counters, hints and credits. Emphasis uses weight, and
+  a short frame drops the subtitle and the hint rather than shrinking text.
 - Cover art follows track changes immediately after the image is available,
   including consecutive songs with equally sized artwork and cached revisits.
   Playback status corrects an earlier queue reply's cover without waiting for

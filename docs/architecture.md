@@ -10,6 +10,7 @@ owns presentation and interaction.
 | File | Responsibility |
 | --- | --- |
 | `etaf-ncm-theme.el` | Palettes, `etaf-ncm-color`, `etaf-ncm-theme-defaults` and the mode selection. No ETAF dependency beyond the token plist it produces. |
+| `etaf-ncm-layout.el` | The responsive decision table: breakpoints derived from the header/row/chip parts they must fit, the vertical budget, the row variants and the two-size type scale. |
 | `etaf-ncm-service.el` | The backend client: request translation to skill commands, child processes, timeouts, cookie injection, reply decoding, queue state reading, LRC parsing. |
 | `etaf-ncm-cache.el` | The SQLite media cache built on ETAF DB: lyric text and cover file index keyed by song id, opened beside the library snapshot and failing open. |
 | `etaf-ncm-model.el` | One session: reactive sources, library loading, search, every playback and queue action, selection and paging, status polling, dispose. |
@@ -17,7 +18,7 @@ owns presentation and interaction.
 | `etaf-ncm-app.el` | The `etaf-ncm-app` Component (session lifecycle, theme provision, the only place that reads reactive sources), its keymap, its commands and the buffer entry points. |
 | `etaf-ncm.el` | The package entry: public API Commentary, `load-path` bootstrap for `lisp/`, requires and `provide`. |
 
-Dependency direction is one way: `theme` ← `service` ← `model` ← `views` ←
+Dependency direction is one way: `theme` ← `layout` ← `model` ← `views` ←
 `app`, with `model` also using `cache` (which depends only on ETAF DB). A
 lower layer never calls into a higher one, and only `app` knows about buffers,
 windows and keymaps.
@@ -65,21 +66,44 @@ on.
 Ebox has no media or container queries, so the responsive behaviour lives in the
 model and is expressed by the view:
 
+- The decision table lives in `etaf-ncm-layout.el`. Its breakpoints are
+  derived, not chosen: the header and a full row declare the columns their
+  labels and actions need, the list pane's minimum is the larger of those, and
+  `etaf-ncm-wide-columns` is that minimum plus the sidebar and side panel.
+  `etaf-ncm-medium-columns` is the rail plus a comfortable regular row. Change
+  a label or an action and the breakpoints follow; a narrower frame switches to
+  the rail, then to the chip strip.
+- The vertical budget is shared the same way. Every tier spends a fixed number
+  of rows on the header, the chip strip, the pane switch and the player bar;
+  `etaf-ncm-layout-page-rows` returns what is left for the library, so reserved
+  and painted rows cannot disagree. The queue and lyric budgets come from the
+  same table.
+- The row plan picks a variant by fit: `full` on a wide frame, `regular` with
+  the artist column, `compact` folding the artist into the name cell, `tiny`
+  dropping the badge. The name column never leaves, and its minimum plus a
+  variant's fixed columns decide whether that variant is used.
+- The chip strip keeps every library: it drops the inter-chip gap and then
+  narrows each chip to the icon's inset before a library could fall off.
 - `etaf-ncm--sync-layout` measures the window showing the player buffer and
-  resolves `etaf-ncm-wide-columns` / `etaf-ncm-medium-columns` into one of
-  `wide`, `medium` or `narrow`. It writes `:layout`, the layout page count
-  (`:page-size`), `:queue-rows` and `:lyric-rows`, and, on a wide frame, forces
-  `:pane` back to `list`. The panel budgets subtract the root padding, player
-  bar, compact pane switch, aside padding, tabs and each panel's own heading.
-  Lyrics reserve room for the cover and footer; translations share the budget.
-  Opening fits after choosing the display window, including a newly split one.
+  writes `:layout`, `:columns`, `:window-rows`, the page count (`:page-size`),
+  `:queue-rows` and `:lyric-rows`; on a wide frame it forces `:pane` back to
+  `list`. Opening fits after choosing the display window, including a newly
+  split one.
 - `etaf-ncm--window-size-change` is installed on `window-size-change-functions`
   once per session; resizing re-resolves the layout, and it ignores buffers
   without a model.
-- The view reads `:layout` and `:pane` while it renders, so one ref write
-  repaints header, sidebar, panes and player consistently. Views never read the
-  model themselves: `etaf-ncm-app` passes values, and every pane switch goes
-  through `etaf-ncm-show-pane`.
+- The view reads `:layout`, `:columns` and `:window-rows` while it renders, so
+  one ref write repaints header, sidebar, panes and player consistently, and a
+  resize re-decides the row variant and the chip size. Layout decisions that
+  must appear with a reply are left to Host-level bindings; a `visibility`
+  written by a component-level read stayed stale until an unrelated repaint,
+  so the footer labels and the account row read their sources inside the text
+  expression itself. Every pane switch goes through `etaf-ncm-show-pane`.
+- The type scale has two sizes: the frame default for anything a reader acts
+  on, and `etaf-ncm-font-meta` (15 reference pixels, about 11 pt on a 14 pt
+  frame) for subtitles, counters, hints and credits. Emphasis is weight, never
+  a larger size, so wording cannot change a fixed row height; a short frame
+  drops whole lines (the subtitle, the hint) instead.
 - A session without a window (headless) keeps `wide`, which keeps scripted and
   test sessions independent of the frame they run in.
 
@@ -287,7 +311,11 @@ timeout, and unmounting deletes the processes.
   share this path and preserve the source aspect ratio within their cell budgets.
 - The layout is a column flex root: header, body (list + aside) and a full-width
   player bar; the compact layouts drop the sidebar for a library rail or a chip
-  strip, tab the panes and stack the player bar into three lines.
+  strip, tab the panes and stack the player bar into three lines. The bar keeps
+  one padding row above its content and none below: the window's echo area is
+  the single clear line under it, so the last row sits one line from the
+  bottom edge. The library page fills every row the window budget leaves, and
+  the wheel scrolls its window through all loaded rows.
 - `row`/`column` are flow containers; participation properties
   (`:flex-grow`, `:flex-basis`) require a flex or grid parent, and `:flex-basis`
   units follow the parent's main axis (lh/vh/% in a column, px/ch in a row).

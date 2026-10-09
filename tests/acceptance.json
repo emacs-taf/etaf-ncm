@@ -415,6 +415,11 @@
       "name": "etaf-ncm-tests-cover-index-serves-the-next-session",
       "file": "tests/etaf-ncm-tests.el",
       "purpose": "A downloaded cover is indexed with its URL, a changed URL misses, and a fresh session reuses the indexed file without downloading again."
+    },
+    {
+      "name": "etaf-ncm-tests-narrow-layout-keeps-names",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "A narrow frame keeps the playlist name and creator readable and fills the page with the rows the window budget leaves."
     }
   ]
 }

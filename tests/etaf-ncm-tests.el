@@ -1015,6 +1015,25 @@ The synthetic wheel event carries pixels, just like an Emacs mouse event."
         (should (= (plist-get (etaf-ncm-state app) :selection) 0))
         (should (= (plist-get (etaf-ncm-state app) :window-start) 0))))))
 
+(ert-deftest etaf-ncm-tests-narrow-layout-keeps-names ()
+  "A narrow frame keeps each row's name and fills the page with loaded rows.
+The compact row folds the artist into the name cell instead of letting the
+name column collapse, so a playlist stays identifiable at phone widths, and
+the page is not capped below the rows the window can show."
+  (let* ((etaf-ncm-wide-columns 1000)
+         (etaf-ncm-medium-columns 1000)
+         (app (etaf-ncm-tests--session)))
+    (etaf-ncm-tests--with-player app
+      (etaf-ncm-locate app :playlists)
+      (let ((text (etaf-ncm-tests--rendered-text))
+            (state (etaf-ncm-state app)))
+        (should (eq (plist-get state :layout) 'narrow))
+        (should (string-match-p "歌单 1" text))
+        (should (string-match-p "创建者 1" text))
+        (should (> (plist-get state :page-size) 17))
+        (should (= (length (plist-get state :visible))
+                   (plist-get state :page-size)))))))
+
 (ert-deftest etaf-ncm-tests-superseded-library-keeps-visible-total ()
   "A late foreground reply cannot overwrite a revisited cached library or total."
   (let* (defer pending
