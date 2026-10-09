@@ -1404,6 +1404,12 @@ is when the answered status request was sent."
     ;; A song change moves the list's play marker; the status stays the source
     ;; of truth, so publish the new id even when no list reply arrives.
     (etaf-ncm--sync-playing app)
+    ;; Queue metadata often arrives before status, and its position can lag
+    ;; playback.  Select the art again from playback truth without waiting for
+    ;; another queue round trip (including the first status of a session).
+    (when (and song-id (not (equal song-id (plist-get app :cover-requested-id))))
+      (etaf-ncm--request-cover
+       app (etaf-ncm--queue-current-song app (etaf-ncm--read app :queue))))
     (when (and song-id (not (equal song-id (plist-get lyric :id))))
       (etaf-ncm--request-lyric app song-id))
     (when (and previous
@@ -1498,13 +1504,14 @@ cache (or at the song's deterministic path) is published without a request."
          (t (etaf-ncm--write app :cover-file nil)))))))
 
 (defun etaf-ncm--queue-current-song (app queue)
-  "Return QUEUE's entry matching APP's playing song, or the backend position."
+  "Return QUEUE's entry matching APP's playing song.
+Use the queue position only before playback status identifies the song."
   (let* ((songs (plist-get queue :songs))
          (status-id (plist-get (etaf-ncm--read app :status) :song-id))
          (pos (plist-get queue :pos)))
     (or (and status-id
              (seq-find (lambda (entry) (equal (plist-get entry :id) status-id)) songs))
-        (and (integerp pos) (> pos 0) (nth (1- pos) songs)))))
+        (and (null status-id) (integerp pos) (> pos 0) (nth (1- pos) songs)))))
 
 (defun etaf-ncm--request-queue (app)
   "Load APP's queue count, index and track list."

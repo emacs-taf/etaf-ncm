@@ -213,29 +213,6 @@ dimensions stay cell-aligned and every row is fully covered."
                                               (* (float image-w) cell-h)))))))
     (cons cols rows)))
 
-(defun etaf-ncm--cover-block (file chars lines)
-  "Return (COLS ROWS CELLS) showing FILE inside a CHARS x LINES area, or nil.
-COLS and ROWS are the cell-aligned raster that keeps FILE's aspect and
-CELLS is one owned string per row.  The caller sizes its cover box to the
-block, so the art has no empty band above or below it."
-  (when (and (stringp file) (file-readable-p file)
-             (integerp chars) (> chars 0) (integerp lines) (> lines 0))
-    (condition-case nil
-        (let* ((grid (etaf-ncm--cover-grid file chars lines))
-               (cols (car grid))
-               (rows (cdr grid))
-               (content (ebox-image-content (ebox-image-prepare file cols rows)))
-               (cells (and (stringp content) (split-string content "\n"))))
-          (when (and cells (= (length cells) rows))
-            (list cols rows cells)))
-      (error nil))))
-
-(etaf-define-component etaf-ncm--view-cover-row (&key cell)
-  "Render one cover-art row cell inside the cover block."
-  :view
-  (box :width 'stretch :height '(lh 1) :text-align 'center
-    (text (expr cell))))
-
 (etaf-define-component etaf-ncm--view-cover
     (&key size glyph height file (chars 10) (lines 7))
   "Render FILE's album art, or a square placeholder of SIZE characters.
@@ -248,25 +225,22 @@ downloading does not change the panel height when it arrives."
   (let* ((value (and file (if (or (etaf-ref-p file) (etaf-computed-p file))
                               (etaf-value file)
                             file)))
-         (block (and value (etaf-ncm--cover-block value chars lines)))
+         (grid (and (stringp value) (file-readable-p value)
+                    (etaf-ncm--cover-grid value chars lines)))
          (square-rows (max 1 (round (/ (* chars (frame-char-width))
                                        (max 1 (frame-char-height))))))
-         (box-width (if block (list 'ch (nth 0 block)) size))
-         (box-height (cond (block (list 'lh (nth 1 block)))
+         (box-width (if grid (list 'ch (car grid)) size))
+         (box-height (cond (grid (list 'lh (cdr grid)))
                            (height height)
-                           (t (list 'lh square-rows))))
-         (cells (and block (nth 2 block)))
-         (indices (and cells (number-sequence 0 (1- (length cells))))))
+                           (t (list 'lh square-rows)))))
     (etaf-view
      (flex :flex-direction 'column :width box-width :height box-height
            :bgcolor (etaf-ncm-color :panel3)
            :align-items 'center :justify-content 'center
-       (column :if indices :width 'stretch :item-gap '(lh 0)
-         (etaf-ncm--view-cover-row :for (index indices) :key index
-                                   :cell (nth index cells)))
-       (etaf-ui-icon :if (and (not indices) (not glyph)) :name 'music :set 'svg
+       (image :if grid :key value :src value :columns (car grid) :rows (cdr grid))
+       (etaf-ui-icon :if (and (not grid) (not glyph)) :name 'music :set 'svg
                      :size 1.0 :min-width 2 :color (etaf-ncm-color :accent))
-       (text :if (and (not indices) glyph) :height '(lh 1) :text-align 'center
+       (text :if (and (not grid) glyph) :height '(lh 1) :text-align 'center
              (expr glyph))))))
 
 (etaf-define-component etaf-ncm--view-sidebar

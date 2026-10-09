@@ -2097,41 +2097,103 @@ directory drives the queue track list."
             (should (equal "" (plist-get (car (plist-get (cadr (funcall ask)) :songs)) :cover)))))
       (delete-directory directory t))))
 
-(ert-deftest etaf-ncm-tests-mounted-player-publishes-the-cover-art ()
-  "A downloaded cover is published as image content in the mounted player.
-Image cells need a real window system, so the batch acceptance run skips
-this case; the GUI verification covers it on a graphic frame."
-  (skip-unless (and (display-graphic-p) (image-type-available-p 'png)))
-  (let* ((directory (make-temp-file "ncm-cover-mount" t))
-         (client (lambda (request callback)
-                   (pcase (plist-get request :op)
-                     (:cover
-                      (etaf-ncm-tests--write-cover (plist-get request :file))
-                      (funcall callback
-                               (list :ok (list :id (plist-get request :id)
-                                               :file (plist-get request :file)))))
-                     (_
-                      (etaf-ncm-tests--client
-                       request
-                       (lambda (reply)
-                         (when (and (eq (plist-get request :op) :queue)
-                                    (eq (car reply) :ok))
-                           (let ((songs (plist-get (cadr reply) :songs)))
-                             (when songs
-                               (plist-put (car songs) :cover
-                                          "https://example.invalid/a.jpg"))))
-                         (funcall callback reply)))))))
+(ert-deftest etaf-ncm-tests-cover-follows-status-before-queue-replies ()
+  "Playback truth selects artwork even when queue replies arrive out of order."
+  (let* ((directory (make-temp-file "ncm-cover-order" t))
          (etaf-ncm-state-directory directory)
-         (app (etaf-ncm-tests--session client)))
+         status-reply queue-reply covers
+         (app (etaf-ncm-create
+               :client (lambda (request callback)
+                         (pcase (plist-get request :op)
+                           (:status (setq status-reply callback))
+                           (:queue (setq queue-reply callback))
+                           (:cover (push (plist-get request :id) covers))
+                           (_ (funcall callback '(:ok nil))))))))
     (unwind-protect
-        (etaf-ncm-tests--with-player app
-          (etaf-ncm-tests--rendered-text)
-          (let ((position (text-property-not-all (point-min) (point-max) 'display nil)))
-            (should position)
-            (let ((display (get-text-property position 'display)))
-              (should display)
-              (should (or (imagep display)
-                          (and (listp display) (imagep (car (last display)))))))))
+        (progn
+          (etaf-ncm-refresh app)
+          ;; The queue's position can still describe the previous track.
+          (funcall queue-reply
+                   '(:ok (:count 2 :pos 1
+                          :songs ((:id 1 :cover "https://example.invalid/1.png")
+                                  (:id 2 :cover "https://example.invalid/2.png")))))
+          (should (equal (car covers) 1))
+          (funcall status-reply '(:ok (:song_id 2 :state "playing" :queue_pos "1/2")))
+          (should (equal (car covers) 2))
+          ;; A later switch starts its artwork without waiting for another queue.
+          (etaf-ncm-next-track app)
+          (funcall status-reply '(:ok (:song_id 1 :state "playing" :queue_pos "1/2")))
+          (should (equal (car covers) 1))
+          ;; An obsolete queue must not select an unrelated cover by position.
+          (funcall queue-reply
+                   '(:ok (:count 1 :pos 1
+                          :songs ((:id 9 :cover "https://example.invalid/9.png")))))
+          (should (equal (car covers) 1)))
+      (delete-directory directory t))))
+
+(ert-deftest etaf-ncm-tests-mounted-cover-follows-consecutive-track-changes ()
+  "Both displayed covers follow same-size artwork changes without reopening."
+  (skip-unless (and (display-graphic-p) (image-type-available-p 'png)))
+  (let* ((directory (make-temp-file "ncm-cover-switch" t))
+         (etaf-ncm-state-directory directory)
+         (etaf-ncm-buffer-name (generate-new-buffer-name " *ncm-cover-switch*"))
+         (etaf-ncm-status-interval 3600)
+         (etaf-ncm-prefetch-libraries nil)
+         (images (mapcar #'base64-decode-string
+                         '("iVBORw0KGgoAAAANSUhEUgAAABAAAAAoCAIAAAB4uO32AAAAIElEQVR4nGN44ehIEmIY1TCqYVTDqIZRDaMaRjXQSwMA6D6JLshYpFUAAAAASUVORK5CYII="
+                           "iVBORw0KGgoAAAANSUhEUgAAABAAAAAoCAIAAAB4uO32AAAAIElEQVR4nGPQyLtDEmIY1TCqYVTDqIZRDaMaRjXQSwMAGRSdLqowPiEAAAAASUVORK5CYII=")))
+         (songs '((:id 1 :name "Red cover" :artist "Artist" :cover "https://example.invalid/red.png")
+                  (:id 2 :name "Blue cover" :artist "Artist" :cover "https://example.invalid/blue.png")))
+         (playing 1)
+         (app (etaf-ncm-create
+               :client
+               (lambda (request callback)
+                 (funcall
+                  callback
+                  (list
+                   :ok
+                   (pcase (plist-get request :op)
+                     (:next (setq playing (if (= playing 1) 2 1)) nil)
+                     (:status (list :song_id playing :state "playing"
+                                    :title (plist-get (nth (1- playing) songs) :name)
+                                    :queue_pos (format "%d/2" playing)))
+                     (:browse (list :songs songs))
+                     (:queue (list :count 2 :pos playing :songs songs))
+                     (:cover
+                      (let ((file (plist-get request :file)))
+                        (with-temp-file file
+                          (set-buffer-multibyte nil)
+                          (insert (nth (1- (plist-get request :id)) images)))
+                        (list :file file)))
+                     (_ nil)))))))
+         buffer)
+    (unwind-protect
+        (save-window-excursion
+          (setq buffer (etaf-ncm-open app))
+          (etaf-ncm-show-pane app 'aside)
+          (dotimes (step 4)
+            (when (> step 0) (etaf-ncm-next-track app))
+            (etaf-runtime-flush (etaf-runtime-for-buffer buffer))
+            (should (= playing (plist-get (plist-get (etaf-ncm-state app) :status)
+                                         :song-id)))
+            (with-current-buffer buffer
+              (let ((position (point-min)) (found nil))
+                (while (< position (point-max))
+                  (let* ((display (get-text-property position 'display))
+                         (image (cond ((imagep display) display)
+                                      ((listp display) (car (last display))))))
+                    (when (and (imagep image)
+                               (eq (plist-get (cdr image) :type) 'png))
+                      (setq found t)
+                      (ert-info ((format "Track change %d, song %d" step playing))
+                        (should (equal (secure-hash 'sha256 (nth (1- playing) images))
+                                       (secure-hash 'sha256
+                                                    (plist-get (cdr image) :data)))))))
+                  (setq position (next-single-property-change
+                                  position 'display nil (point-max))))
+                (should found)))))
+      (when (buffer-live-p buffer)
+        (with-current-buffer buffer (etaf-ncm-close)))
       (delete-directory directory t))))
 
 (ert-deftest etaf-ncm-tests-playing-song-cover-is-downloaded-to-the-state-directory ()

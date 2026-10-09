@@ -392,9 +392,14 @@
       "purpose": "Normalized queue tracks keep the backend cover URL and default it to an empty string."
     },
     {
-      "name": "etaf-ncm-tests-mounted-player-publishes-the-cover-art",
+      "name": "etaf-ncm-tests-cover-follows-status-before-queue-replies",
       "file": "tests/etaf-ncm-tests.el",
-      "purpose": "Downloaded cover art is published as image content in the mounted player."
+      "purpose": "Playback status selects the correct artwork from the loaded tracks before another queue reply, correcting an earlier queue position and rejecting unrelated entries in stale replies."
+    },
+    {
+      "name": "etaf-ncm-tests-mounted-cover-follows-consecutive-track-changes",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "Consecutive track changes replace every displayed cover with the current song's same-size image, including cached return visits, without reopening the player."
     },
     {
       "name": "etaf-ncm-tests-playing-song-cover-is-downloaded-to-the-state-directory",

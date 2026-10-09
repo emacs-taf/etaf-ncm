@@ -4,6 +4,10 @@ All notable user-visible changes to ETAF NCM.
 
 ## Unreleased
 
+- Cover art follows track changes immediately after the image is available,
+  including consecutive songs with equally sized artwork and cached revisits.
+  Playback status corrects an earlier queue reply's cover without waiting for
+  the queue to refresh again.
 - The selection and playing highlight are two overlay bars moved as retained
   host geometry. Moving the selection or changing the playing song no longer
   repaints the list plane; a row update costs content only, so a long list

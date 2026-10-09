@@ -160,7 +160,10 @@ hold snapshots without keeping the player alive or accidentally mutating it.
   one row keyed by song id holding the local file path plus the URL it came
   from, so a changed URL or a deleted file is a miss.  Lookups are synchronous,
   fail open, and let `etaf-ncm--request-lyric`/`etaf-ncm--request-cover` publish
-  a hit without starting a backend request.
+  a hit without starting a backend request. Status replies select the cover
+  from already loaded queue metadata immediately; a queue position is only a
+  fallback before status identifies the playing song. Either reply order
+  therefore converges on the playing song's artwork.
 
 Browse requests take the maximum of `etaf-ncm-list-limit` (1000), the existing
 `etaf-ncm-fetch-limit` and three pages. The public snapshot preserves
@@ -278,6 +281,10 @@ timeout, and unmounting deletes the processes.
 
 ## Rendering notes
 
+- Cover art uses ETAF's `image` Host keyed by the downloaded source file.
+  The source identity changes with the track even when the image dimensions
+  match; the Host owns raster slicing and publication. Both cover locations
+  share this path and preserve the source aspect ratio within their cell budgets.
 - The layout is a column flex root: header, body (list + aside) and a full-width
   player bar; the compact layouts drop the sidebar for a library rail or a chip
   strip, tab the panes and stack the player bar into three lines.
