@@ -1792,10 +1792,12 @@ precedence over it, so the real command loop finds the player command."
                                  (line-beginning-position) (line-end-position))))
         (etaf-ncm-tests--key "TAB")
         (should-not (eq (etaf-focused-host-ref runtime) 'ncm-list))
-        (etaf-ncm-tests--key "<down>")
-        (should (= (plist-get (etaf-ncm-state app) :selection) 1))
         (etaf-ncm-tests--key "<backtab>")
-        (should (eq (etaf-focused-host-ref runtime) 'ncm-list))))))
+        (should (eq (etaf-focused-host-ref runtime) 'ncm-list))
+        ;; Outside the list the arrows move focus, not the selection.
+        (etaf-ncm-tests--key "TAB")
+        (etaf-ncm-tests--key "<down>")
+        (should (= (plist-get (etaf-ncm-state app) :selection) 1))))))
 
 (ert-deftest etaf-ncm-tests-volume-and-seek-step-from-the-keyboard ()
   "Focused volume and progress ranges step by five with Left and Right."
