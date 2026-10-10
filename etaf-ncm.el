@@ -38,8 +38,8 @@
 ;; daily recommendation with the account, playback status and queue of the
 ;; backend.  A caller-provided MODEL keeps its library, selection and queue, and
 ;; is revived when it was displayed before.  The app fills the selected window
-;; instead of letting a display rule split the frame.  The buffer gets
-;; `etaf-ncm-mode-map' and hides its mode line; closing the buffer releases the
+;; instead of letting a display rule split the frame.  The buffer hides its
+;; mode line and takes its keys from the view's ETAF `:keys'; closing the buffer releases the
 ;; session's polling and pending requests, so a later `etaf-ncm-open' with the
 ;; same MODEL works again.
 ;;
@@ -218,10 +218,6 @@
 ;;
 ;; Variable: etaf-ncm-buffer-name
 ;; Buffer `etaf-ncm-open' mounts the player into.
-;;
-;; Variable: etaf-ncm-mode-map
-;; Keymap installed by `etaf-ncm-open'.  It keeps Ebox's TAB focus cycling and
-;; replaces the scrolling keys with player commands.
 ;;
 ;; Variable: etaf-ncm-page-size
 ;; Library rows shown at once.  `etaf-ncm-open' replaces it with the count that

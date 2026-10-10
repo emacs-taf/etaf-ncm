@@ -79,7 +79,8 @@ spacer line so a height-constrained sidebar shows every entry."
   (flex :width (if chip (list 'ch (or width 5)) 'stretch)
         :height (if (or chip tight) '(lh 1) '(lh 2)) :flex-direction 'column
         :role 'button :tab-index 0
-       
+        :aria-current (etaf-value active)
+        :aria-label (or help label "音乐库")
         :help-echo (or help label "音乐库")
         :on-press on-press
     ;; A callbackless button here would block the cell's inherited keymap.
@@ -128,8 +129,9 @@ key (`download' or `queue') of the inline action the reader pressed."
              (index (etaf-computed
                      (lambda () (or (plist-get (etaf-ncm--reactive-text row) :display-index) 0)))))
   :view
+  ;; The list container is the keyboard stop; a row stays a click target.
   (grid :z-index 0
-        :width 'stretch :height '(lh 1) :role 'button :tab-index 0
+        :width 'stretch :height '(lh 1) :role 'option
         :visibility (if (etaf-ncm--reactive-text row) 'visible 'hidden)
         :grid-template-columns (etaf-ncm-layout-row-columns variant)
         :gap '((lh 0) (ch 1)) :align-items 'center :padding '((lh 0) (ch 1))
@@ -186,12 +188,13 @@ key (`download' or `queue') of the inline action the reader pressed."
                            :color (etaf-ncm-color :dim)
                            :on-color (etaf-ncm-color :accent)
                            :help-echo "下载到本地（勾号表示已下载，点击可重新下载）"
+                           :tab-index -1
                            :on-press (lambda () (when (etaf-ncm--reactive-text row)
                                                   (funcall on-action (etaf-ncm--active-value index) 'download)))))
     (box :if (eq variant 'full) :height '(lh 1) :justify-self 'center :min-width '(ch 2)
       (etaf-ui-icon :name 'plus :set 'svg :size 1.0 :min-width 3
                     :color (etaf-ncm-color :dim)
-                    :help-echo "加入队列"
+                    :help-echo "加入队列" :tab-index -1
                     :on-press (lambda () (when (etaf-ncm--reactive-text row)
                                            (funcall on-action (etaf-ncm--active-value index) 'queue)))))))
 
@@ -284,7 +287,7 @@ application."
                                 (* 3 (1- (length groups))))))))
     (etaf-view
   (flex :position 'absolute :left '(px 0) :top '(lh 0)
-        :flex-direction 'column
+        :flex-direction 'column :focus-group 'vertical
         :width (if compact etaf-ncm--rail-width etaf-ncm--sidebar-width)
         :height height
         :padding (if tight '((lh 0) (ch 1)) '((lh 1) (ch 1))) :gap '((lh 0) (ch 0))
@@ -319,6 +322,7 @@ application."
           :padding '((lh 1) (ch 1))
           :border-top (etaf-ncm--view-border 'top (etaf-ncm-color :line))
           :role (and (not account) 'button) :tab-index (and (not account) 0)
+          :aria-label "短信登录"
           :help-echo (if account
                           (format "%s%s" nick (if vip " · VIP" ""))
                         "未登录：按 L 登录")
@@ -353,7 +357,7 @@ chips only."
      (flex :position 'absolute :z-index 0 :left '(ch 1) :top '(lh 3)
            :width (list 'ch (etaf-ncm-layout-list-columns 'narrow columns))
            :height '(lh 2) :gap (list (list 'lh 0) (list 'ch gap))
-           :align-items 'center :overflow 'hidden
+           :align-items 'center :overflow 'hidden :focus-group 'horizontal
        (etaf-ncm--view-nav-item :for (entry entries) :key (car entry)
          :chip t :width width :icon (nth 2 entry) :label (nth 1 entry)
          :section section :entry-key (car entry)
@@ -459,12 +463,16 @@ rebuilding the view."
         :flex-shrink 0 :align-items 'center :padding '((lh 0) (ch 2))
         :background-color (etaf-ncm-color :panel)
         :border-top (etaf-ncm--view-border 'top (etaf-ncm-color :line))
+    (flex :focus-group 'horizontal :height '(lh 1) :gap '((lh 0) (ch 1))
+          :flex-shrink 0 :align-items 'center
     (flex :for (tab (list (list 'list "列表")
                           (list 'lyrics "歌词")
                           (list 'queue "队列"))) :key (car tab)
       :width '(ch 8) :height '(lh 1) :flex-grow 0 :flex-shrink 0
       :justify-content 'center :align-items 'center
-      :padding '((lh 0) (ch 1)) :role 'button :tab-index 0
+      :padding '((lh 0) (ch 1)) :role 'tab :tab-index 0
+      :aria-selected (etaf-value (etaf-ncm--pane-tab-source
+                                  (car tab) pane-list lyrics queue))
       :hover-style (unless (etaf-value (etaf-ncm--pane-tab-source
                                         (car tab) pane-list lyrics queue))
                      (etaf-ncm--hover-surface))
@@ -484,20 +492,20 @@ rebuilding the view."
                     (lambda () (funcall on-pane 'list))
                   (lambda () (funcall on-aside (car tab))))
       (box :height '(lh 1)
-        (text (expr (nth 1 tab)))))
+        (text (expr (nth 1 tab))))))
     (box :flex-grow 1 :flex-basis '(px 0) :min-width '(ch 0)
          :height '(lh 1) :text-align 'right :color (etaf-ncm-color :dim)
          :font-size etaf-ncm-font-meta :overflow 'hidden
       (text (expr (let ((list-p (etaf-value pane-list))
                         (lyrics-p (etaf-value lyrics))
                         (queue-p (etaf-value queue)))
-                    (cond (list-p "j/k 选择 · 滚轮滚动")
+                    (cond (list-p "↑↓ 选择 · Tab 切换")
                           (queue-p "l 切换面板")
                           (lyrics-p "l 歌词/队列")
                           (t "l 切换面板"))))))))
 
 (etaf-define-component etaf-ncm--view-list
-    (&key model compact selection on-press on-action)
+    (&key model compact selection keys on-focus on-press on-action)
   "Render MODEL's visible rows through retained row slots and a page footer.
 Each visible row keeps its slot identity across library switches, so a reply
 updates prepared row text instead of rebuilding the list.  The selection and
@@ -508,7 +516,8 @@ window budget leaves after the header, the tabs and the player bar, and the
 wheel scrolls the window through the loaded rows, so a long library is fully
 reachable.  SELECTION is the player's reactive selection source; ON-PRESS is
 called with a row's page index when that row is clicked, and ON-ACTION with
-that index plus an inline action key."
+that index plus an inline action key.  The list is one keyboard stop: KEYS
+are its `:keys', and ON-FOCUS runs when focus enters it."
   :render
   (let* ((slots (plist-get model :row-slots))
          (playing (plist-get model :row-playing))
@@ -530,8 +539,8 @@ that index plus an inline action key."
          ;; window, hence the conversion.
          (top (1- (etaf-ncm-layout-list-top layout)))
          (footer-rows (etaf-ncm-layout-footer-rows-for window-rows))
-         (hint (cond ((and (not compact) (not short)) "j/k 选择 · 滚轮滚动 · 双击播放 · a 入队 · d 下载 · / 搜索 · l 歌词 · ? 帮助")
-                     ((and (<= 44 columns) (not short)) "j/k 选择 · 滚轮滚动 · ? 帮助")
+         (hint (cond ((and (not compact) (not short)) "↑↓ 选择 · RET 播放 · a 入队 · d 下载 · / 搜索 · l 歌词 · Tab 切换区域 · ? 命令")
+                     ((and (<= 44 columns) (not short)) "↑↓ 选择 · Tab 切换 · ? 命令")
                      (t nil)))
          (height (if (and window-rows (> window-rows 0))
                      ;; The panel inset converts the window-level budget into
@@ -550,6 +559,8 @@ that index plus an inline action key."
            :width (list 'ch (etaf-ncm-layout-list-columns layout columns))
            :height (list 'lh height)
            :min-height '(lh 0) :gap '((lh 0) (px 0)) :overflow 'hidden
+           :ref 'ncm-list :role 'listbox :aria-label "歌曲列表" :tab-index 0
+           :keys keys :on-focus-enter on-focus
        (box :position 'absolute :z-index 0 :left '(ch 0) :top '(lh 0)
             :width 'stretch :height '(lh 6)
             :visibility (if (zerop (etaf-value visible)) 'visible 'hidden)
@@ -655,9 +666,10 @@ typography and the surface together.  Each aside variant draws its own
 static tab row."
   :view
   (flex :width 'stretch :height '(lh 2) :gap '((lh 0) (ch 1))
-        :align-items 'center
+        :align-items 'center :focus-group 'horizontal
         :border-bottom (etaf-ncm--view-border 'bottom (etaf-ncm-color :line))
-    (box :height '(lh 1) :padding '((lh 0) (ch 2)) :role 'button :tab-index 0
+    (box :height '(lh 1) :padding '((lh 0) (ch 2)) :role 'tab :tab-index 0
+         :aria-selected (eq kind 'lyrics)
          :hover-style (unless (eq kind 'lyrics) (etaf-ncm--hover-surface))
          :help-echo "看歌词"
          :font-weight (if (eq kind 'lyrics) 'bold 'normal)
@@ -667,7 +679,8 @@ static tab row."
                   (etaf-ncm-color :muted))
          :on-press (lambda () (funcall on-switch 'lyrics))
       (text "歌词"))
-    (box :height '(lh 1) :padding '((lh 0) (ch 2)) :role 'button :tab-index 0
+    (box :height '(lh 1) :padding '((lh 0) (ch 2)) :role 'tab :tab-index 0
+         :aria-selected (eq kind 'queue)
          :hover-style (unless (eq kind 'queue) (etaf-ncm--hover-surface))
          :help-echo "看播放队列"
          :font-weight (if (eq kind 'queue) 'bold 'normal)
@@ -725,6 +738,10 @@ static tab row."
              (glyph (car (etaf-ui-icon-lines 'play :set 'svg :color (etaf-ncm-color :accent)))))
   :view
   (flex :width 'stretch :height '(lh 1) :role 'button :tab-index 0
+        :ref (intern (format "ncm-queue-cell-%d" index))
+        :aria-current (plist-get (etaf-value entry) :current)
+        :aria-label (let ((row (etaf-value entry)))
+                      (if row (format "队列 %s：%s" (plist-get row :index) (plist-get row :name)) "队列"))
         :visibility (if (etaf-value entry) 'visible 'hidden)
         :help-echo (lambda (&rest _)
                      (let ((row (etaf-value entry)))
@@ -746,13 +763,16 @@ static tab row."
     (box :width '(ch 5) :height '(lh 1) :text-align 'right :color (etaf-ncm-color :dim)
       (text (expr (or (plist-get (etaf-value entry) :right) ""))))))
 
-(etaf-define-component etaf-ncm--view-queue (&key projection rows on-jump)
-  "Render a viewport-sized queue pool without replacing rows on every scroll."
+(etaf-define-component etaf-ncm--view-queue (&key projection rows keys on-jump)
+  "Render a viewport-sized queue pool without replacing rows on every scroll.
+The cells form one vertical focus group entered at the playing entry; KEYS
+are the group's `:keys', which scroll the pool past its first and last cell."
   :render
   (let ((offsets (and (> rows 0) (number-sequence 0 (1- rows)))))
    (etaf-view
   (flex :position 'relative :flex-direction 'column :width 'stretch :flex-grow 1 :flex-basis '(lh 0)
         :min-height '(lh 0) :gap '((lh 0) (px 0)) :overflow 'hidden
+        :ref 'ncm-queue :focus-group 'vertical :keys keys
     (column :width 'stretch :height '(lh 2) :item-gap '(lh 0)
       (text :font-weight 'bold "播放队列")
       (text :color (etaf-ncm-color :dim)
@@ -766,11 +786,13 @@ static tab row."
     (etaf-ncm--view-queue-cell :for (index offsets) :key index :projection projection :index index :on-jump on-jump)))))
 
 (etaf-define-component etaf-ncm--view-aside
-    (&key kind visible layout columns window-rows title artist album cover projection rows on-switch on-jump)
+    (&key kind visible layout columns window-rows title artist album cover
+          projection rows queue-keys on-switch on-jump)
   "Render one absolute aside variant: KIND is `lyrics' or `queue'.
 Both variants are panels of the root stage; VISIBLE is the reactive source
 that reveals this one, so switching panels publishes retained visibility
-updates instead of rebuilding the view.  LAYOUT and COLUMNS size and place
+updates instead of rebuilding the view.  QUEUE-KEYS are the queue's
+`:keys'.  LAYOUT and COLUMNS size and place
 the panel in the same cells the wheel hit test uses.  The panel ends at the
 window bottom; the player bar paints over its last rows, and the row budgets
 already stop the content above it."
@@ -792,6 +814,7 @@ already stop the content above it."
      (box :position 'absolute :left (list 'ch left) :top '(lh 0)
           :width (list 'ch width) :height (if height (list 'lh height) '(% 100)) :z-index 0
           :visibility (if (etaf-value visible) 'visible 'hidden)
+          :ref (intern (format "ncm-aside-%s" kind))
           :padding '((lh 1) (ch 2))
           :background-color (etaf-ncm-color :panel)
           :border-left (etaf-ncm--view-border 'left (etaf-ncm-color :line))
@@ -803,7 +826,7 @@ already stop the content above it."
            :title title :artist artist :album album :cover cover
            :projection projection :rows rows)
          (etaf-ncm--view-queue :if (eq kind 'queue)
-           :projection projection :rows rows :on-jump on-jump))))))
+           :projection projection :rows rows :keys queue-keys :on-jump on-jump))))))
 
 (defun etaf-ncm--reactive-text (text)
   "Return TEXT's current string, reading a reactive source in place.
@@ -841,6 +864,7 @@ pictures.  LABEL appends a small count or state next to the icon."
                   :color (etaf-ncm-color (if active :accent :muted))
                   :min-width 3 :help-echo help :on-press on-press :ref ref)
     (box :if (and (not icon) (not icons) glyph) :height '(lh 1) :role 'button :tab-index 0
+         :aria-label help
          :color (etaf-ncm-color (if active :accent :muted))
          :hover-style (etaf-ncm--hover-surface)
          :help-echo help :on-press on-press
@@ -883,6 +907,7 @@ pictures.  LABEL appends a small count or state next to the icon."
              :min-width '(ch 0) :overflow 'hidden :font-weight 'bold
           (text :ref 'ncm-track-title (expr (etaf-ncm--track-label title artist vip)))))
       (flex :height '(lh 1) :gap '((lh 0) (ch 1)) :align-items 'center
+            :focus-group 'horizontal
         (etaf-ncm--view-control :ref 'ncm-plus :icon 'plus :help "加入队列 (a)" :on-press on-add)
         (etaf-ncm--view-control :ref 'ncm-like :icons '(heart . heart-filled)
                                 :value liked
@@ -908,11 +933,11 @@ which a terminal-cell layout cannot round away."
   :view
   (flex :height (if compact '(lh 1) '(lh 2))
         :gap (if compact '((lh 0) (ch 1)) '((lh 0) (ch 3)))
-        :align-items 'center :justify-content 'center
+        :align-items 'center :justify-content 'center :focus-group 'horizontal
     (etaf-ncm--view-control :ref 'ncm-previous :icon 'previous :help "上一首 (p)" :on-press on-previous)
     (box :id "ncm-play" :ref 'ncm-play :width (if compact '(ch 3) '(ch 4))
          :height '(lh 1) :flex-shrink 0
-         :role 'button :tab-index 0
+         :role 'button :tab-index 0 :aria-label "播放 / 暂停"
          :help-echo "播放 / 暂停 (SPC)" :on-press on-toggle
          :background-color (etaf-ncm-color :accent)
       (etaf-ui-toggle-icon :value playing :off 'play :on 'pause :set 'svg :size 0.9
@@ -920,7 +945,8 @@ which a terminal-cell layout cannot round away."
                            ;; Span the whole pill so the glyph centres with one inset on
                            ;; both sides; a narrower icon leaves the right side heavier.
                            :min-width (if compact 3 4)
-                           :help-echo "播放 / 暂停 (SPC)" :on-press on-toggle))
+                           :help-echo "播放 / 暂停 (SPC)" :tab-index -1
+                           :on-press on-toggle))
     (etaf-ncm--view-control :ref 'ncm-next :icon 'next :help "下一首 (n)" :on-press on-next)
     (etaf-ncm--view-control :ref 'ncm-repeat :icons '(repeat . repeat) :value repeat
                             :help "列表循环 (r)" :on-press on-repeat)))
@@ -941,7 +967,7 @@ instead of re-rendering this Component and republishing the view."
     (flex :flex-direction 'row :flex-grow 1 :flex-basis '(px 0) :min-width '(ch 0)
           :height '(lh 1)
       (etaf-range :value elapsed :min 0 :max duration
-                  :ref 'ncm-seek :fill-ref 'ncm-meter
+                  :ref 'ncm-seek :fill-ref 'ncm-meter :key-step 5
                   :aria-label "播放进度，点击或拖动跳转"
                   :color (etaf-ncm-color :accent)
                   :track-color (etaf-ncm-color :panel3)
@@ -966,15 +992,18 @@ Controls sit in separated groups so the right edge reads as three ideas
          :color (etaf-ncm-color :muted)
       (text (expr (let ((label (etaf-ncm--active-value quality))) (if label (format "[%s]" label) "")))))
     (box :if (not compact) :width '(ch 1) :height '(lh 1) (text " "))
-    (etaf-ncm--view-control :ref 'ncm-lyrics :icons '(lyrics . lyrics) :value lyrics
-                            :help "显示歌词 (l)" :on-press on-lyrics)
-    (etaf-ncm--view-control :ref 'ncm-queue-aside :icon 'queue :help "显示播放列表" :on-press on-queue)
+    (flex :height '(lh 1) :align-items 'center :flex-shrink 0 :focus-group 'horizontal
+          :gap (if compact '((lh 0) (ch 0.5)) '((lh 0) (ch 1)))
+      (etaf-ncm--view-control :ref 'ncm-lyrics :icons '(lyrics . lyrics) :value lyrics
+                              :help "显示歌词 (l)" :on-press on-lyrics)
+      (etaf-ncm--view-control :ref 'ncm-queue-aside :icon 'queue :help "显示播放列表"
+                              :on-press on-queue))
     (box :width '(ch 1) :height '(lh 1) (text " "))
     (etaf-ui-toggle-icon :value muted :off 'volume :on 'volume-mute
                          :set 'svg :size 0.9 :color (etaf-ncm-color :muted) :min-width 2)
     (flex :flex-direction 'row :width (if compact '(ch 8) '(ch 12)) :height '(lh 1)
           :flex-shrink 0
-      (etaf-range :value (or volume 0) :min 0 :max 100 :ref 'ncm-volume
+      (etaf-range :value (or volume 0) :min 0 :max 100 :ref 'ncm-volume :key-step 5
                   :fill-ref 'ncm-volume-fill
                   :aria-label "音量，点击或拖动调节"
                   :color (etaf-ncm-color :accent)

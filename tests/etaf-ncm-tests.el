@@ -625,16 +625,14 @@ silently doing nothing against the real backend."
         (kill-buffer " *etaf-ncm-tests-mount*")))))
 
 (ert-deftest etaf-ncm-tests-open-and-close-own-a-buffer ()
-  "Opening installs the player map and closing kills the buffer."
+  "Opening focuses the library list and closing kills the buffer."
   (let ((etaf-ncm-buffer-name " *etaf-ncm-tests-open*")
         (app (etaf-ncm-tests--session)))
     (unwind-protect
         (let ((buffer (etaf-ncm-open app)))
           (should (buffer-live-p buffer))
           (with-current-buffer buffer
-            (should (eq (current-local-map) etaf-ncm-mode-map))
-            (should (eq (key-binding [wheel-down])
-                        (lookup-key etaf-ncm-mode-map [wheel-down])))
+            (should (eq (etaf-focused-host-ref (etaf-runtime-for-buffer buffer)) 'ncm-list))
             (should-not mode-line-format)
             (should (string-match-p "曲目 1" (buffer-substring-no-properties (point-min) (point-max)))))
           (etaf-ncm-close)
@@ -915,8 +913,8 @@ The background reply must not move the reader's selection."
   (buffer-substring-no-properties (point-min) (point-max)))
 
 (defun etaf-ncm-tests--key (key)
-  "Invoke KEY through the player's published keymap."
-  (call-interactively (lookup-key etaf-ncm-mode-map (kbd key))))
+  "Type KEY in the current player buffer through the command loop."
+  (execute-kbd-macro (kbd key)))
 
 (defun etaf-ncm-tests--wheel (window direction column row)
   "Send DIRECTION at COLUMN and ROW through WINDOW's active wheel binding.
@@ -1449,14 +1447,18 @@ locate the entry by its help text instead of a character offset."
             (funcall command press)
             (etaf-ncm-tests--rendered-text)
             (should (eq (plist-get (etaf-ncm-state app) :section) (nth 1 target))))))
-      (goto-char (point-min))
-      (let (found)
-        (dotimes (_ 100)
+      ;; The sidebar is one Tab stop entered at the current library; arrows
+      ;; then move between the libraries.
+      (let ((labels (mapcar #'cadr (apply #'append (mapcar #'cdr etaf-ncm-sections))))
+            found)
+        (dotimes (_ 30)
           (unless found
-            (call-interactively (key-binding (kbd "TAB")))
-            (setq found (equal (get-char-property (point) 'help-echo) "每日推荐"))))
-        (should found)
-        (call-interactively (key-binding (kbd "RET")))
+            (execute-kbd-macro (kbd "TAB"))
+            (setq found (member (get-char-property (point) 'help-echo) labels))))
+        (should (equal (car found) "私人 FM"))
+        (etaf-ncm-tests--key "<up>")
+        (should (equal (get-char-property (point) 'help-echo) "每日推荐"))
+        (execute-kbd-macro (kbd "RET"))
         (etaf-ncm-tests--rendered-text)
         (should (eq (plist-get (etaf-ncm-state app) :section) :daily))))))
 
@@ -1716,9 +1718,8 @@ through a retained width update without publishing a new View."
 
 (ert-deftest etaf-ncm-tests-keys-reach-the-player-around-the-renderer-map ()
   "The documented keys reach the player in a mounted buffer.
-The renderer installs its own minor-mode map, which outranks the major-mode
-map; the player overrides the colliding commands, so the real command loop,
-not just `etaf-ncm-mode-map', must find the player command."
+The renderer installs its own minor-mode map; the player's View keys take
+precedence over it, so the real command loop finds the player command."
   (setq etaf-ncm-tests--requests nil)
   (let ((app (etaf-ncm-tests--session)))
     ;; Read the backend status first: with a playing queue SPC toggles; the
@@ -1738,13 +1739,95 @@ not just `etaf-ncm-mode-map', must find the player command."
       (should (etaf-ncm-tests--request :previous))
       (execute-kbd-macro (kbd "SPC"))
       (should (etaf-ncm-tests--request :toggle))
-      ;; RET prefers the renderer's focused Host and still plays the row the
-      ;; selection points at when point carries none.
+      ;; The focused library list plays the selected row on RET.
       (execute-kbd-macro (kbd "j"))
       (setq etaf-ncm-tests--requests nil)
       (execute-kbd-macro (kbd "RET"))
       (should (or (etaf-ncm-tests--request :play)
                   (etaf-ncm-tests--request :jump))))))
+
+;; ---------------------------------------------------------------------------
+;; Keyboard regions
+;; ---------------------------------------------------------------------------
+
+(defun etaf-ncm-tests--palette (choice)
+  "Open the ETAF palette, choose CHOICE when non-nil, return every label."
+  (let (names)
+    (cl-letf (((symbol-function 'completing-read)
+               (lambda (_prompt collection &rest _)
+                 (setq names (all-completions "" collection))
+                 (or (and choice (seq-find (lambda (name) (string-prefix-p choice name)) names))
+                     (keyboard-quit)))))
+      (condition-case nil (etaf-palette) (quit nil)))
+    names))
+
+(ert-deftest etaf-ncm-tests-palette-lists-and-runs-the-player-keys ()
+  "`?' opens the ETAF palette with the player keys and its controls."
+  (let ((app (etaf-ncm-tests--session)))
+    (etaf-ncm-refresh app)
+    (etaf-ncm-tests--with-player app
+      (let ((names (etaf-ncm-tests--palette nil)))
+        (dolist (label '("下一首" "播放选中行" "选择下一行" "音乐库：每日推荐" "音量，点击或拖动调节"))
+          (should (seq-find (lambda (name) (string-prefix-p label name)) names))))
+      (setq etaf-ncm-tests--requests nil)
+      (etaf-ncm-tests--palette "下一首")
+      (should (etaf-ncm-tests--request :next)))))
+
+(ert-deftest etaf-ncm-tests-list-arrows-move-the-selection-and-tab-leaves ()
+  "The focused list moves its selection with arrows; Tab moves to the next region."
+  (let ((app (etaf-ncm-tests--session)))
+    (etaf-ncm-tests--with-player app
+      (let ((runtime (etaf-runtime-for-buffer (current-buffer))))
+        (should (eq (etaf-focused-host-ref runtime) 'ncm-list))
+        (etaf-ncm-tests--key "<down>")
+        (etaf-ncm-tests--key "C-n")
+        (should (= (plist-get (etaf-ncm-state app) :selection) 2))
+        (etaf-ncm-tests--key "<up>")
+        (should (= (plist-get (etaf-ncm-state app) :selection) 1))
+        ;; The cursor follows the selection bar while the list holds focus.
+        (etaf-ncm-tests--rendered-text)
+        (accept-process-output nil 0.05)
+        (should (string-match-p "曲目 2"
+                                (buffer-substring-no-properties
+                                 (line-beginning-position) (line-end-position))))
+        (etaf-ncm-tests--key "TAB")
+        (should-not (eq (etaf-focused-host-ref runtime) 'ncm-list))
+        (etaf-ncm-tests--key "<down>")
+        (should (= (plist-get (etaf-ncm-state app) :selection) 1))
+        (etaf-ncm-tests--key "<backtab>")
+        (should (eq (etaf-focused-host-ref runtime) 'ncm-list))))))
+
+(ert-deftest etaf-ncm-tests-volume-and-seek-step-from-the-keyboard ()
+  "Focused volume and progress ranges step by five with Left and Right."
+  (let ((app (etaf-ncm-tests--session)))
+    (etaf-ncm-refresh app)
+    (etaf-ncm-tests--with-player app
+      (let ((runtime (etaf-runtime-for-buffer (current-buffer)))
+            (volume (plist-get (plist-get (etaf-ncm-state app) :status) :volume)))
+        (etaf-focus runtime 'ncm-volume)
+        (setq etaf-ncm-tests--requests nil)
+        (etaf-ncm-tests--key "<right>")
+        (should (= (plist-get (etaf-ncm-tests--request :volume) :value)
+                   (min 100 (+ (or volume 0) 5))))))))
+
+(ert-deftest etaf-ncm-tests-compact-pane-switch-moves-focus-into-the-pane ()
+  "Showing the aside in a compact layout moves focus off the hidden list."
+  (let* ((etaf-ncm-wide-columns 1000)
+         (etaf-ncm-medium-columns 1000)
+         (app (etaf-ncm-tests--session)))
+    (etaf-ncm-tests--with-player app
+      (etaf-ncm-tests--rendered-text)
+      (let ((runtime (etaf-runtime-for-buffer (current-buffer))))
+        (should (eq (plist-get (etaf-ncm-state app) :layout) 'narrow))
+        (should (eq (etaf-focused-host-ref runtime) 'ncm-list))
+        (etaf-ncm-tests--key "v")
+        (etaf-ncm-tests--rendered-text)
+        (let ((focus (etaf-focused-host-ref runtime)))
+          (should focus)
+          (should-not (eq focus 'ncm-list)))
+        (etaf-ncm-tests--key "v")
+        (etaf-ncm-tests--rendered-text)
+        (should (eq (etaf-focused-host-ref runtime) 'ncm-list))))))
 
 (defun etaf-ncm-tests--wait (predicate &optional timeout)
   "Wait until PREDICATE is non-nil for at most TIMEOUT seconds."

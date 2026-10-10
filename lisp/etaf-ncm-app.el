@@ -12,8 +12,10 @@
 ;; starts on mount, and the session's timer and in-flight requests are released
 ;; on unmount.
 ;;
-;; `etaf-ncm-open' adds what a Component cannot own by itself: the buffer name,
-;; the buffer-local keymap, and the window-fitting page size.
+;; Every key is a `:keys' binding of the View, so an embedded player keeps them
+;; and `?' lists them in the ETAF command palette.  `etaf-ncm-open' adds what a
+;; Component cannot own by itself: the buffer name, the wheel bindings and the
+;; window-fitting page size.
 
 ;;; Code:
 
@@ -28,7 +30,7 @@
 (require 'etaf-ncm-views)
 
 ;;; ---------------------------------------------------------------------------
-;;; Buffer state and keymap
+;;; Buffer state and wheel bindings
 ;;; ---------------------------------------------------------------------------
 
 (defcustom etaf-ncm-buffer-name "*ETAF 网易云音乐*"
@@ -39,79 +41,17 @@
 (defvar-local etaf-ncm--model nil
   "Player model shown by the current buffer's runtime.")
 
-(defvar etaf-ncm-mode-map
-  (let ((map (make-sparse-keymap)))
-    (define-key map (kbd "j") #'etaf-ncm--next-item)
-    (define-key map (kbd "k") #'etaf-ncm--previous-item)
-    (define-key map (kbd "C-n") #'etaf-ncm--next-item)
-    (define-key map (kbd "C-p") #'etaf-ncm--previous-item)
-    (define-key map (kbd "<down>") #'etaf-ncm--next-item)
-    (define-key map (kbd "<up>") #'etaf-ncm--previous-item)
-    ;; The event position chooses between the library and the queue window.
-    (define-key map (kbd "<wheel-up>") #'etaf-ncm--wheel-up)
-    (define-key map (kbd "<wheel-down>") #'etaf-ncm--wheel-down)
-    ;; Jumping around a long library: first, last and by whole pages.
-    (define-key map (kbd "<home>") #'etaf-ncm--first-item)
-    (define-key map (kbd "<end>") #'etaf-ncm--last-item)
-    (define-key map (kbd "<next>") #'etaf-ncm--next-page)
-    (define-key map (kbd "<prior>") #'etaf-ncm--previous-page)
-    (define-key map (kbd "RET") #'etaf-ncm--activate)
-    (define-key map (kbd "SPC") #'etaf-ncm--toggle-playback)
-    (define-key map (kbd "n") #'etaf-ncm--next-track)
-    (define-key map (kbd "p") #'etaf-ncm--previous-track)
-    (define-key map (kbd "a") #'etaf-ncm--add-to-queue)
-    (define-key map (kbd "d") #'etaf-ncm--download)
-    (define-key map (kbd "L") #'etaf-ncm-login)
-    (define-key map (kbd "s") #'etaf-ncm--search)
-    (define-key map (kbd "/") #'etaf-ncm--search)
-    (define-key map (kbd "g") #'etaf-ncm--refresh)
-    (define-key map (kbd "q") #'etaf-ncm-close)
-    (define-key map (kbd "l") #'etaf-ncm--toggle-aside)
-    (define-key map (kbd "v") #'etaf-ncm--toggle-pane)
-    (define-key map (kbd "r") #'etaf-ncm--toggle-repeat)
-    (define-key map (kbd "z") #'etaf-ncm--toggle-shuffle)
-    (define-key map (kbd "f") #'etaf-ncm--like)
-    (define-key map (kbd "F") #'etaf-ncm--unlike)
-    (define-key map (kbd "+") #'etaf-ncm--volume-up)
-    (define-key map (kbd "=") #'etaf-ncm--volume-up)
-    (define-key map (kbd "-") #'etaf-ncm--volume-down)
-    (define-key map (kbd ",") #'etaf-ncm--seek-back)
-    (define-key map (kbd ".") #'etaf-ncm--seek-forward)
-    (define-key map (kbd "T") #'etaf-ncm--toggle-theme)
-    (define-key map (kbd "?") #'etaf-ncm--help)
-    (dotimes (index 9)
-      (define-key map (kbd (number-to-string (1+ index)))
-        (lambda ()
-          (interactive)
-          (etaf-ncm--locate-index (1+ index)))))
-    map)
-  "Keymap of the buffer opened by `etaf-ncm-open'.
-It keeps Ebox's TAB focus cycling and RET activation, and replaces the
-scrolling keys with player commands: n/p switch tracks, SPC pauses, and
-j/k move the library selection.")
-
 (defvar etaf-ncm--command-maps
   (list (cons 'etaf-ncm--model
               (let ((map (make-sparse-keymap)))
+                ;; The renderer's minor-mode map scrolls the buffer on the
+                ;; wheel; the player scrolls the queue or library window under
+                ;; the pointer instead.  Every key lives on the View's `:keys'.
                 (define-key map [wheel-up] #'etaf-ncm--wheel-up)
                 (define-key map [wheel-down] #'etaf-ncm--wheel-down)
-                ;; These collide with the renderer's own minor-mode map, which
-                ;; outranks the major-mode map in a mounted buffer.  The player
-                ;; overrides exactly its documented commands and leaves TAB,
-                ;; the remaining scrolling keys and mouse events to the
-                ;; renderer.
-                (define-key map (kbd "n") #'etaf-ncm--next-track)
-                (define-key map (kbd "p") #'etaf-ncm--previous-track)
-                (define-key map (kbd "d") #'etaf-ncm--download)
-                (define-key map (kbd "SPC") #'etaf-ncm--toggle-playback)
-                (define-key map (kbd "<next>") #'etaf-ncm--next-page)
-                (define-key map (kbd "<prior>") #'etaf-ncm--previous-page)
-                (define-key map (kbd "RET") #'etaf-ncm--activate)
-                (define-key map (kbd "q") #'etaf-ncm-close)
                 map)))
-  "Command bindings that take precedence over the renderer's minor-mode map.
-The alist is enabled only in an opened player buffer; TAB still reaches the
-renderer's focus cycling.")
+  "Wheel bindings that take precedence over the renderer's minor-mode map.
+The alist is enabled only in an opened player buffer.")
 
 (defun etaf-ncm--current-model ()
   "Return the model of the current player buffer."
@@ -299,14 +239,9 @@ browse rows without losing the row j/k and presses still act on."
     (etaf-ncm-move-selection app (- (or (plist-get state :page-size) 10)))))
 
 (defun etaf-ncm--activate ()
-  "Activate the focused control, or play the selected library row.
-The renderer activates the Host under point, which is what a click or TAB
-leaves there; j/k only move the selection, so fall back to it."
+  "Play or open the selected library row."
   (interactive)
-  (condition-case nil
-      (etaf-activate)
-    (user-error
-     (etaf-ncm-activate-selection (etaf-ncm--current-model)))))
+  (etaf-ncm-activate-selection (etaf-ncm--current-model)))
 
 (defun etaf-ncm--toggle-playback ()
   "Pause or resume the current song."
@@ -469,13 +404,132 @@ default face shows the player background there instead of the frame's."
         (etaf-ncm-locate model (car entry))
       (etaf-ncm--write model :message (format "没有第 %s 个音乐库" index)))))
 
-(defun etaf-ncm--help ()
-  "Show the player's key bindings."
-  (interactive)
-  (message
-   (concat "j/k 选择 · 滚轮滚动列表 · 单击选中 · 双击播放 · RET 播放 · SPC 暂停 · n/p 切歌 · a 加入队列 · d 下载 · s 搜索 · g 刷新"
-           " · l 歌词/队列 · v 列表/面板 · 1-9 音乐库 · +/- 音量 · ,/. 快退快进"
-           " · 队列内滚轮翻动队列 · f/F 喜欢 · r 列表循环 · z 随机 · L 短信登录 · T 深浅色 · q 关闭")))
+(defun etaf-ncm--key-command (session command)
+  "Return COMMAND as a key command acting on SESSION.
+Binding the session lets an embedded player share the buffer-free commands."
+  (lambda ()
+    (interactive)
+    (let ((etaf-ncm--model session))
+      (call-interactively command))))
+
+(defun etaf-ncm--keys (session)
+  "Return the player-wide `:keys' of SESSION's root.
+Arrows, RET and Tab stay with the focused region, so a focus group, a range
+or the library list keeps them; `?' opens the ETAF command palette."
+  (append
+   (mapcar
+    (lambda (entry)
+      (list (car entry) (etaf-ncm--key-command session (nth 1 entry)) (nth 2 entry)))
+    '(("SPC" etaf-ncm--toggle-playback "播放 / 暂停")
+      ("n" etaf-ncm--next-track "下一首")
+      ("p" etaf-ncm--previous-track "上一首")
+      ("j" etaf-ncm--next-item "选择下一行")
+      ("k" etaf-ncm--previous-item "选择上一行")
+      ("a" etaf-ncm--add-to-queue "选中歌曲加入队列")
+      ("d" etaf-ncm--download "下载选中歌曲")
+      ("s" etaf-ncm--search "搜索")
+      ("/" etaf-ncm--search "搜索")
+      ("g" etaf-ncm--refresh "刷新")
+      ("l" etaf-ncm--toggle-aside "切换歌词 / 队列")
+      ("v" etaf-ncm--toggle-pane "切换列表 / 面板")
+      ("r" etaf-ncm--toggle-repeat "列表循环")
+      ("z" etaf-ncm--toggle-shuffle "随机播放")
+      ("f" etaf-ncm--like "喜欢")
+      ("F" etaf-ncm--unlike "取消喜欢")
+      ("+" etaf-ncm--volume-up "音量 +10")
+      ("=" etaf-ncm--volume-up nil)
+      ("-" etaf-ncm--volume-down "音量 -10")
+      ("," etaf-ncm--seek-back "快退 10 秒")
+      ("." etaf-ncm--seek-forward "快进 10 秒")
+      ("L" etaf-ncm-login "短信登录")
+      ("T" etaf-ncm--toggle-theme "切换深浅色")
+      ("q" etaf-ncm-close "关闭播放器")))
+   (cl-loop for entry in (apply #'append (mapcar #'cdr etaf-ncm-sections))
+            for index from 1 to 9
+            collect (let ((index index))
+                      (list (number-to-string index)
+                            (lambda ()
+                              (interactive)
+                              (let ((etaf-ncm--model session))
+                                (etaf-ncm--locate-index index)))
+                            (format "音乐库：%s" (nth 1 entry)))))))
+
+(defun etaf-ncm--list-keys (session)
+  "Return the library list's `:keys' for SESSION.
+The list is one focus stop whose arrows move the selection, not the focus."
+  (mapcar
+   (lambda (entry)
+     (list (car entry) (etaf-ncm--key-command session (nth 1 entry)) (nth 2 entry)))
+   '(("<down>" etaf-ncm--next-item "选择下一行")
+     ("<up>" etaf-ncm--previous-item "选择上一行")
+     ("C-n" etaf-ncm--next-item nil)
+     ("C-p" etaf-ncm--previous-item nil)
+     ("<home>" etaf-ncm--first-item "第一行")
+     ("<end>" etaf-ncm--last-item "最后一行")
+     ("<next>" etaf-ncm--next-page "下一页")
+     ("<prior>" etaf-ncm--previous-page "上一页")
+     ("RET" etaf-ncm--activate "播放选中行"))))
+
+(defun etaf-ncm--queue-step (session delta)
+  "Move queue focus by DELTA cells in SESSION, scrolling past the pool edge."
+  (let* ((runtime (etaf-runtime-for-buffer (current-buffer)))
+         (ref (etaf-focused-host-ref runtime))
+         (name (and (symbolp ref) (symbol-name ref)))
+         (index (and name (string-prefix-p "ncm-queue-cell-" name)
+                     (string-to-number (substring name 15))))
+         (visible (length (plist-get (etaf-ncm--queue-panel session) :entries)))
+         (target (and index (+ index delta))))
+    (cond ((null index) (etaf-focus-within runtime 'ncm-queue))
+          ((and (>= target 0) (< target visible))
+           (etaf-focus runtime (intern (format "ncm-queue-cell-%d" target))))
+          (t (etaf-ncm--scroll-queue session delta)))))
+
+(defun etaf-ncm--queue-keys (session)
+  "Return the queue group's `:keys' for SESSION."
+  (let ((step (lambda (delta)
+                (lambda () (interactive) (etaf-ncm--queue-step session delta))))
+        (page (lambda (sign)
+                (lambda ()
+                  (interactive)
+                  (etaf-ncm--scroll-queue
+                   session (* sign (max 1 (etaf-ncm--read session :queue-rows))))))))
+    (list (list "<down>" (funcall step 1) "队列下一首")
+          (list "<up>" (funcall step -1) "队列上一首")
+          (list "C-n" (funcall step 1))
+          (list "C-p" (funcall step -1))
+          (list "<next>" (funcall page 1) "队列下一页")
+          (list "<prior>" (funcall page -1) "队列上一页"))))
+
+(defun etaf-ncm--reveal-selection (session)
+  "Put point on SESSION's selection bar while the library list has focus.
+The list is one focus stop, so the cursor follows the selection bar."
+  (when-let* ((buffer (plist-get session :buffer))
+              ((buffer-live-p buffer))
+              (runtime (etaf-runtime-for-buffer buffer))
+              ((eq (etaf-focused-host-ref runtime) 'ncm-list))
+              (bounds (etaf-host-ref-bounds runtime 'ncm-list-selection)))
+    (with-current-buffer buffer
+      (goto-char (car bounds))
+      (dolist (window (get-buffer-window-list buffer nil t))
+        (set-window-point window (car bounds))))))
+
+(defun etaf-ncm--settle-focus (session)
+  "Keep keyboard focus inside a visible region of SESSION.
+Hiding a pane clears the focus inside it; the shown pane then receives it:
+the library list, else the queue at its playing entry, else the lyric tabs."
+  (when-let* ((buffer (plist-get session :buffer))
+              ((buffer-live-p buffer))
+              (runtime (etaf-runtime-for-buffer buffer)))
+    (with-current-buffer buffer
+      (unless (etaf-focused-host-ref runtime)
+        (ignore-errors
+          (cond ((and (etaf-ncm--aside-shown-p session)
+                      (or (eq (etaf-ncm--read session :pane) 'aside)
+                          (not (etaf-ncm--list-shown-p session))))
+                 (etaf-focus-within runtime (if (eq (etaf-ncm--read session :aside) 'queue)
+                                                'ncm-aside-queue
+                                              'ncm-aside-lyrics)))
+                ((etaf-ncm--list-shown-p session) (etaf-focus runtime 'ncm-list))))))))
 
 ;;; ---------------------------------------------------------------------------
 ;;; Application Component and entry points
@@ -517,7 +571,20 @@ releases the polling timer and the session's pending backend requests."
              (on-row-action (lambda (index key)
                               (etaf-ncm-row-action session index key)))
              (on-switch-aside (lambda (panel)
-                                (etaf-ncm--write session :aside panel)))
+                                (etaf-ncm--write session :aside panel)
+                                ;; The tab row belongs to the aside variant
+                                ;; that just hid; continue on the shown one.
+                                (etaf-next-tick
+                                 (lambda ()
+                                   (when-let* ((runtime (etaf-runtime-for-buffer
+                                                         (plist-get session :buffer))))
+                                     (ignore-errors
+                                       (etaf-focus-within
+                                        runtime (intern (format "ncm-aside-%s" panel)))))))))
+             (keys (etaf-ncm--keys session))
+             (list-keys (etaf-ncm--list-keys session))
+             (queue-keys (etaf-ncm--queue-keys session))
+             (on-list-focus (lambda () (etaf-ncm--reveal-selection session)))
              (on-jump-queue (lambda (index) (etaf-ncm-jump-queue session index)))
              (on-show-pane (lambda (target) (etaf-ncm-show-pane session target)))
              (on-show-aside (lambda (target)
@@ -584,10 +651,16 @@ releases the polling timer and the session's pending backend requests."
      (lambda ()
        (etaf-ncm--schedule-list-highlights session
                                            (etaf-ncm--list-highlights session))))
+    (etaf-watch (lambda () (list (etaf-value pane-list) (etaf-value list-visible)
+                                 (etaf-value lyrics-visible) (etaf-value queue-visible)))
+                (lambda (&rest _)
+                  (etaf-next-tick (lambda () (etaf-ncm--settle-focus session))))
+                :flush 'post :test #'equal)
     (etaf-on-mounted
      (lambda ()
        (etaf-ncm--start session)
-       (etaf-ncm-refresh session)))
+       (etaf-ncm-refresh session)
+       (etaf-next-tick (lambda () (etaf-ncm--settle-focus session)))))
     (etaf-on-unmounted
      (lambda ()
        (etaf-ncm--dispose session))))
@@ -603,6 +676,7 @@ releases the polling timer and the session's pending backend requests."
         ;; (the progress line) sits directly above it.
         :padding-bottom '(lh 0)
         :color (etaf-ncm-color :ink) :bgcolor (etaf-ncm-color :bg)
+        :keys keys
     (box :width 'stretch :flex-grow 1 :flex-basis '(lh 0) :min-height '(lh 0))
       (etaf-ncm--view-sidebar
        :if (eq (etaf-ncm--read session :layout) 'wide)
@@ -669,6 +743,7 @@ releases the polling timer and the session's pending backend requests."
          :model session
          :compact (etaf-ncm--compact-layout-p session)
          :selection (etaf-ncm--ref session :selection)
+         :keys list-keys :on-focus on-list-focus
          :on-press on-press-row
          :on-action on-row-action))
       (etaf-ncm--view-aside
@@ -685,6 +760,7 @@ releases the polling timer and the session's pending backend requests."
        :columns (etaf-ncm--read session :columns)
        :window-rows (etaf-ncm--read session :window-rows)
        :projection queue-panel :rows (etaf-ncm--read session :queue-rows)
+       :queue-keys queue-keys
        :on-switch on-switch-aside
        :on-jump on-jump-queue)
     (etaf-ncm--view-pane-tabs
@@ -762,7 +838,8 @@ never republishes the list plane."
         (etaf-runtime-update-host-geometry runtime 'ncm-list-selection
                                            :top (list 'lh (car lines)))
         (etaf-runtime-update-host-geometry runtime 'ncm-list-playing
-                                           :top (list 'lh (cdr lines)))))))
+                                           :top (list 'lh (cdr lines))))
+      (etaf-ncm--reveal-selection app))))
 
 (defun etaf-ncm--schedule-list-highlights (app lines)
   "Coalesce APP's highlight-bar move to LINES onto the next tick.
@@ -804,8 +881,7 @@ the backend.  A caller-provided MODEL keeps its library, queue and selection."
                                                   (make-display-table)))))
                     (set-display-table-slot table 'truncation ?\s)
                     table))
-      (etaf-ncm--remap-canvas-face)
-      (use-local-map etaf-ncm-mode-map))
+      (etaf-ncm--remap-canvas-face))
     ;; A native text app owns the window it was opened from: a general
     ;; `display-buffer' rule must not split the frame into a playground-style
     ;; pane, so open in the selected window and let the app fill it.

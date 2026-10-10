@@ -4,6 +4,15 @@ All notable user-visible changes to ETAF NCM.
 
 ## Unreleased
 
+- Every control is keyboard-operable through ETAF's shared navigation instead
+  of an app keymap. `TAB` / `S-TAB` move between regions, arrows and
+  `C-n` / `C-p` / `C-b` / `C-f` move inside the sidebar, chips, tabs, queue and
+  player controls, the focused sliders step with `←` / `→`, and `?` opens a
+  palette of all keys and controls. List navigation keys (`↑` / `↓`, `RET`,
+  `Home` / `End`, `PageUp` / `PageDown`) act on the focused song list, and the
+  cursor follows its selection. `etaf-ncm-mode-map` is removed; customize keys
+  through the view instead.
+
 - The player adapts to the window as one planned system instead of fixed
   breakpoints and squeezed parts. The tiers (`wide`, `medium`, `narrow`) are
   still there, but their thresholds are derived from the columns the header

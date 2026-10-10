@@ -33,10 +33,13 @@ M-x etaf-ncm-open
 ```
 
 The player mounts in `etaf-ncm-buffer-name` (default `*ETAF 网易云音乐*`), hides
-its mode line, installs `etaf-ncm-mode-map` and fills the selected window
-instead of letting a display rule split the frame; it takes the window
-selection. The buffer is a normal Ebox buffer: `TAB` cycles focus through the interactive
-controls and `RET` activates the focused one. `M-x etaf-ncm-close` unmounts the
+its mode line and fills the selected window instead of letting a display
+rule split the frame; it takes the window selection and focuses the song
+list. Every control is reachable from the keyboard through ETAF's shared
+navigation: `TAB` / `S-TAB` move between regions (sidebar, chips, list, pane
+tabs, side panel, player controls), arrows and `C-n` / `C-p` / `C-b` / `C-f`
+move inside a region, `RET` / `SPC` activate the focused control and `?`
+opens a palette of every key and control. `M-x etaf-ncm-close` unmounts the
 player and kills the buffer; the session behind it stays usable, so reopening
 with the same session keeps its library, selection and queue.
 
@@ -49,12 +52,14 @@ is revived by its next mount.
 
 | Key | Action |
 | --- | --- |
-| `j` / `k`, `C-n` / `C-p`, `↓` / `↑` | Move the library selection, scrolling a page at the ends |
+| `j` / `k` anywhere; `↓` / `↑`, `C-n` / `C-p` in the focused list | Move the library selection, scrolling a page at the ends |
 | wheel | Scroll the queue window when over the visible queue panel; otherwise scroll the visible library window without moving the selection |
 | click a row | Select it; pressing the selected row plays it |
-| `RET` | Play the selected row |
-| `Home` / `End` | Jump to the first / last loaded row of the library |
-| `PageUp` / `PageDown` | Move the selection by one page |
+| `RET` in the focused list | Play the selected row |
+| `Home` / `End` in the focused list | Jump to the first / last loaded row of the library |
+| `PageUp` / `PageDown` in the focused list | Move the selection by one page |
+| `↑` / `↓` in the focused queue | Move between queue entries, scrolling the queue at its edges |
+| `←` / `→` on the focused progress / volume slider | Seek / change volume by five |
 | click or drag the progress bar | Seek to the position under the pointer |
 | click or drag the volume slider | Set volume at the pointer, from 0 to 130% |
 | click the cover / `词` / queue control | Show lyrics / lyrics / the queue, preserving the current selection and queue window |
@@ -75,8 +80,9 @@ is revived by its next mount.
 | `,` / `.` | Seek ten seconds back / forward |
 | `1`-`9` | Jump to the nth sidebar library |
 | `T` | Switch between the dark and the light palette |
-| `?` | Show the key reference |
-| `TAB` / `S-TAB` | Cycle focus through buttons, the search field, panel tabs and visible queue entries |
+| `?` | Open the command palette listing every key and focusable control |
+| `TAB` / `S-TAB` | Move focus between regions; arrows move inside the sidebar, chips, tabs and player controls |
+| `Esc` / `C-g` | Close an open surface |
 | `q` | Close the player buffer |
 
 `n` and `p` intentionally replace Ebox's line scrolling: the player view is
