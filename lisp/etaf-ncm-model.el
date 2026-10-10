@@ -1683,6 +1683,19 @@ one publication costs, so apply once the drag settles instead of per event.")
           (run-at-time etaf-ncm--resize-settle-delay nil
                        #'etaf-ncm--window-size-change-apply))))
 
+(defun etaf-ncm--transient-space-borrow-p (frame window app)
+  "Whether FRAME's transient UI borrows WINDOW's lines from APP's layout.
+An active minibuffer or completion popup takes lines from displayed windows
+without the user resizing the frame; the player keeps the layout it
+committed, exactly as the canvas keeps its committed viewport.  Window
+growth is real geometry and always applies.  A shorter window with no
+transient UI above it is a real resize too."
+  (let ((minibuffer (active-minibuffer-window)))
+    (and minibuffer
+         (eq (window-frame minibuffer) frame)
+         (< (window-body-height window)
+            (or (etaf-ncm--read app :window-rows) 0)))))
+
 (defun etaf-ncm--settle-canvas (app window)
   "Refit APP's canvas to WINDOW's settled size.
 A player mounted before the window manager finished resizing its frame may
@@ -1695,7 +1708,11 @@ mount following it."
       (etaf-refit runtime window))))
 
 (defun etaf-ncm--window-size-change-apply ()
-  "Adapt every mounted player to its window's settled size."
+  "Adapt every mounted player to its window's settled size.
+A window whose lines an active minibuffer borrows keeps the layout the
+player already committed until that UI releases them: borrowing the lines
+must not shrink the library, the lyric or the player bar just because a
+command or completion popup is asking for input."
   (setq etaf-ncm--resize-timer nil)
   (let ((frames (prog1 (nreverse etaf-ncm--resize-frames)
                   (setq etaf-ncm--resize-frames nil))))
@@ -1705,14 +1722,15 @@ mount following it."
           (let ((buffer (window-buffer window)))
             (when (and (buffer-live-p buffer)
                        (buffer-local-value 'etaf-ncm--model buffer))
-              (let* ((model (buffer-local-value 'etaf-ncm--model buffer))
-                     (layout (etaf-ncm--read model :layout))
-                     (settled (etaf-ncm--sync-layout model window)))
-                ;; A window that grew across a layout boundary is the case a
-                ;; mount that preceded the frame resize leaves painted at the
-                ;; old canvas; a smaller change keeps the ordinary path.
-                (unless (eq layout settled)
-                  (etaf-ncm--settle-canvas model window))))))))))
+              (let ((model (buffer-local-value 'etaf-ncm--model buffer)))
+                (unless (etaf-ncm--transient-space-borrow-p frame window model)
+                  (let* ((layout (etaf-ncm--read model :layout))
+                         (settled (etaf-ncm--sync-layout model window)))
+                    ;; A window that grew across a layout boundary is the case
+                    ;; a mount that preceded the frame resize leaves painted at
+                    ;; the old canvas; a smaller change keeps the ordinary path.
+                    (unless (eq layout settled)
+                      (etaf-ncm--settle-canvas model window))))))))))))
 
 (defun etaf-ncm--compact-layout-p (app)
   "Return non-nil when APP shows one pane at a time."

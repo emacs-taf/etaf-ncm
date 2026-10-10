@@ -45,6 +45,10 @@ All notable user-visible changes to ETAF NCM.
   including consecutive songs with equally sized artwork and cached revisits.
   Playback status corrects an earlier queue reply's cover without waiting for
   the queue to refresh again.
+- Opening the minibuffer (`M-x`, a completion popup or the player's own
+  prompts) no longer shrinks the library page, the panes or the player bar to
+  the lines the prompt borrows. The player keeps the layout it committed for
+  the window and returns to the full view unchanged once the prompt closes.
 - The selection and playing highlight are two overlay bars moved as retained
   host geometry. Moving the selection or changing the playing song no longer
   repaints the list plane; a row update costs content only, so a long list
