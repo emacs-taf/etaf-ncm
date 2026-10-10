@@ -1683,19 +1683,6 @@ one publication costs, so apply once the drag settles instead of per event.")
           (run-at-time etaf-ncm--resize-settle-delay nil
                        #'etaf-ncm--window-size-change-apply))))
 
-(defun etaf-ncm--transient-space-borrow-p (frame window app)
-  "Whether FRAME's transient UI borrows WINDOW's lines from APP's layout.
-An active minibuffer or completion popup takes lines from displayed windows
-without the user resizing the frame; the player keeps the layout it
-committed, exactly as the canvas keeps its committed viewport.  Window
-growth is real geometry and always applies.  A shorter window with no
-transient UI above it is a real resize too."
-  (let ((minibuffer (active-minibuffer-window)))
-    (and minibuffer
-         (eq (window-frame minibuffer) frame)
-         (< (window-body-height window)
-            (or (etaf-ncm--read app :window-rows) 0)))))
-
 (defun etaf-ncm--settle-canvas (app window)
   "Refit APP's canvas to WINDOW's settled size.
 A player mounted before the window manager finished resizing its frame may
@@ -1723,7 +1710,8 @@ command or completion popup is asking for input."
             (when (and (buffer-live-p buffer)
                        (buffer-local-value 'etaf-ncm--model buffer))
               (let ((model (buffer-local-value 'etaf-ncm--model buffer)))
-                (unless (etaf-ncm--transient-space-borrow-p frame window model)
+                (unless (etaf-transient-space-borrowed-p
+                         window (etaf-ncm--read model :window-rows))
                   (let* ((layout (etaf-ncm--read model :layout))
                          (settled (etaf-ncm--sync-layout model window)))
                     ;; A window that grew across a layout boundary is the case

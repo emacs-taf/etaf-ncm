@@ -92,9 +92,9 @@ model and is expressed by the view:
 - `etaf-ncm--window-size-change` is installed on `window-size-change-functions`
   once per session; resizing re-resolves the layout, and it ignores buffers
   without a model.  Lines borrowed by an active minibuffer or completion popup
-  are not a resize: the player keeps the layout it committed until the prompt
-  closes, matching the canvas, which Ebox likewise leaves at its committed
-  viewport.
+  are not a resize: `etaf-transient-space-borrowed-p' decides it and the
+  player keeps the layout it committed until the prompt closes, like the
+  canvas, which Ebox leaves at its committed viewport.
 - The view reads `:layout`, `:columns` and `:window-rows` while it renders, so
   one ref write repaints header, sidebar, panes and player consistently, and a
   resize re-decides the row variant and the chip size. Layout decisions that
