@@ -124,6 +124,35 @@ SCREENSHOT asks the engine for a window capture after the action settles."
    :settled-p (lambda (context) (ignore context) t)
    :assertions assertions))
 
+(defun etaf-ncm-gui--focused (context)
+  "Return the ref of the Host focused in CONTEXT's player."
+  (with-current-buffer (etaf-ncm-gui--target context)
+    (etaf-focused-host-ref (etaf-runtime-for-buffer (current-buffer)))))
+
+(defun etaf-ncm-gui--tab-walk (context)
+  "Press TAB from the focused song list until focus returns; return the refs."
+  (with-current-buffer (etaf-ncm-gui--target context)
+    (etaf-focus (etaf-runtime-for-buffer (current-buffer)) 'ncm-list))
+  (let (walk)
+    (catch 'done
+      (dotimes (_ 60)
+        (etaf-ncm-gui--key context "TAB")
+        (let ((ref (etaf-ncm-gui--focused context)))
+          (push ref walk)
+          (when (eq ref 'ncm-list) (throw 'done nil)))))
+    (nreverse walk)))
+
+(defun etaf-ncm-gui--palette (context choice)
+  "Open CONTEXT's `?' palette, choose CHOICE, return every listed label."
+  (let (names)
+    (cl-letf (((symbol-function 'completing-read)
+               (lambda (_prompt collection &rest _)
+                 (setq names (all-completions "" collection))
+                 (or (seq-find (lambda (name) (string-prefix-p choice name)) names)
+                     (keyboard-quit)))))
+      (condition-case nil (etaf-ncm-gui--key context "?") (quit nil)))
+    names))
+
 (defun etaf-ncm-gui--press-control (context ref)
   "Activate the bar control REF through ETAF's press dispatch.
 A click or RET ends in a `press' dispatch for its Host; dispatching the ref
@@ -465,18 +494,80 @@ closed."
                (equal (plist-get (etaf-ncm-gui--state context) :theme)
                       (etaf-gui-verifier-context-get context 'theme-before))))))
      (etaf-ncm-gui--action
-      "help"
+      "palette"
       (lambda (context)
-        (let (captured)
-          (cl-letf (((symbol-function 'message)
-                     (lambda (format &rest arguments)
-                       (setq captured (apply #'format format arguments)))))
-            (etaf-ncm-gui--key context "?"))
-          (etaf-gui-verifier-context-put context 'help-message captured)))
+        (etaf-ncm-gui--clear-requests)
+        (etaf-gui-verifier-context-put
+         context 'palette (etaf-ncm-gui--palette context "下一首")))
       (lambda (context)
-        (let ((shown (etaf-gui-verifier-context-get context 'help-message)))
-          (list (etaf-ncm-gui--assert "? shows the key map"
-                                      (and shown (string-match-p "滚轮" shown)))))))
+        (let ((names (etaf-gui-verifier-context-get context 'palette)))
+          (list (etaf-ncm-gui--assert
+                 "? lists the player keys and controls"
+                 (cl-every (lambda (label)
+                             (seq-find (lambda (name) (string-prefix-p label name))
+                                       names))
+                           '("下一首" "播放选中行" "音乐库：每日推荐")))
+                (etaf-ncm-gui--assert "a palette choice runs its command"
+                                      (etaf-ncm-gui--request :next))))))
+     (etaf-ncm-gui--action
+      "keyboard-tab-walk"
+      (lambda (context)
+        (etaf-gui-verifier-context-put
+         context 'tab-walk (etaf-ncm-gui--tab-walk context)))
+      (lambda (context)
+        (let ((walk (etaf-gui-verifier-context-get context 'tab-walk)))
+          (list (etaf-ncm-gui--assert
+                 "Tab reaches every region and returns to the list"
+                 (and (eq (car (last walk)) 'ncm-list)
+                      (cl-every (lambda (ref) (memq ref walk))
+                                '(ncm-seek ncm-volume ncm-lyrics))
+                      ;; A group is one stop entered at its remembered member.
+                      (cl-some (lambda (ref) (memq ref walk))
+                               '(ncm-previous ncm-play ncm-next)))
+                 (format "%S" walk)))))
+      screenshots)
+     (etaf-ncm-gui--action
+      "keyboard-transport-arrows"
+      (lambda (context)
+        (with-current-buffer (etaf-ncm-gui--target context)
+          (etaf-focus (etaf-runtime-for-buffer (current-buffer)) 'ncm-play))
+        (etaf-ncm-gui--key context "<right>")
+        (etaf-gui-verifier-context-put context 'right (etaf-ncm-gui--focused context))
+        (etaf-ncm-gui--key context "C-b C-b")
+        (etaf-gui-verifier-context-put context 'left (etaf-ncm-gui--focused context))
+        (etaf-ncm-gui--clear-requests)
+        (etaf-ncm-gui--key context "RET"))
+      (lambda (context)
+        (list (etaf-ncm-gui--assert
+               "arrows walk the transport group"
+               (and (eq (etaf-gui-verifier-context-get context 'right) 'ncm-next)
+                    (eq (etaf-gui-verifier-context-get context 'left) 'ncm-previous)))
+              (etaf-ncm-gui--assert "RET presses the focused control"
+                                    (etaf-ncm-gui--request :previous))))
+      screenshots)
+     (etaf-ncm-gui--action
+      "keyboard-volume-step"
+      (lambda (context)
+        (with-current-buffer (etaf-ncm-gui--target context)
+          (etaf-focus (etaf-runtime-for-buffer (current-buffer)) 'ncm-volume))
+        (etaf-ncm-gui--clear-requests)
+        (etaf-ncm-gui--key context "<left>"))
+      (lambda (context)
+        (list (etaf-ncm-gui--assert "Left steps the focused volume"
+                                    (etaf-ncm-gui--request :volume)))))
+     (etaf-ncm-gui--action
+      "keyboard-back-to-list"
+      (lambda (context)
+        (with-current-buffer (etaf-ncm-gui--target context)
+          (etaf-focus (etaf-runtime-for-buffer (current-buffer)) 'ncm-list))
+        (etaf-gui-verifier-context-put
+         context 'selection (plist-get (etaf-ncm-gui--state context) :selection))
+        (etaf-ncm-gui--key context "<down>"))
+      (lambda (context)
+        (list (etaf-ncm-gui--assert
+               "Down in the focused list moves the selection"
+               (= (plist-get (etaf-ncm-gui--state context) :selection)
+                  (1+ (etaf-gui-verifier-context-get context 'selection)))))))
      ;; --- Layout matrix ----------------------------------------------------
      (etaf-ncm-gui--resize 90 30 'medium screenshots)
      (etaf-ncm-gui--action
@@ -516,7 +607,7 @@ closed."
       (lambda (context)
         (list (etaf-ncm-gui--assert "narrow returns to the list"
                                     (etaf-ncm-gui--shows context "曲目 1")))))
-     (etaf-ncm-gui--resize 130 14 'wide screenshots)
+     (etaf-ncm-gui--resize 150 14 'wide screenshots)
      (etaf-ncm-gui--action
       "short-frame-keeps-the-bar"
       (lambda (context) (ignore context))
