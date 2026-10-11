@@ -16,8 +16,8 @@
   "Native frame sizes used by the interaction matrix.")
 
 (defconst etaf-ncm-benchmark-actions
-  '((:id "select.down" :key "j" :setup home :selection delta-down)
-    (:id "select.up" :key "k" :setup end :selection delta-up)
+  '((:id "select.down" :key "<down>" :setup home :selection delta-down)
+    (:id "select.up" :key "<up>" :setup end :selection delta-up)
     (:id "page.next" :key "<next>" :setup home :selection next-page)
     (:id "page.previous" :key "<prior>" :setup end :selection previous-page)
     (:id "page.first" :key "<home>" :setup end :selection first)
@@ -66,7 +66,7 @@
     (:id "panel.queue-track" :ref ncm-queue :aside queue :setup lyrics)
     (:id "panel.lyrics" :ref ncm-lyrics :aside lyrics :setup queue)
     (:id "panel.cover" :ref ncm-cover :aside lyrics :setup queue :layouts (wide short))
-    (:id "panel.toggle" :key "l" :setup lyrics :aside queue)
+    (:id "panel.toggle" :key "i" :setup lyrics :aside queue)
     (:id "pane.toggle" :key "v" :setup list :pane aside :layouts (medium narrow))
     (:id "tab.list" :help "列表" :setup queue :pane list :layouts (medium narrow))
     (:id "tab.lyrics" :help "歌词" :setup list :aside lyrics :layouts (medium narrow))

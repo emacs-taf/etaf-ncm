@@ -275,13 +275,13 @@ closed."
       t)
      (etaf-ncm-gui--action
       "selection-j-k"
-      (lambda (context) (etaf-ncm-gui--key context "j"))
+      (lambda (context) (etaf-ncm-gui--key context "<down>"))
       (lambda (context)
         (list (etaf-ncm-gui--assert "j selects the second row"
                                     (= (plist-get (etaf-ncm-gui--state context) :selection) 1)))))
      (etaf-ncm-gui--action
       "selection-k-back"
-      (lambda (context) (etaf-ncm-gui--key context "k"))
+      (lambda (context) (etaf-ncm-gui--key context "<up>"))
       (lambda (context)
         (list (etaf-ncm-gui--assert "k returns to the first row"
                                     (= (plist-get (etaf-ncm-gui--state context) :selection) 0)))))
@@ -416,13 +416,13 @@ closed."
      ;; --- Panes, asides, search, refresh ----------------------------------
      (etaf-ncm-gui--action
       "aside-switches-to-queue"
-      (lambda (context) (etaf-ncm-gui--key context "l"))
+      (lambda (context) (etaf-ncm-gui--key context "i"))
       (lambda (context)
         (list (etaf-ncm-gui--assert "l switches the aside"
                                     (eq (plist-get (etaf-ncm-gui--state context) :aside) 'queue)))))
      (etaf-ncm-gui--action
       "aside-back-to-lyrics"
-      (lambda (context) (etaf-ncm-gui--key context "l"))
+      (lambda (context) (etaf-ncm-gui--key context "i"))
       (lambda (context)
         (list (etaf-ncm-gui--assert "l returns to lyrics"
                                     (eq (plist-get (etaf-ncm-gui--state context) :aside) 'lyrics)))))

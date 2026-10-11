@@ -1670,7 +1670,7 @@ guard alone would accept as settled."
         (etaf-ncm-tests--press-help "显示播放列表")
         (should (eq (plist-get (etaf-ncm-state app) :pane) 'aside))
         (etaf-ncm-tests--rendered-text)
-        (etaf-ncm-tests--press-help "显示歌词 (l)")
+        (etaf-ncm-tests--press-help "显示歌词 (i)")
         (should (eq (plist-get (etaf-ncm-state app) :aside) 'lyrics))
         (should (eq (plist-get (etaf-ncm-state app) :pane) 'aside))
         (dolist (label '("列表" "歌词" "队列"))
@@ -1745,7 +1745,7 @@ precedence over it, so the real command loop finds the player command."
       (execute-kbd-macro (kbd "SPC"))
       (should (etaf-ncm-tests--request :toggle))
       ;; The focused library list plays the selected row on RET.
-      (execute-kbd-macro (kbd "j"))
+      (execute-kbd-macro (kbd "<down>"))
       (setq etaf-ncm-tests--requests nil)
       (execute-kbd-macro (kbd "RET"))
       (should (or (etaf-ncm-tests--request :play)
@@ -1772,7 +1772,7 @@ precedence over it, so the real command loop finds the player command."
     (etaf-ncm-refresh app)
     (etaf-ncm-tests--with-player app
       (let ((names (etaf-ncm-tests--palette nil)))
-        (dolist (label '("下一首" "播放选中行" "选择下一行" "音乐库：每日推荐" "音量，点击或拖动调节"))
+        (dolist (label '("下一首" "播放选中行" "切换歌词 / 队列" "音乐库：每日推荐" "音量，点击或拖动调节"))
           (should (seq-find (lambda (name) (string-prefix-p label name)) names))))
       (setq etaf-ncm-tests--requests nil)
       (etaf-ncm-tests--palette "下一首")

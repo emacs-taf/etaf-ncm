@@ -180,7 +180,7 @@ the player.  This geometry is independent of point and the selected window."
   "Scroll the queue or library window by DELTA at EVENT's position.
 A wheel over the visible queue panel moves that window; elsewhere a visible
 library window scrolls while its selection stays where it is, so a gesture can
-browse rows without losing the row j/k and presses still act on."
+browse rows without losing the row arrows and presses still act on."
   (let* ((position (event-start event))
          (window (posn-window position)))
     (when (window-live-p window)
@@ -415,7 +415,7 @@ Binding the session lets an embedded player share the buffer-free commands."
 (defun etaf-ncm--keys (session)
   "Return the player-wide `:keys' of SESSION's root.
 Arrows, RET and Tab stay with the focused region, so a focus group, a range
-or the library list keeps them; `?' opens the ETAF command palette."
+or the library list keeps them; `?' opens the read-only ETAF key help."
   (append
    (mapcar
     (lambda (entry)
@@ -423,14 +423,12 @@ or the library list keeps them; `?' opens the ETAF command palette."
     '(("SPC" etaf-ncm--toggle-playback "播放 / 暂停")
       ("n" etaf-ncm--next-track "下一首")
       ("p" etaf-ncm--previous-track "上一首")
-      ("j" etaf-ncm--next-item "选择下一行")
-      ("k" etaf-ncm--previous-item "选择上一行")
       ("a" etaf-ncm--add-to-queue "选中歌曲加入队列")
       ("d" etaf-ncm--download "下载选中歌曲")
       ("s" etaf-ncm--search "搜索")
       ("/" etaf-ncm--search "搜索")
       ("g" etaf-ncm--refresh "刷新")
-      ("l" etaf-ncm--toggle-aside "切换歌词 / 队列")
+      ("i" etaf-ncm--toggle-aside "切换歌词 / 队列")
       ("v" etaf-ncm--toggle-pane "切换列表 / 面板")
       ("r" etaf-ncm--toggle-repeat "列表循环")
       ("z" etaf-ncm--toggle-shuffle "随机播放")
@@ -456,13 +454,12 @@ or the library list keeps them; `?' opens the ETAF command palette."
 
 (defun etaf-ncm--list-keys (session)
   "Return the library list's `:keys' for SESSION.
-The list is one focus stop whose arrows move the selection, not the focus."
+The list is one focus stop whose directions move the selection through its
+`:on-direction' handler, not the focus."
   (mapcar
    (lambda (entry)
      (list (car entry) (etaf-ncm--key-command session (nth 1 entry)) (nth 2 entry)))
-   '(("<down>" etaf-ncm--next-item "选择下一行")
-     ("<up>" etaf-ncm--previous-item "选择上一行")
-     ("C-n" etaf-ncm--next-item nil)
+   '(("C-n" etaf-ncm--next-item nil)
      ("C-p" etaf-ncm--previous-item nil)
      ("<home>" etaf-ncm--first-item "第一行")
      ("<end>" etaf-ncm--last-item "最后一行")
@@ -485,18 +482,16 @@ The list is one focus stop whose arrows move the selection, not the focus."
           (t (etaf-ncm--scroll-queue session delta)))))
 
 (defun etaf-ncm--queue-keys (session)
-  "Return the queue group's `:keys' for SESSION."
-  (let ((step (lambda (delta)
-                (lambda () (interactive) (etaf-ncm--queue-step session delta))))
-        (page (lambda (sign)
+  "Return the queue group's `:keys' for SESSION.
+The queue is one focus group whose directions move the selection through its
+`:on-direction' handler."
+  (let ((page (lambda (sign)
                 (lambda ()
                   (interactive)
                   (etaf-ncm--scroll-queue
                    session (* sign (max 1 (etaf-ncm--read session :queue-rows))))))))
-    (list (list "<down>" (funcall step 1) "队列下一首")
-          (list "<up>" (funcall step -1) "队列上一首")
-          (list "C-n" (funcall step 1))
-          (list "C-p" (funcall step -1))
+    (list (list "C-n" (lambda () (interactive) (etaf-ncm--queue-step session 1)))
+          (list "C-p" (lambda () (interactive) (etaf-ncm--queue-step session -1)))
           (list "<next>" (funcall page 1) "队列下一页")
           (list "<prior>" (funcall page -1) "队列上一页"))))
 
@@ -584,6 +579,19 @@ releases the polling timer and the session's pending backend requests."
              (keys (etaf-ncm--keys session))
              (list-keys (etaf-ncm--list-keys session))
              (queue-keys (etaf-ncm--queue-keys session))
+             (list-direction
+              (lambda (direction)
+                (let ((etaf-ncm--model session))
+                  (pcase direction
+                    ('down (etaf-ncm--next-item) 'handled)
+                    ('up (etaf-ncm--previous-item) 'handled)
+                    (_ 'release)))))
+             (queue-direction
+              (lambda (direction)
+                (pcase direction
+                  ('down (etaf-ncm--queue-step session 1) 'handled)
+                  ('up (etaf-ncm--queue-step session -1) 'handled)
+                  (_ 'release))))
              (on-list-focus (lambda () (etaf-ncm--reveal-selection session)))
              (on-jump-queue (lambda (index) (etaf-ncm-jump-queue session index)))
              (on-show-pane (lambda (target) (etaf-ncm-show-pane session target)))
@@ -744,7 +752,7 @@ releases the polling timer and the session's pending backend requests."
          :model session
          :compact (etaf-ncm--compact-layout-p session)
          :selection (etaf-ncm--ref session :selection)
-         :keys list-keys :on-focus on-list-focus
+         :keys list-keys :on-direction list-direction :on-focus on-list-focus
          :on-press on-press-row
          :on-action on-row-action))
       (etaf-ncm--view-aside
@@ -762,6 +770,7 @@ releases the polling timer and the session's pending backend requests."
        :window-rows (etaf-ncm--read session :window-rows)
        :projection queue-panel :rows (etaf-ncm--read session :queue-rows)
        :queue-keys queue-keys
+       :queue-direction queue-direction
        :on-switch on-switch-aside
        :on-jump on-jump-queue)
     (etaf-ncm--view-pane-tabs

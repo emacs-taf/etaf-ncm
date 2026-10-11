@@ -157,7 +157,7 @@ hold snapshots without keeping the player alive or accidentally mutating it.
   widths, and excludes a hidden pane and the player bar. An app-local emulation
   map overrides only wheel events above the renderer's minor-mode bindings.
   Outside the queue the wheel scrolls the visible library window a row at a
-  time and leaves the selection alone; j/k and presses still choose rows.
+  time and leaves the selection alone; arrow keys and presses still choose rows.
   Queue entries retain their press callback, focusable button role and normal
   TAB/RET bindings.
 - Transport commands publish their local effect before the backend answers: the

@@ -52,7 +52,7 @@ is revived by its next mount.
 
 | Key | Action |
 | --- | --- |
-| `j` / `k` anywhere; `↓` / `↑`, `C-n` / `C-p` in the focused list | Move the library selection, scrolling a page at the ends |
+| `↓` / `↑`, `C-n` / `C-p` in the focused list | Move the library selection, scrolling a page at the ends |
 | wheel | Scroll the queue window when over the visible queue panel; otherwise scroll the visible library window without moving the selection |
 | click a row | Select it; pressing the selected row plays it |
 | `RET` in the focused list | Play the selected row |
@@ -71,7 +71,7 @@ is revived by its next mount.
 | `s`, `/` | Search songs (a `read-string` prompt) |
 | `L` | Sign in with an SMS verification code (a minibuffer prompt for the phone number and then the code) |
 | `g` | Refresh the library, playback status, queue and account |
-| `l` | Switch the side panel between the lyric and the queue |
+| `i` | Switch the side panel between the lyric and the queue |
 | `v` | Switch between the library list and the side panel in a compact layout |
 | `r` | Toggle list repeat (`列表循环`) |
 | `z` | Toggle shuffle |
@@ -143,7 +143,7 @@ transport, pane controls, progress and volume. The page fills every row the
 window budget leaves after the header, chip strip, pane switch and player bar;
 the wheel scrolls the window through all loaded rows, and the footer labels the
 visible range and the loaded total. `v` switches between the list and the side
-panel there, `l` shows the lyric or queue panel, and `etaf-ncm-show-pane` does
+panel there, `i` shows the lyric or queue panel, and `etaf-ncm-show-pane` does
 the same from Lisp. `etaf-ncm-state` reports the current `:layout` and `:pane`.
 
 Two type sizes are used: the frame's default for anything a reader acts on, and
@@ -255,7 +255,7 @@ expiry. Downloading a song that is already local refreshes the file in place.
 The lyric is fetched for the playing song id, parsed from LRC into timed lines
 and shown with the line of the elapsed position emphasized. When the backend has
 a translation for the song, each line shows its translation next to it. The
-panel switches to the queue with `l`.
+panel switches to the queue with `i`.
 
 The palette has a dark and a light variant. `etaf-ncm-theme-mode` selects the
 active one, `etaf-ncm-color` resolves single colours and

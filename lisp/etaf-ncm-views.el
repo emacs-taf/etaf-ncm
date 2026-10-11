@@ -501,11 +501,11 @@ rebuilding the view."
                         (queue-p (etaf-value queue)))
                     (cond (list-p "↑↓ 选择 · Tab 切换")
                           (queue-p "l 切换面板")
-                          (lyrics-p "l 歌词/队列")
+                          (lyrics-p "i 歌词/队列")
                           (t "l 切换面板"))))))))
 
 (etaf-define-component etaf-ncm--view-list
-    (&key model compact selection keys on-focus on-press on-action)
+    (&key model compact selection keys direction on-focus on-press on-action)
   "Render MODEL's visible rows through retained row slots and a page footer.
 Each visible row keeps its slot identity across library switches, so a reply
 updates prepared row text instead of rebuilding the list.  The selection and
@@ -539,7 +539,7 @@ are its `:keys', and ON-FOCUS runs when focus enters it."
          ;; window, hence the conversion.
          (top (1- (etaf-ncm-layout-list-top layout)))
          (footer-rows (etaf-ncm-layout-footer-rows-for window-rows))
-         (hint (cond ((and (not compact) (not short)) "↑↓ 选择 · RET 播放 · a 入队 · d 下载 · / 搜索 · l 歌词 · Tab 切换区域 · ? 命令")
+         (hint (cond ((and (not compact) (not short)) "↑↓ 选择 · RET 播放 · a 入队 · d 下载 · / 搜索 · i 歌词 · Tab 切换区域 · ? 帮助")
                      ((and (<= 44 columns) (not short)) "↑↓ 选择 · Tab 切换 · ? 命令")
                      (t nil)))
          (height (if (and window-rows (> window-rows 0))
@@ -560,7 +560,7 @@ are its `:keys', and ON-FOCUS runs when focus enters it."
            :height (list 'lh height)
            :min-height '(lh 0) :gap '((lh 0) (px 0)) :overflow 'hidden
            :ref 'ncm-list :role 'listbox :aria-label "歌曲列表" :tab-index 0
-           :keys keys :on-focus-enter on-focus
+           :keys keys :on-direction direction :on-focus-enter on-focus
        (box :position 'absolute :z-index 0 :left '(ch 0) :top '(lh 0)
             :width 'stretch :height '(lh 6)
             :visibility (if (zerop (etaf-value visible)) 'visible 'hidden)
@@ -763,16 +763,17 @@ static tab row."
     (box :width '(ch 5) :height '(lh 1) :text-align 'right :color (etaf-ncm-color :dim)
       (text (expr (or (plist-get (etaf-value entry) :right) ""))))))
 
-(etaf-define-component etaf-ncm--view-queue (&key projection rows keys on-jump)
+(etaf-define-component etaf-ncm--view-queue (&key projection rows keys direction on-jump)
   "Render a viewport-sized queue pool without replacing rows on every scroll.
 The cells form one vertical focus group entered at the playing entry; KEYS
-are the group's `:keys', which scroll the pool past its first and last cell."
+are the group's `:keys' and DIRECTION moves its selection and scrolls past
+the pool's first and last cell."
   :render
   (let ((offsets (and (> rows 0) (number-sequence 0 (1- rows)))))
    (etaf-view
   (flex :position 'relative :flex-direction 'column :width 'stretch :flex-grow 1 :flex-basis '(lh 0)
         :min-height '(lh 0) :gap '((lh 0) (px 0)) :overflow 'hidden
-        :ref 'ncm-queue :focus-group 'vertical :keys keys
+        :ref 'ncm-queue :focus-group 'vertical :keys keys :on-direction direction
     (column :width 'stretch :height '(lh 2) :item-gap '(lh 0)
       (text :font-weight 'bold "播放队列")
       (text :color (etaf-ncm-color :dim)
@@ -787,7 +788,7 @@ are the group's `:keys', which scroll the pool past its first and last cell."
 
 (etaf-define-component etaf-ncm--view-aside
     (&key kind visible layout columns window-rows title artist album cover
-          projection rows queue-keys on-switch on-jump)
+          projection rows queue-keys queue-direction on-switch on-jump)
   "Render one absolute aside variant: KIND is `lyrics' or `queue'.
 Both variants are panels of the root stage; VISIBLE is the reactive source
 that reveals this one, so switching panels publishes retained visibility
@@ -826,7 +827,7 @@ already stop the content above it."
            :title title :artist artist :album album :cover cover
            :projection projection :rows rows)
          (etaf-ncm--view-queue :if (eq kind 'queue)
-           :projection projection :rows rows :keys queue-keys :on-jump on-jump))))))
+           :projection projection :rows rows :keys queue-keys :direction queue-direction :on-jump on-jump))))))
 
 (defun etaf-ncm--reactive-text (text)
   "Return TEXT's current string, reading a reactive source in place.
@@ -995,7 +996,7 @@ Controls sit in separated groups so the right edge reads as three ideas
     (flex :height '(lh 1) :align-items 'center :flex-shrink 0 :focus-group 'horizontal
           :gap (if compact '((lh 0) (ch 0.5)) '((lh 0) (ch 1)))
       (etaf-ncm--view-control :ref 'ncm-lyrics :icons '(lyrics . lyrics) :value lyrics
-                              :help "显示歌词 (l)" :on-press on-lyrics)
+                              :help "显示歌词 (i)" :on-press on-lyrics)
       (etaf-ncm--view-control :ref 'ncm-queue-aside :icon 'queue :help "显示播放列表"
                               :on-press on-queue))
     (box :width '(ch 1) :height '(lh 1) (text " "))
