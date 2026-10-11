@@ -86,9 +86,11 @@ is revived by its next mount.
 | `q` | Close the player buffer |
 
 `n` and `p` intentionally replace Ebox's line scrolling: the player view is
-paginated to the window, and the wheel scrolls the library's row window
-without moving the selection. Resizing the frame updates the layout and
-re-fits the page; see [Window layouts](#window-layouts).
+paginated to its region, and the wheel scrolls the library's row window
+without moving the selection. Resizing that region updates the layout and
+re-fits the page; standing alone the region is the buffer window, and an
+embedded player follows the window, pane or tab that hosts it; see
+[Window layouts](#window-layouts).
 
 ### Signing in
 

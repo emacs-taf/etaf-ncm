@@ -104,9 +104,10 @@
 ;;
 ;; Function: etaf-ncm-refresh (app)
 ;; Reload APP's library, playback status, queue and account.
-;; It re-resolves the window layout and re-fits the visible row count, so call it
-;; after a resize.  Every request is asynchronous and a reply belonging to a
-;; superseded load is dropped, which makes repeated refreshes safe.
+;; A mounted player fits its layout and row budgets to its viewport instead
+;; of a refresh, so resizing the player's region needs no call.  Every request
+;; is asynchronous and a reply belonging to a superseded load is dropped,
+;; which makes repeated refreshes safe.
 ;;
 ;; Function: etaf-ncm-locate (app section)
 ;; Show SECTION of APP's library.
@@ -220,16 +221,16 @@
 ;; Buffer `etaf-ncm-open' mounts the player into.
 ;;
 ;; Variable: etaf-ncm-page-size
-;; Library rows shown at once.  `etaf-ncm-open' replaces it with the count that
-;; fits the window, so the default only applies to a headless session.
+;; Library rows shown at once.  A mounted player replaces it with the count
+;; that fits its viewport, so the default only applies to a headless session.
 ;;
 ;; Variable: etaf-ncm-wide-columns
-;; Frame width, in columns, that fits the library sidebar, the song list and the
+;; Region width, in columns, that fits the library sidebar, the song list and the
 ;; side panel at the same time.  At or above this width the player uses the
 ;; `wide' layout: one selection in the list and the panel always visible.
 ;;
 ;; Variable: etaf-ncm-medium-columns
-;; Frame width, in columns, that still fits a narrow library rail.  At or above
+;; Region width, in columns, that still fits a narrow library rail.  At or above
 ;; this width, but below `etaf-ncm-wide-columns', the player keeps the glyph-only
 ;; rail and shows a single pane; below it the libraries move into a header strip
 ;; and every pane uses the full width.

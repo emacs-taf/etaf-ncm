@@ -1206,10 +1206,10 @@ called with (:ok DATA) or (:error MESSAGE) at the end."
 
 (defun etaf-ncm-refresh (app)
   "Reload APP's library, playback status, queue and account.
-The library reload also re-fits the layout and row count to APP's window; it
-refreshes the list the view already shows, so the reader's position is kept."
+The library reload refreshes the list the view already shows, so the reader's
+position is kept; a mounted player fits its layout and row budgets to its
+viewport separately."
   (etaf-ncm--write app :error nil)
-  (etaf-ncm--sync-layout app)
   (setf (plist-get app :polled-at) 0)
   (if (eq (etaf-ncm--read app :mode) 'search)
       (let* ((query (etaf-ncm--read app :query))
@@ -1584,8 +1584,6 @@ second for the same second."
         (plist-get app :polled-at) 0
         (plist-get app :last-tick) (float-time))
   (etaf-list-cache-start (plist-get app :list-cache))
-  (etaf-ncm--sync-layout app)
-  (add-hook 'window-size-change-functions #'etaf-ncm--window-size-change)
   (unless (plist-get app :timer)
     (setf (plist-get app :timer)
           (run-with-timer etaf-ncm-status-interval etaf-ncm-status-interval
@@ -1609,20 +1607,12 @@ second for the same second."
 ;;; Keyboard navigation and panels
 ;;; ---------------------------------------------------------------------------
 
-(defun etaf-ncm--page-size-for (window layout)
-  "Return the library row count that fits WINDOW's height in LAYOUT.
-The vertical budget lives in `etaf-ncm-layout'; this reads the window and
-delegates, so the model and the views share one decision table."
-  (let ((height (if (and window (window-live-p window))
-                    (window-body-height window)
-                  (frame-height))))
-    (etaf-ncm-layout-page-rows layout height)))
-
-(defun etaf-ncm--window-columns (&optional window)
-  "Return WINDOW's body width in columns, or the frame width when it is dead."
-  (if (and window (window-live-p window))
-      (window-body-width window)
-    (frame-width)))
+(defun etaf-ncm--viewport-columns (pixels)
+  "Return the library column budget for a region PIXELS wide.
+The frame's character width turns the region's pixel width into text columns;
+a host that gives the player its own content font keeps the frame metric for
+the breakpoints."
+  (max 1 (floor pixels (max 1 (frame-char-width)))))
 
 (defun etaf-ncm--layout-for (columns)
   "Return the layout COLUMNS columns of text can hold.
@@ -1630,28 +1620,21 @@ The result is `wide', `medium' or `narrow'; the breakpoints live in
 `etaf-ncm-layout'."
   (etaf-ncm-layout-for columns))
 
-(defun etaf-ncm--sync-layout (app &optional window)
-  "Match APP's layout, pane visibility and row budgets to WINDOW.
-WINDOW defaults to the window showing APP's buffer.  A headless session keeps
-the wide layout, because it has no viewport to adapt to."
-  (let* ((buffer (plist-get app :buffer))
-         (window (or window
-                     (and (buffer-live-p buffer) (get-buffer-window buffer t))))
-         (layout (if window
-                     (etaf-ncm--layout-for (etaf-ncm--window-columns window))
-                   'wide))
-         (height (if (and window (window-live-p window))
-                     (window-body-height window)
-                   (frame-height)))
-         (size (etaf-ncm--page-size-for window layout)))
+(defun etaf-ncm--sync-viewport (app viewport)
+  "Match APP's layout and row budgets to VIEWPORT.
+VIEWPORT is the `(PIXELS . ROWS)' region the player is mounted into (see
+`etaf-viewport'): the buffer window when it stands alone, or the host window,
+pane or tab that embeds it.  One region drives every budget, so an embedded
+and a standalone player lay out by the same rule."
+  (let* ((columns (etaf-ncm--viewport-columns (car viewport)))
+         (height (cdr viewport))
+         (layout (etaf-ncm--layout-for columns))
+         (size (etaf-ncm-layout-page-rows layout height)))
     (etaf-batch
       (when (eq layout 'wide)
         (etaf-ncm--write app :pane 'list))
-      (etaf-ncm--write app :columns (etaf-ncm--window-columns window))
-      (etaf-ncm--write app :window-rows
-                       (if (and window (window-live-p window))
-                           (window-body-height window)
-                         (frame-height)))
+      (etaf-ncm--write app :columns columns)
+      (etaf-ncm--write app :window-rows height)
       (etaf-ncm--write app :layout layout)
       (etaf-ncm--write app :page-size size)
       (etaf-ncm--refresh-slots app)
@@ -1660,65 +1643,6 @@ the wide layout, because it has no viewport to adapt to."
       ;; queue heading.  Translations share this budget with lyric lines.
       (etaf-ncm--write app :lyric-rows (etaf-ncm-layout-lyric-rows layout height)))
     layout))
-
-(defvar etaf-ncm--resize-timer nil
-  "Pending trailing task that applies the latest window sizes.")
-
-(defvar etaf-ncm--resize-frames nil
-  "Frames whose window sizes changed since the last applied batch.")
-
-(defvar etaf-ncm--resize-settle-delay 0.12
-  "Seconds of quiet after the last resize event before applying a layout.
-Applying the layout writes library, layout and page-size readings, and every
-write republishes the whole view.  Dragging an edge fires far more events than
-one publication costs, so apply once the drag settles instead of per event.")
-
-(defun etaf-ncm--window-size-change (frame)
-  "Record FRAME's size change; apply it once the resize settles."
-  (when (frame-live-p frame)
-    (cl-pushnew frame etaf-ncm--resize-frames)
-    (when etaf-ncm--resize-timer
-      (cancel-timer etaf-ncm--resize-timer))
-    (setq etaf-ncm--resize-timer
-          (run-at-time etaf-ncm--resize-settle-delay nil
-                       #'etaf-ncm--window-size-change-apply))))
-
-(defun etaf-ncm--settle-canvas (app window)
-  "Refit APP's canvas to WINDOW's settled size.
-A player mounted before the window manager finished resizing its frame may
-miss the resize notification; `etaf-refit' re-reads the window and keeps the
-mount following it."
-  (let* ((buffer (plist-get app :buffer))
-         (runtime (and (buffer-live-p buffer) (etaf-runtime-for-buffer buffer))))
-    (when (and runtime (etaf-runtime-mounted-p runtime)
-               window (window-live-p window))
-      (etaf-refit runtime window))))
-
-(defun etaf-ncm--window-size-change-apply ()
-  "Adapt every mounted player to its window's settled size.
-A window whose lines an active minibuffer borrows keeps the layout the
-player already committed until that UI releases them: borrowing the lines
-must not shrink the library, the lyric or the player bar just because a
-command or completion popup is asking for input."
-  (setq etaf-ncm--resize-timer nil)
-  (let ((frames (prog1 (nreverse etaf-ncm--resize-frames)
-                  (setq etaf-ncm--resize-frames nil))))
-    (dolist (frame frames)
-      (when (frame-live-p frame)
-        (dolist (window (window-list frame 'no-minibuf))
-          (let ((buffer (window-buffer window)))
-            (when (and (buffer-live-p buffer)
-                       (buffer-local-value 'etaf-ncm--model buffer))
-              (let ((model (buffer-local-value 'etaf-ncm--model buffer)))
-                (unless (etaf-transient-space-borrowed-p
-                         window (etaf-ncm--read model :window-rows))
-                  (let* ((layout (etaf-ncm--read model :layout))
-                         (settled (etaf-ncm--sync-layout model window)))
-                    ;; A window that grew across a layout boundary is the case
-                    ;; a mount that preceded the frame resize leaves painted at
-                    ;; the old canvas; a smaller change keeps the ordinary path.
-                    (unless (eq layout settled)
-                      (etaf-ncm--settle-canvas model window))))))))))))
 
 (defun etaf-ncm--compact-layout-p (app)
   "Return non-nil when APP shows one pane at a time."

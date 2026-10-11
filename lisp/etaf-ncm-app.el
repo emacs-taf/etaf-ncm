@@ -647,6 +647,13 @@ releases the polling timer and the session's pending backend requests."
   :setup
   (progn
     (etaf-theme-provide palette)
+    ;; The mounted player lays out for the region it is given: its own
+    ;; buffer window when it stands alone, or the host window, pane or tab
+    ;; that embeds it (see `etaf-viewport').
+    (etaf-watch-effect
+     (lambda ()
+       (when-let* ((viewport (etaf-viewport)))
+         (etaf-ncm--sync-viewport session viewport))))
     (etaf-watch-effect
      (lambda ()
        (etaf-ncm--schedule-list-highlights session
@@ -665,7 +672,7 @@ releases the polling timer and the session's pending backend requests."
      (lambda ()
        (etaf-ncm--dispose session))))
   :view
-  (flex :position 'relative :flex-direction 'column :width '(vw 100) :height '(vh 100)
+  (flex :position 'relative :flex-direction 'column :width 'stretch :height 'stretch
         ;; The panels carry the top inset themselves: the sidebar, the list
         ;; header and the aside each keep one clear line above their first
         ;; text.  A root padding would show as a differently coloured empty
@@ -887,10 +894,8 @@ the backend.  A caller-provided MODEL keeps its library, queue and selection."
     ;; pane, so open in the selected window and let the app fill it.
     (let ((display-buffer-overriding-action '((display-buffer-same-window))))
       (pop-to-buffer buffer))
-    ;; The layout, page size and viewport come from the window that shows
-    ;; the player, so the first paint already fits it.  The player adapts to
-    ;; later resizes as well (see `etaf-ncm--sync-layout').
-    (etaf-ncm--sync-layout model (selected-window))
+    ;; The mounted player reads its viewport from the region it is given, so
+    ;; the first paint already fits this window and later resizes follow it.
     ;; Let ETAF choose its display-safe viewport from the visible window.
     ;; Passing the raw window body width overrides that policy and forces a
     ;; full refit on the first input when the renderer reserves its margins.

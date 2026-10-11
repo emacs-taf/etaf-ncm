@@ -1268,6 +1268,9 @@ the page is not capped below the rows the window can show."
         (should (string-match-p "歌词42" text))
         (should (string-match-p "译文42" text))
         (set-frame-height (selected-frame) 32)
+        ;; Batch Emacs has no settle pass for the window-size bridge; drive
+        ;; the settled viewport the framework would publish in a GUI.
+        (etaf-refit)
         (etaf-ncm-refresh app)
         (let* ((after (etaf-ncm-state app))
                (text (etaf-ncm-tests--rendered-text))
@@ -1636,6 +1639,7 @@ guard alone would accept as settled."
                                     (buffer-substring-no-properties (car bounds) (cdr bounds))))))
         (dolist (sample '((90 medium) (64 narrow) (180 wide)))
           (set-frame-size (selected-frame) (car sample) 48)
+          (etaf-refit)
           (etaf-ncm-refresh app)
           (etaf-ncm-tests--rendered-text)
           (should (eq (plist-get (etaf-ncm-state app) :layout) (cadr sample)))
@@ -1660,6 +1664,7 @@ guard alone would accept as settled."
         (etaf-dispatch-event (etaf-runtime-for-buffer (current-buffer)) 'ncm-cover 'press)
         (should (eq (plist-get (etaf-ncm-state app) :aside) 'lyrics))
         (set-frame-size (selected-frame) 64 48)
+        (etaf-refit)
         (etaf-ncm-refresh app)
         (etaf-ncm-tests--rendered-text)
         (etaf-ncm-tests--press-help "显示播放列表")

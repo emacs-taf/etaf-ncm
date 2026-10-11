@@ -4,6 +4,11 @@ All notable user-visible changes to ETAF NCM.
 
 ## Unreleased
 
+- The player lays out for the region it is given: its buffer window standing
+  alone, or the window, pane or tab that embeds it.  Breakpoints, column and
+  row budgets follow that region through `etaf-viewport` instead of reading
+  the buffer's Emacs window, so an embedded player resizes with its host
+  exactly like a standalone one.
 - Every control is keyboard-operable through ETAF's shared navigation instead
   of an app keymap. `TAB` / `S-TAB` move between regions, arrows and
   `C-n` / `C-p` / `C-b` / `C-f` move inside the sidebar, chips, tabs, queue and

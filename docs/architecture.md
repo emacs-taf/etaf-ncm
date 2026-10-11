@@ -84,17 +84,18 @@ model and is expressed by the view:
   variant's fixed columns decide whether that variant is used.
 - The chip strip keeps every library: it drops the inter-chip gap and then
   narrows each chip to the icon's inset before a library could fall off.
-- `etaf-ncm--sync-layout` measures the window showing the player buffer and
-  writes `:layout`, `:columns`, `:window-rows`, the page count (`:page-size`),
-  `:queue-rows` and `:lyric-rows`; on a wide frame it forces `:pane` back to
-  `list`. Opening fits after choosing the display window, including a newly
-  split one.
-- `etaf-ncm--window-size-change` is installed on `window-size-change-functions`
-  once per session; resizing re-resolves the layout, and it ignores buffers
-  without a model.  Lines borrowed by an active minibuffer or completion popup
-  are not a resize: `etaf-transient-space-borrowed-p' decides it and the
-  player keeps the layout it committed until the prompt closes, like the
-  canvas, which Ebox leaves at its committed viewport.
+- `etaf-ncm--sync-viewport` reads `etaf-viewport' — the `(PIXELS . ROWS)`
+  region the player is mounted into — and writes `:layout`, `:columns`,
+  `:window-rows`, the page count (`:page-size`), `:queue-rows` and
+  `:lyric-rows`; on a wide region it forces `:pane` back to `list`.  The
+  component learns its region in a setup watcher, so one path covers the
+  standalone buffer window and a host window, pane or tab, and every region
+  change re-resolves the budgets.
+- The region is reactive: Ebox publishes a settled resize to the Runtime
+  viewport, and a host republishes its region after each flush, so the player
+  reflows without reading Emacs windows itself.  Lines borrowed by an active
+  minibuffer or completion popup are not a resize: Ebox keeps the mounted
+  viewport until the prompt closes.
 - The view reads `:layout`, `:columns` and `:window-rows` while it renders, so
   one ref write repaints header, sidebar, panes and player consistently, and a
   resize re-decides the row variant and the chip size. Layout decisions that
@@ -107,8 +108,8 @@ model and is expressed by the view:
   frame) for subtitles, counters, hints and credits. Emphasis is weight, never
   a larger size, so wording cannot change a fixed row height; a short frame
   drops whole lines (the subtitle, the hint) instead.
-- A session without a window (headless) keeps `wide`, which keeps scripted and
-  test sessions independent of the frame they run in.
+- A session without a mount (headless) keeps the `wide` defaults, which keeps
+  scripted and test sessions independent of any window.
 
 ## Lifecycle
 
