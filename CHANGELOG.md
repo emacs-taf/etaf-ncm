@@ -4,6 +4,9 @@ All notable user-visible changes to ETAF NCM.
 
 ## Unreleased
 
+- The player keeps one clear line above and below its panes at every size.
+  The margin belongs to the app, so a hosting window needs no inset and the
+  bottom row budget excludes those two rows.
 - The player lays out for the region it is given: its buffer window standing
   alone, or the window, pane or tab that embeds it.  Breakpoints, column and
   row budgets follow that region through `etaf-viewport` instead of reading

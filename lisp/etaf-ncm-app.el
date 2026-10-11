@@ -673,15 +673,11 @@ releases the polling timer and the session's pending backend requests."
        (etaf-ncm--dispose session))))
   :view
   (flex :position 'relative :flex-direction 'column :width 'stretch :height 'stretch
-        ;; The panels carry the top inset themselves: the sidebar, the list
-        ;; header and the aside each keep one clear line above their first
-        ;; text.  A root padding would show as a differently coloured empty
-        ;; row above the panels, which is what this layout removed.
-        :padding-top '(lh 0)
-        ;; The player bar keeps no bottom padding: the window's echo area is
-        ;; the single clear line under the bar, and the last bar content row
-        ;; (the progress line) sits directly above it.
-        :padding-bottom '(lh 0)
+        ;; The player owns its frame margin: one clear line above and below
+        ;; the panes at every size.  The hosting window adds no inset of its
+        ;; own, so the player paints this margin itself.
+        :padding-top (list 'lh etaf-ncm-viewport-margin-rows)
+        :padding-bottom (list 'lh etaf-ncm-viewport-margin-rows)
         :color (etaf-ncm-color :ink) :bgcolor (etaf-ncm-color :bg)
         :keys keys
     (box :width 'stretch :flex-grow 1 :flex-basis '(lh 0) :min-height '(lh 0))
