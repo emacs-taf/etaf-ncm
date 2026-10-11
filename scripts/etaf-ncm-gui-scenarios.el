@@ -143,14 +143,17 @@ SCREENSHOT asks the engine for a window capture after the action settles."
     (nreverse walk)))
 
 (defun etaf-ncm-gui--palette (context choice)
-  "Open CONTEXT's `?' palette, choose CHOICE, return every listed label."
+  "Open CONTEXT's palette, choose CHOICE, return every listed label."
   (let (names)
     (cl-letf (((symbol-function 'completing-read)
                (lambda (_prompt collection &rest _)
                  (setq names (all-completions "" collection))
                  (or (seq-find (lambda (name) (string-prefix-p choice name)) names)
                      (keyboard-quit)))))
-      (condition-case nil (etaf-ncm-gui--key context "?") (quit nil)))
+      (with-current-buffer (etaf-ncm-gui--target context)
+        (condition-case nil
+            (etaf-palette (etaf-runtime-for-buffer (current-buffer)))
+          (quit nil))))
     names))
 
 (defun etaf-ncm-gui--press-control (context ref)

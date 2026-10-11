@@ -82,7 +82,7 @@ is revived by its next mount.
 | `T` | Switch between the dark and the light palette |
 | `?` | Open the command palette listing every key and focusable control |
 | `TAB` / `S-TAB` | Move focus between regions; arrows move inside the sidebar, chips, tabs and player controls |
-| `Esc` / `C-g` | Close an open surface |
+| `Esc` | Close an open surface |
 | `q` | Close the player buffer |
 
 `n` and `p` intentionally replace Ebox's line scrolling: the player view is

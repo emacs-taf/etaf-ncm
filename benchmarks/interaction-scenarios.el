@@ -156,7 +156,7 @@ resolved from the live GUI; missing/hidden/unfocusable targets fail the run.")
                                (string-to-vector (plist-get action :text)) (kbd "RET"))))
    ((plist-get action :cancel)
     (condition-case nil
-        (execute-kbd-macro (vconcat (kbd (plist-get action :key)) (kbd "C-g")))
+        (execute-kbd-macro (vconcat (kbd (plist-get action :key)) (kbd "C-c C-k")))
       (quit nil)))
    ((plist-get action :key) (execute-kbd-macro (kbd (plist-get action :key))))
    (t (execute-kbd-macro (kbd "RET"))
