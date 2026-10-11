@@ -88,7 +88,6 @@
     (:id "background.list-changed" :key "g" :op :browse :background list)
     (:id "search.cancel" :key "/" :cancel t)
     (:id "theme.toggle" :key "T" :theme t)
-    (:id "help" :key "?" :message t)
     (:id "close" :key "q" :closed t))
   "One record for each semantic GUI affordance; key aliases share semantics.
 Backend actions get distinct input and reply scenarios. Named targets are
