@@ -1789,12 +1789,14 @@ precedence over it, so the real command loop finds the player command."
         (should (= (plist-get (etaf-ncm-state app) :selection) 2))
         (etaf-ncm-tests--key "<up>")
         (should (= (plist-get (etaf-ncm-state app) :selection) 1))
-        ;; The cursor follows the selection bar while the list holds focus.
+        ;; The cursor follows the selection bar while the list holds focus;
+        ;; the bar slides to the row, so wait for it to land there.
         (etaf-ncm-tests--rendered-text)
-        (accept-process-output nil 0.05)
-        (should (string-match-p "曲目 2"
-                                (buffer-substring-no-properties
-                                 (line-beginning-position) (line-end-position))))
+        (should (etaf-ncm-tests--wait
+                 (lambda ()
+                   (string-match-p "曲目 2"
+                                   (buffer-substring-no-properties
+                                    (line-beginning-position) (line-end-position))))))
         (etaf-ncm-tests--key "TAB")
         (should-not (eq (etaf-focused-host-ref runtime) 'ncm-list))
         (etaf-ncm-tests--key "<backtab>")
@@ -2460,6 +2462,30 @@ directory drives the queue track list."
       (setq etaf-ncm-tests--status nil)
       (delete-directory state-dir t)
       (delete-directory cache-dir t))))
+
+(ert-deftest etaf-ncm-tests-selection-bar-slides-across-rows ()
+  "A selection move animates the overlay bar through the rows it crosses."
+  (let ((app (etaf-ncm-tests--session)))
+    (etaf-ncm-tests--with-player app
+      (etaf-ncm-tests--rendered-text)
+      (let* ((runtime (etaf-runtime-for-buffer (current-buffer)))
+             (start-line (line-number-at-pos
+                          (car (etaf-host-ref-bounds runtime 'ncm-list-selection))))
+             (target-line (+ start-line 3)))
+        (etaf-ncm-move-selection app 3)
+        ;; The bar leaves the start row and, before landing, occupies a row
+        ;; between the two; a snap would never show the middle row.
+        (should (etaf-ncm-tests--wait
+                 (lambda ()
+                   (let ((line (line-number-at-pos
+                                (car (etaf-host-ref-bounds
+                                      runtime 'ncm-list-selection)))))
+                     (and (/= line start-line) (/= line target-line))))))
+        (should (etaf-ncm-tests--wait
+                 (lambda ()
+                   (= (line-number-at-pos
+                       (car (etaf-host-ref-bounds runtime 'ncm-list-selection)))
+                      target-line))))))))
 
 (provide 'etaf-ncm-tests)
 

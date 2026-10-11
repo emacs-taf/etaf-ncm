@@ -662,6 +662,32 @@ releases the polling timer and the session's pending backend requests."
      (lambda ()
        (when-let* ((viewport (etaf-viewport)))
          (etaf-ncm--sync-viewport session viewport))))
+    ;; The two overlay bars follow line targets through `etaf-transition':
+    ;; a selection or playback move slides each bar on the shared clock, so
+    ;; only the damaged rows repaint.  The Scope owns both runs and stops
+    ;; them on unmount.
+    (let* ((lines (etaf-ncm--list-highlights session))
+           (selection-target (etaf-ref (car lines) :name 'ncm-selection-target))
+           (playing-target (etaf-ref (cdr lines) :name 'ncm-playing-target))
+           (selection-bar (etaf-transition selection-target
+                                           :duration 0.15 :easing 'ease-out
+                                           :name 'ncm-selection-bar))
+           (playing-bar (etaf-transition playing-target
+                                         :duration 0.15 :easing 'ease-out
+                                         :name 'ncm-playing-bar)))
+      (setf (plist-get session :highlight-targets)
+            (cons selection-target playing-target))
+      (etaf-watch selection-bar
+                  (lambda (line _old)
+                    (etaf-ncm--apply-highlight-geometry
+                     session 'ncm-list-selection line)
+                    (etaf-next-tick (lambda () (etaf-ncm--reveal-selection session))))
+                  :name 'ncm-selection-bar-move)
+      (etaf-watch playing-bar
+                  (lambda (line _old)
+                    (etaf-ncm--apply-highlight-geometry
+                     session 'ncm-list-playing line))
+                  :name 'ncm-playing-bar-move))
     (etaf-watch-effect
      (lambda ()
        (etaf-ncm--schedule-list-highlights session
@@ -834,34 +860,41 @@ Lines count from zero; -1 keeps that bar clipped off the page."
     (cons (if (and (>= selection 0) (< selection size)) selection -1)
           playing)))
 
+(defun etaf-ncm--apply-highlight-geometry (app host line)
+  "Move APP's HOST bar to LINE through the retained geometry boundary.
+One `:top' translation repaints only the damaged rows of the list plane."
+  (when-let* ((buffer (plist-get app :buffer))
+              ((buffer-live-p buffer))
+              (runtime (etaf-runtime-for-buffer buffer))
+              ((numberp line)))
+    (ignore-errors
+      (etaf-runtime-update-host-geometry runtime host :top (list 'lh line)))))
+
 (defun etaf-ncm--apply-list-highlights (app &optional lines)
   "Move APP's highlight bars to LINES, defaulting to the current page.
 Each bar is one retained host geometry update: a `:top' translation that
 never republishes the list plane."
-  (setf (plist-get app :highlight-timer) nil)
   (let ((lines (or lines (plist-get app :highlight-lines))))
-    (when-let* ((buffer (plist-get app :buffer))
-                ((buffer-live-p buffer))
-                (runtime (etaf-runtime-for-buffer buffer))
-                (lines lines))
-      (ignore-errors
-        (etaf-runtime-update-host-geometry runtime 'ncm-list-selection
-                                           :top (list 'lh (car lines)))
-        (etaf-runtime-update-host-geometry runtime 'ncm-list-playing
-                                           :top (list 'lh (cdr lines))))
+    (when lines
+      (etaf-ncm--apply-highlight-geometry app 'ncm-list-selection (car lines))
+      (etaf-ncm--apply-highlight-geometry app 'ncm-list-playing (cdr lines))
       (etaf-ncm--reveal-selection app))))
 
 (defun etaf-ncm--schedule-list-highlights (app lines)
-  "Coalesce APP's highlight-bar move to LINES onto the next tick.
+  "Move APP's highlight bars to LINES.
 Line changes are the only reason to schedule: a slot write that leaves both
-bars where they are must not publish geometry.  Deferring keeps the move out
-of the reactive batch that reported the change."
+bars where they are must not publish geometry.  With animation targets, the
+shared clock slides each bar from where it is, and the move stays outside the
+reactive batch that reported the change; a model without targets (for example
+a session driven headlessly) applies the geometry at once."
   (unless (equal lines (plist-get app :highlight-lines))
     (setf (plist-get app :highlight-lines) lines)
-    (when (plist-get app :highlight-timer)
-      (cancel-timer (plist-get app :highlight-timer)))
-    (setf (plist-get app :highlight-timer)
-          (run-at-time 0 nil #'etaf-ncm--apply-list-highlights app))))
+    (let ((targets (plist-get app :highlight-targets)))
+      (if targets
+          (etaf-batch
+            (etaf-set-value (car targets) (car lines))
+            (etaf-set-value (cdr targets) (cdr lines)))
+        (etaf-ncm--apply-list-highlights app lines)))))
 
 (defun etaf-ncm-open (&optional model)
   "Open the NetEase Cloud Music player and return its buffer.

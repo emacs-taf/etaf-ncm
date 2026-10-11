@@ -445,6 +445,11 @@
       "name": "etaf-ncm-tests-compact-pane-switch-moves-focus-into-the-pane",
       "file": "tests/etaf-ncm-tests.el",
       "purpose": "In a compact layout, switching to the aside moves keyboard focus into it and switching back returns focus to the library list."
+    },
+    {
+      "name": "etaf-ncm-tests-selection-bar-slides-across-rows",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "A selection move slides the overlay bar through an intermediate row on the shared animation clock."
     }
   ]
 }

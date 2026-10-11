@@ -359,8 +359,10 @@ read their own reactive sources inside Host bindings, so pressing one of them
 publishes a retained update instead of rebuilding the view. The lyrics and
 queue panels are two fixed-canvas variants whose visibility follows the
 `:aside` source, and every library row reads the selection source in its own
-paint bindings; switching panels or moving the highlight likewise publishes
-retained updates. While nothing is playing it checks every `etaf-ncm-idle-poll-interval`
+paint bindings; switching panels publishes retained updates, and moving the
+selection or the playing song slides the matching highlight bar onto the new
+row on ETAF's shared animation clock instead of jumping to it. While nothing is
+playing it checks every `etaf-ncm-idle-poll-interval`
 (fifteen seconds). A lyric is fetched only when the playing song id changes, and
 the queue list is read from the backend's queue state file rather than
 re-downloaded.

@@ -1598,9 +1598,6 @@ second for the same second."
   (when-let* ((timer (plist-get app :timer)))
     (cancel-timer timer)
     (setf (plist-get app :timer) nil))
-  (when-let* ((timer (plist-get app :highlight-timer)))
-    (cancel-timer timer)
-    (setf (plist-get app :highlight-timer) nil))
   (etaf-ncm-cancel (etaf-ncm--client app)))
 
 ;;; ---------------------------------------------------------------------------

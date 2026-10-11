@@ -4,6 +4,9 @@ All notable user-visible changes to ETAF NCM.
 
 ## Unreleased
 
+- The selection and playing highlight bars slide onto their new row on ETAF's
+  shared animation clock instead of jumping, and the cursor follows the bar
+  while it moves.
 - The player keeps its own clear lines: one row of top padding inside each
   panel and one closing padding row inside the player bar, so a hosting
   window needs no inset and the surface stays one background at every size.
