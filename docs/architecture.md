@@ -315,11 +315,12 @@ timeout, and unmounting deletes the processes.
   share this path and preserve the source aspect ratio within their cell budgets.
 - The layout is a column flex root: header, body (list + aside) and a full-width
   player bar; the compact layouts drop the sidebar for a library rail or a chip
-  strip, tab the panes and stack the player bar into three lines. The bar keeps
-  one padding row above its content and none below: the window's echo area is
-  the single clear line under it, so the last row sits one line from the
-  bottom edge. The library page fills every row the window budget leaves, and
-  the wheel scrolls its window through all loaded rows.
+  strip, tab the panes and stack the player bar into three lines. The clear
+  line at the top belongs to the panels' own top padding and the one under the
+  bar to the bar's closing padding row, so no hosting window needs an inset and
+  the app's background stays unbroken at every size. The library page fills
+  every row the window budget leaves, and the wheel scrolls its window through
+  all loaded rows.
 - `row`/`column` are flow containers; participation properties
   (`:flex-grow`, `:flex-basis`) require a flex or grid parent, and `:flex-basis`
   units follow the parent's main axis (lh/vh/% in a column, px/ch in a row).

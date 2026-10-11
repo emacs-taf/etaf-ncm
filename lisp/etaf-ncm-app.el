@@ -673,11 +673,9 @@ releases the polling timer and the session's pending backend requests."
        (etaf-ncm--dispose session))))
   :view
   (flex :position 'relative :flex-direction 'column :width 'stretch :height 'stretch
-        ;; The player owns its frame margin: one clear line above and below
-        ;; the panes at every size.  The hosting window adds no inset of its
-        ;; own, so the player paints this margin itself.
-        :padding-top (list 'lh etaf-ncm-viewport-margin-rows)
-        :padding-bottom (list 'lh etaf-ncm-viewport-margin-rows)
+        ;; The shell paints no margin of its own: one clear line at the top is
+        ;; the panels' own top padding and one under the player belongs to the
+        ;; player bar, so the surface stays one background at every size.
         :color (etaf-ncm-color :ink) :bgcolor (etaf-ncm-color :bg)
         :keys keys
     (box :width 'stretch :flex-grow 1 :flex-basis '(lh 0) :min-height '(lh 0))

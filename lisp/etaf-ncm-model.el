@@ -1620,11 +1620,6 @@ The result is `wide', `medium' or `narrow'; the breakpoints live in
 `etaf-ncm-layout'."
   (etaf-ncm-layout-for columns))
 
-(defconst etaf-ncm-viewport-margin-rows 1
-  "Clear rows the player keeps above and below its panes.
-The hosting window adds no inset of its own, so the player paints this margin
-itself and subtracts the rows from the budgets it derives from its region.")
-
 (defun etaf-ncm--sync-viewport (app viewport)
   "Match APP's layout and row budgets to VIEWPORT.
 VIEWPORT is the `(PIXELS . ROWS)' region the player is mounted into (see
@@ -1632,8 +1627,9 @@ VIEWPORT is the `(PIXELS . ROWS)' region the player is mounted into (see
 pane or tab that embeds it.  One region drives every budget, so an embedded
 and a standalone player lay out by the same rule."
   (let* ((columns (etaf-ncm--viewport-columns (car viewport)))
-         ;; The player's own margin is not available to its panes.
-         (height (max 1 (- (cdr viewport) (* 2 etaf-ncm-viewport-margin-rows))))
+         ;; The panels own their one clear line at the top and the player bar
+         ;; owns the one under it, so the region's rows are the row budget.
+         (height (max 1 (cdr viewport)))
          (layout (etaf-ncm--layout-for columns))
          (size (etaf-ncm-layout-page-rows layout height)))
     (etaf-batch

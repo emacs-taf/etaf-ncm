@@ -1019,17 +1019,16 @@ Controls sit in separated groups so the right edge reads as three ideas
           on-volume on-seek on-shuffle on-repeat
           on-lyrics on-queue)
   "Render a native-style three-column bar, or three compact rows.
-The bar is an absolutely positioned panel: the app reserves its five lines
+The bar is an absolutely positioned panel: the app reserves its six lines
 with a positioned host, while the panel itself stays a retained publication
 address so its controls update without rebuilding the view.  The bar box is
-border-box: one border row, one padding row above the content and the three
-content rows.  It keeps no bottom padding, because the window's echo area
-gives the bar its closing line and the text should sit one row from the
-bottom edge."
+border-box: one border row, one padding row above the content, the three
+content rows and the closing padding row that keeps the text one row from
+the bottom edge, since the hosting window adds no inset of its own."
   :view
   (box :position 'absolute :left '(px 0) :top '(lh 0)
        :width '(% 100) :height '(% 100) :z-index 1
-       :padding '((lh 1) (ch 2) (lh 0) (ch 2))
+       :padding '((lh 1) (ch 2) (lh 1) (ch 2))
        :background-color (etaf-ncm-color :panel)
        :border-top (etaf-ncm--view-border 'top (etaf-ncm-color :line))
     (grid :if (not compact) :width 'stretch :height '(lh 3)
