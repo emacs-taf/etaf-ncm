@@ -156,11 +156,17 @@ resolved from the live GUI; missing/hidden/unfocusable targets fail the run.")
                                (string-to-vector (plist-get action :text)) (kbd "RET"))))
    ((plist-get action :cancel)
     (condition-case nil
-        (execute-kbd-macro (vconcat (kbd (plist-get action :key)) (kbd "C-c C-k")))
+        (execute-kbd-macro (vconcat (kbd (plist-get action :key)) (kbd "C-g")))
       (quit nil)))
    ((plist-get action :key) (execute-kbd-macro (kbd (plist-get action :key))))
    (t (execute-kbd-macro (kbd "RET"))
       (when (plist-get action :double) (execute-kbd-macro (kbd "RET")))))
+  ;; A sample that leaves a prompt open would poison every later sample in
+  ;; this shared GUI instance; the sample itself still fails verification.
+  (when-let* ((prompt (active-minibuffer-window)))
+    (condition-case nil
+        (with-selected-window prompt (keyboard-quit))
+      (t nil)))
   (when (buffer-live-p (etaf-runtime-buffer runtime)) (etaf-runtime-flush runtime))
   (redisplay t)))
 
