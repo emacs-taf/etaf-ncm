@@ -1022,16 +1022,17 @@ Controls sit in separated groups so the right edge reads as three ideas
 The bar is an absolutely positioned panel: the app reserves its five lines
 with a positioned host, while the panel itself stays a retained publication
 address so its controls update without rebuilding the view.  The bar box is
-border-box: one padding row above the content, the three content rows and the
-closing padding row that keeps the text one row from the bottom edge, since
-the hosting window adds no inset of its own; the one-pixel top border paints
-over the top of that box."
+exactly those five rows: one padding row above the content, the three
+content rows and the closing padding row that keeps the text one row from
+the bottom edge, since the hosting window adds no inset of its own.  It
+paints no border of its own: a pixel border would push the box off the row
+grid and eat the closing line; the pane tab strip above it carries the
+separator where one is drawn."
   :view
   (box :position 'absolute :left '(px 0) :top '(lh 0)
        :width '(% 100) :height '(% 100) :z-index 1
        :padding '((lh 1) (ch 2) (lh 1) (ch 2))
        :background-color (etaf-ncm-color :panel)
-       :border-top (etaf-ncm--view-border 'top (etaf-ncm-color :line))
     (grid :if (not compact) :width 'stretch :height '(lh 3)
           :grid-template-columns '((fr 1) (fr 1) (fr 1)) :gap '((lh 0) (ch 2))
       (etaf-ncm--view-track :title title :artist artist :vip vip :queue-count queue-count
