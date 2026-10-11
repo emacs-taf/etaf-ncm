@@ -56,11 +56,11 @@ row's height never follows its wording.  Fifteen reference pixels is about
 (defconst etaf-ncm-layout-aside-columns 40
   "Width of the lyric and queue panel in columns.")
 
-(defconst etaf-ncm-layout-bar-rows 6
+(defconst etaf-ncm-layout-bar-rows 5
   "Rows the player bar occupies.
-Its top border, one padding row and the three content rows, plus the closing
-padding row under the bar: the hosting window adds no inset of its own, so the
-bar keeps the clear line between its text and the window's bottom edge.")
+One padding row, the three content rows and the closing padding row under
+them; the bar's one-pixel top border is drawn over the top of that box, so
+the box holds no slack row and the clear line under the bar stays single.")
 
 (defconst etaf-ncm-layout-tab-rows 1
   "Rows the compact list/lyrics/queue switch occupies above the player bar.")

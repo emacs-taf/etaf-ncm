@@ -290,7 +290,7 @@ application."
         :flex-direction 'column :focus-group 'vertical
         :width (if compact etaf-ncm--rail-width etaf-ncm--sidebar-width)
         :height height
-        :padding (if tight '((lh 0) (ch 1)) '((lh 1) (ch 1))) :gap '((lh 0) (ch 0))
+        :padding '((lh 1) (ch 1)) :gap '((lh 0) (ch 0))
         :background-color (etaf-ncm-color :panel)
         :border-right (etaf-ncm--view-border 'right (etaf-ncm-color :line))
     (flex :width 'stretch :height '(lh 2) :gap '((lh 0) (ch 1))
@@ -1019,12 +1019,13 @@ Controls sit in separated groups so the right edge reads as three ideas
           on-volume on-seek on-shuffle on-repeat
           on-lyrics on-queue)
   "Render a native-style three-column bar, or three compact rows.
-The bar is an absolutely positioned panel: the app reserves its six lines
+The bar is an absolutely positioned panel: the app reserves its five lines
 with a positioned host, while the panel itself stays a retained publication
 address so its controls update without rebuilding the view.  The bar box is
-border-box: one border row, one padding row above the content, the three
-content rows and the closing padding row that keeps the text one row from
-the bottom edge, since the hosting window adds no inset of its own."
+border-box: one padding row above the content, the three content rows and the
+closing padding row that keeps the text one row from the bottom edge, since
+the hosting window adds no inset of its own; the one-pixel top border paints
+over the top of that box."
   :view
   (box :position 'absolute :left '(px 0) :top '(lh 0)
        :width '(% 100) :height '(% 100) :z-index 1
