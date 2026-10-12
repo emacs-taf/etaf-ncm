@@ -640,6 +640,44 @@ silently doing nothing against the real backend."
       (when (get-buffer etaf-ncm-buffer-name)
         (kill-buffer etaf-ncm-buffer-name)))))
 
+(ert-deftest etaf-ncm-tests-close-keeps-playing-and-quit-stops-it ()
+  "Closing the window leaves playback; quitting the client stops it.
+`q' only closes the client window, `Q' ends the client and must stop the
+backend player before the buffer is gone."
+  (setq etaf-ncm-tests--requests nil)
+  (let ((etaf-ncm-buffer-name " *etaf-ncm-tests-quit*")
+        (app (etaf-ncm-tests--session)))
+    (unwind-protect
+        (progn
+          (etaf-ncm-open app)
+          (etaf-ncm-close)
+          (should-not (etaf-ncm-tests--request :stop))
+          (etaf-ncm-open app)
+          (etaf-ncm-quit)
+          (should (etaf-ncm-tests--request :stop))
+          (should-not (get-buffer etaf-ncm-buffer-name)))
+      (when (get-buffer etaf-ncm-buffer-name)
+        (kill-buffer etaf-ncm-buffer-name)))))
+
+(ert-deftest etaf-ncm-tests-exiting-emacs-stops-only-the-player-it-started ()
+  "Exiting Emacs stops a player the app started, and leaves other playback.
+A play command records ownership; without one the exit hook must not touch
+a player that the CLI or another client started."
+  ;; Playback this app started is stopped on exit.
+  (setq etaf-ncm-tests--requests nil)
+  (let ((app (etaf-ncm-tests--session)))
+    (etaf-ncm-refresh app)
+    (etaf-ncm-press-row app 2)
+    (etaf-ncm-press-row app 2)
+    (run-hooks 'kill-emacs-hook)
+    (should (etaf-ncm-tests--request :stop)))
+  ;; An app that never played must not stop someone else's playback.
+  (setq etaf-ncm-tests--requests nil)
+  (let ((app (etaf-ncm-tests--session)))
+    (etaf-ncm-refresh app)
+    (run-hooks 'kill-emacs-hook)
+    (should-not (etaf-ncm-tests--request :stop))))
+
 (ert-deftest etaf-ncm-tests-open-fills-the-selected-window ()
   "Opening the player replaces the selected window instead of splitting it.
 A native text app owns the whole window it was opened from; a general

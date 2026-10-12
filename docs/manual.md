@@ -43,6 +43,15 @@ opens a palette of every key and control. `M-x etaf-ncm-close` unmounts the
 player and kills the buffer; the session behind it stays usable, so reopening
 with the same session keeps its library, selection and queue.
 
+The window and the client are two different things. `q` (or
+`M-x etaf-ncm-close`) only closes the window: the backend player keeps
+playing, like a client minimized to the tray. `Q` (or `M-x etaf-ncm-quit`)
+quits the client: it stops the backend player and then closes the window.
+Exiting Emacs stops a player the app started as well, so mpv never keeps
+playing behind a closed Emacs; a player the CLI started is left alone. The
+backend keeps its queue snapshots either way, so the CLI can still bring the
+queue back.
+
 Repeated `C-x b` switching away from the buffer does not close the player.
 Killing the buffer directly has the same effect as `etaf-ncm-close`: mounting
 and unmounting are what start and stop polling, and a session that was unmounted
@@ -83,7 +92,8 @@ is revived by its next mount.
 | `?` | Open the command palette listing every key and focusable control |
 | `TAB` / `S-TAB` | Move focus between regions; arrows move inside the sidebar, chips, tabs and player controls |
 | `Esc` | Close an open surface |
-| `q` | Close the player buffer |
+| `q` | Close the player window; the backend keeps playing |
+| `Q` | Quit the client: stop the backend player, then close |
 
 `n` and `p` intentionally replace Ebox's line scrolling: the player view is
 paginated to its region, and the wheel scrolls the library's row window

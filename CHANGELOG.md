@@ -4,6 +4,12 @@ All notable user-visible changes to ETAF NCM.
 
 ## Unreleased
 
+- The window and the client are separate now.  `q` (or `etaf-ncm-close`) closes
+  the window and leaves the backend playing, like a client minimized to the
+  tray; `Q` (or `etaf-ncm-quit`) quits the client: it stops the backend player
+  before the window closes.  Exiting Emacs stops a player the app started, so
+  mpv never keeps playing as an orphan, while playback the CLI started is left
+  alone.
 - Picking a song shows it at once: the playing marker, the title, the artist,
   the length and the queue count move to the picked row before the backend
   answers.  A status poll that still reports the previous song no longer moves

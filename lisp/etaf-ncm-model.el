@@ -1084,6 +1084,38 @@ reply then replaces that guess with measured facts."
     (:seek '(:elapsed))
     (_ nil)))
 
+(defvar etaf-ncm--player-owner nil
+  "The client whose playback this Emacs started, or nil when none.
+A play, skip or jump command hands the player to this Emacs; resuming
+takes it back, and a stop releases it.  Exiting Emacs stops an owned
+player synchronously, so mpv never outlives the Emacs that started it,
+while playback started by another client (the CLI) is left alone.")
+
+(defun etaf-ncm--own-player-for (app request)
+  "Record whether REQUEST leaves APP's player owned by this Emacs.
+See `etaf-ncm--player-owner' for the meaning of ownership."
+  (pcase (plist-get request :op)
+    ((or :play :next :previous :jump)
+     (setq etaf-ncm--player-owner (etaf-ncm--client app)))
+    (:toggle
+     (when (etaf-ncm--playing-p app)
+       (setq etaf-ncm--player-owner (etaf-ncm--client app))))
+    (:stop
+     (setq etaf-ncm--player-owner nil))))
+
+(defun etaf-ncm--stop-owned-player ()
+  "Stop the player this Emacs started and release it.
+Runs synchronously because `kill-emacs' provides no event loop for an
+asynchronous reply.  Return non-nil when an owned player was stopped."
+  (when-let* ((owner etaf-ncm--player-owner))
+    (setq etaf-ncm--player-owner nil)
+    (etaf-ncm--stop-synchronously owner)
+    t))
+
+(defun etaf-ncm--stop-player-on-exit ()
+  "Stop an owned player when Emacs exits, so mpv is never left behind."
+  (ignore-errors (etaf-ncm--stop-owned-player)))
+
 (defun etaf-ncm--command (app request message)
   "Send REQUEST for APP, showing MESSAGE and its local effect immediately.
 The backend reply reconciles the optimistic state; only a command that can
@@ -1093,6 +1125,7 @@ move the queue reloads it."
   (etaf-batch
     (etaf-ncm--note app message)
     (etaf-ncm--optimistic-command app request))
+  (etaf-ncm--own-player-for app request)
   (etaf-ncm--call app request
                   :on-ok (lambda (_data)
                            (etaf-ncm--optimistic-command-settle app)

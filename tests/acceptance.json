@@ -202,6 +202,16 @@
       "purpose": "Opening installs the player keymap, routes active wheel bindings above the renderer, hides the mode line, and closing kills the buffer."
     },
     {
+      "name": "etaf-ncm-tests-close-keeps-playing-and-quit-stops-it",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "Closing the window leaves the backend playing, while quitting the client sends the backend stop before the buffer is gone."
+    },
+    {
+      "name": "etaf-ncm-tests-exiting-emacs-stops-only-the-player-it-started",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "Exiting Emacs stops a player the app started, and an app that never played leaves another client's playback alone."
+    },
+    {
       "name": "etaf-ncm-tests-open-fills-the-selected-window",
       "file": "tests/etaf-ncm-tests.el",
       "purpose": "Opening the player replaces the selected window instead of splitting the frame into a second pane."

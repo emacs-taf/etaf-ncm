@@ -110,8 +110,10 @@ When the backend is not in the default location, point the app at it:
       etaf-ncm-state-directory "~/.local/state/netease-music")
 ```
 
-`M-x etaf-ncm-open` mounts the player in the selected window; `M-x
-etaf-ncm-close` closes it.  `etaf-ncm-theme-mode` (`dark` or `light`) selects
+`M-x etaf-ncm-open` mounts the player in the selected window; `q` / `M-x
+etaf-ncm-close` closes the window and keeps the backend playing, while `Q` /
+`M-x etaf-ncm-quit` stops the backend player and closes.  Exiting Emacs stops
+a player the app started.  `etaf-ncm-theme-mode` (`dark` or `light`) selects
 the palette, and `etaf-ncm-refresh` (or `g` in the player) reloads the
 library, playback truth, queue and account.
 

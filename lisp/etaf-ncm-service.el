@@ -140,6 +140,39 @@ requests, or 0 when CLIENT is not a subprocess client."
       (setf (etaf-ncm--client-pending client) nil))
     count))
 
+(defun etaf-ncm--player-live-p (client)
+  "Return non-nil when CLIENT's backend player answers on its socket.
+A stale socket left by a crashed mpv must read as not live: the stop below
+would otherwise start a fresh daemon only to stop it, delaying Emacs exit."
+  (when (etaf-ncm--client-p client)
+    (let ((socket (expand-file-name
+                   "mpv.sock" (etaf-ncm--client-state-directory client))))
+      (and (file-exists-p socket)
+           (condition-case nil
+               (let ((process (make-network-process :name "etaf-ncm-mpv-probe"
+                                                    :family 'local :service socket
+                                                    :noquery t)))
+                 (delete-process process)
+                 t)
+             (error nil))))))
+
+(defun etaf-ncm--stop-synchronously (client)
+  "Stop CLIENT's backend player without running the event loop.
+`kill-emacs' runs no timers and waits for no asynchronous process, so the
+stop request is executed through `call-process' instead of the client's
+subprocess protocol.  A function client has no process to run, so it
+gets the documented (:op :stop) request it can answer.  A player that is
+not running is left alone, and every failure is ignored: quitting must
+never fail because the backend is unavailable."
+  (condition-case nil
+      (if (etaf-ncm--client-p client)
+          (when (etaf-ncm--player-live-p client)
+            (let ((command (etaf-ncm--client-command client (list :op :stop)))
+                  (process-environment (etaf-ncm--environment client)))
+              (apply #'call-process (car command) nil nil nil (cdr command))))
+        (etaf-ncm-client-call client (list :op :stop) #'ignore))
+    (error nil)))
+
 (defconst etaf-ncm--browse-resources
   '((:daily . "daily") (:liked . "liked") (:fm . "fm") (:recent . "recent")
     (:playlists . "myplaylists") (:charts . "charts") (:albums . "myalbums")

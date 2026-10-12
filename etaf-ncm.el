@@ -45,9 +45,16 @@
 ;;
 ;; Function: etaf-ncm-close ()
 ;;;###autoload (autoload 'etaf-ncm-close "etaf-ncm" nil t)
-;; Unmount the player and kill its buffer.
+;; Unmount the player and kill its buffer; the backend player keeps playing.
 ;; Unmounting releases the session's reactive subscriptions, polling timer and
 ;; in-flight backend requests; the session itself stays usable for a later mount.
+;;
+;; Function: etaf-ncm-quit ()
+;;;###autoload (autoload 'etaf-ncm-quit "etaf-ncm" nil t)
+;; Stop the backend player and close the client.
+;; The stop reaches mpv before the buffer is gone, so quitting leaves nothing
+;; playing; `etaf-ncm-close' only closes the window.  Exiting Emacs stops a
+;; player the app started as well, so mpv never survives the app as an orphan.
 ;;
 ;; Function: etaf-ncm-view (&optional model)
 ;;;###autoload (autoload 'etaf-ncm-view "etaf-ncm" nil t)

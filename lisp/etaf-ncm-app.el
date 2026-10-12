@@ -441,7 +441,8 @@ or the library list keeps them; `?' opens the read-only ETAF key help."
       ("." etaf-ncm--seek-forward "快进 10 秒")
       ("L" etaf-ncm-login "短信登录")
       ("T" etaf-ncm--toggle-theme "切换深浅色")
-      ("q" etaf-ncm-close "关闭播放器")))
+      ("q" etaf-ncm-close "关闭窗口（音乐继续）")
+      ("Q" etaf-ncm-quit "退出客户端（停止音乐）")))
    (cl-loop for entry in (apply #'append (mapcar #'cdr etaf-ncm-sections))
             for index from 1 to 9
             collect (let ((index index))
@@ -947,6 +948,24 @@ the backend.  A caller-provided MODEL keeps its library, queue and selection."
     (etaf-unmount runtime))
   (when-let* ((buffer (get-buffer etaf-ncm-buffer-name)))
     (kill-buffer buffer)))
+
+(defun etaf-ncm-quit ()
+  "Stop the backend player and close the client.
+Unlike `etaf-ncm-close', which only closes the window and lets the backend
+keep playing, quitting ends the playback too: the stop runs before the
+buffer is killed, so a later `etaf-ncm-open' starts from a stopped player.
+The backend keeps its queue files, so `back' can still bring the queue
+back."
+  (interactive)
+  (setq etaf-ncm--player-owner nil)
+  (when etaf-ncm--model
+    (etaf-ncm--stop-synchronously (etaf-ncm--client etaf-ncm--model)))
+  (etaf-ncm-close))
+
+;; The backend player is an external mpv process: exiting Emacs must not
+;; leave it playing.  The hook only stops a player this Emacs started (see
+;; `etaf-ncm--player-owner'), so playback the CLI started keeps running.
+(add-hook 'kill-emacs-hook #'etaf-ncm--stop-player-on-exit)
 
 (provide 'etaf-ncm-app)
 ;;; etaf-ncm-app.el ends here
