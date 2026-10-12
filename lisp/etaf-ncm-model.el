@@ -168,10 +168,12 @@ client persists in its state directory; function clients default to memory."
           :disposed nil
           :status-in-flight nil
           :polled-at 0
-          ;; The fields the last command published optimistically; a status
-          ;; reply older than the command must not move them back.
+          ;; The fields the commands published optimistically; a status reply
+          ;; that cannot show a still-unsettled command must not move them
+          ;; back.  The count tracks how many commands await their reply.
           :optimistic-at nil
           :optimistic-keys nil
+          :commands-pending 0
           :last-tick (float-time)
           :timer nil
           :last-press nil
@@ -675,6 +677,7 @@ after the session starts; this function only maps a section to its request."
                          :badge (if (eq t (plist-get song :vip)) "VIP" nil)
                          :right (etaf-ncm--format-duration
                                  (etaf-ncm--parse-number (plist-get song :ms)))
+                         :ms (etaf-ncm--parse-number (plist-get song :ms))
                          :plays (etaf-ncm--parse-number (plist-get song :plays)))))
 
 (defun etaf-ncm--playlist-rows (playlists)
@@ -966,14 +969,15 @@ previous state back, and the reply reconciles it with measured facts."
       (if unlike
           (remhash song-id (plist-get app :liked-ids))
         (puthash song-id t (plist-get app :liked-ids))))
-    (setf (plist-get app :optimistic-at) (float-time)
-          (plist-get app :optimistic-keys) '(:liked))
+    (etaf-ncm--optimistic-command-begin app '(:liked))
     (etaf-ncm--write app :liked-ref (not unlike))
     (etaf-ncm--call app (list :op (if unlike :unlike :like))
                     :on-ok (lambda (_data)
+                             (etaf-ncm--optimistic-command-settle app)
                              (etaf-ncm--sync-liked-list app song-id (not unlike))
                              (etaf-ncm--request-status app))
                     :on-error (lambda (_message _hint _code)
+                                (etaf-ncm--optimistic-command-settle app)
                                 (when (and song-id (plist-get app :liked-ids-loaded))
                                   (if unlike
                                       (puthash song-id t (plist-get app :liked-ids))
@@ -982,6 +986,29 @@ previous state back, and the reply reconciles it with measured facts."
 
 (defconst etaf-ncm--queue-commands '(:play :next :previous :jump :stop :add)
   "Commands whose reply can move the queue, which is then reloaded.")
+
+(defun etaf-ncm--optimistic-command-begin (app keys)
+  "Record KEYS as the display a command is about to change in APP.
+A status reply that left the backend before the command settled cannot show
+its effect yet, so the fields stay protected until every in-flight command
+answered.  Two overlapping commands union their fields, so the later one
+cannot drop the earlier one's protection."
+  (setf (plist-get app :optimistic-at) (float-time)
+        (plist-get app :optimistic-keys)
+        (if (> (or (plist-get app :commands-pending) 0) 0)
+            (delete-dups (append keys (plist-get app :optimistic-keys)))
+          (copy-sequence keys)))
+  (setf (plist-get app :commands-pending)
+        (1+ (or (plist-get app :commands-pending) 0))))
+
+(defun etaf-ncm--optimistic-command-settle (app)
+  "Mark one of APP's in-flight commands as answered.
+The last command to settle releases the protected fields: every status
+request sent from now on describes the state after all commands."
+  (let ((pending (max 0 (1- (or (plist-get app :commands-pending) 0)))))
+    (setf (plist-get app :commands-pending) pending)
+    (when (zerop pending)
+      (setf (plist-get app :optimistic-keys) nil))))
 
 (defun etaf-ncm--optimistic-status (app update)
   "Publish UPDATE over APP's displayed playback status.
@@ -1005,19 +1032,38 @@ reply then replaces that guess with measured facts."
     (:stop
      (etaf-ncm--write app :state-ref 'stopped))
     (:play
-     (let ((id (or (and (plist-get request :ids)
-                        (nth (1- (or (plist-get request :start) 1))
-                             (plist-get request :ids)))
-                   (let ((target (plist-get request :target)))
-                     (and (eq (plist-get target :kind) :song)
-                          (plist-get target :id))))))
+     (let* ((ids (plist-get request :ids))
+            (start (or (plist-get request :start) 1))
+            (id (or (and ids (nth (1- start) ids))
+                    (let ((target (plist-get request :target)))
+                      (and (eq (plist-get target :kind) :song)
+                           (plist-get target :id)))))
+            ;; The picked row is already on screen: publish its name, artist
+            ;; and length together with the marker, so the bar never shows
+            ;; the previous track's text under the new song's marker.
+            (row (and id
+                      (seq-find (lambda (item)
+                                  (and (eq (plist-get item :kind) :song)
+                                       (equal (plist-get item :id) id)))
+                                (etaf-ncm--read app :rows)))))
        (etaf-ncm--set-clock app 0)
        (etaf-ncm--write app :state-ref 'playing)
        (etaf-ncm--optimistic-status
         app (lambda (status)
               (setq status (plist-put status :state 'playing))
               (setq status (plist-put status :elapsed 0))
-              (if id (plist-put status :song-id id) status)))
+              (when id
+                (setq status (plist-put status :song-id id))
+                (when row
+                  (setq status (plist-put status :title (plist-get row :name)))
+                  (setq status (plist-put status :artist (plist-get row :subtitle)))
+                  (when (plist-get row :ms)
+                    (setq status (plist-put status :duration
+                                            (round (/ (plist-get row :ms) 1000))))))
+                (when ids
+                  (setq status (plist-put status :queue-pos start))
+                  (setq status (plist-put status :queue-count (length ids)))))
+              status))
        (etaf-ncm--sync-playing app)))
     (:volume
      (etaf-ncm--write app :volume-ref (plist-get request :value)))
@@ -1031,7 +1077,7 @@ reply then replaces that guess with measured facts."
   "Return the status fields REQUEST shows before its reply arrives."
   (pcase (plist-get request :op)
     ((or :toggle :stop) '(:state))
-    (:play '(:state :song-id :elapsed))
+    (:play '(:state :song-id :elapsed :title :artist :duration :queue-pos :queue-count))
     (:volume '(:volume))
     (:shuffle '(:shuffle))
     (:repeat '(:repeat))
@@ -1042,18 +1088,22 @@ reply then replaces that guess with measured facts."
   "Send REQUEST for APP, showing MESSAGE and its local effect immediately.
 The backend reply reconciles the optimistic state; only a command that can
 move the queue reloads it."
-  (setf (plist-get app :optimistic-at) (float-time)
-        (plist-get app :optimistic-keys) (etaf-ncm--optimistic-status-keys request))
+  (etaf-ncm--optimistic-command-begin app
+                                      (etaf-ncm--optimistic-status-keys request))
   (etaf-batch
     (etaf-ncm--note app message)
     (etaf-ncm--optimistic-command app request))
   (etaf-ncm--call app request
                   :on-ok (lambda (_data)
+                           (etaf-ncm--optimistic-command-settle app)
                            (etaf-batch
                              (etaf-ncm--request-status app)
                              (when (memq (plist-get request :op)
                                          etaf-ncm--queue-commands)
-                               (etaf-ncm--request-queue app))))))
+                               (etaf-ncm--request-queue app))))
+                  :on-error (lambda (_message _hint _code)
+                              (etaf-ncm--optimistic-command-settle app)
+                              (etaf-ncm--request-status app))))
 
 (defconst etaf-ncm--double-press-window 1.0
   "Seconds within which a second press on the same row counts as a double press.
@@ -1309,7 +1359,14 @@ round trip is added back before publishing it: without that the lyric line and
 the progress bar run one backend latency behind the song."
   (setf (plist-get app :status-in-flight) t
         (plist-get app :requested-at) (float-time))
-  (let ((requested-at (plist-get app :requested-at)))
+  (let ((requested-at (plist-get app :requested-at))
+        ;; A request sent while a command was unsettled cannot show that
+        ;; command's effect yet: carry the fields it published so this reply
+        ;; cannot move them back, even when it arrives after the command
+        ;; settled.  A request sent before the command is covered by
+        ;; `:optimistic-at' below.
+        (protected (and (> (or (plist-get app :commands-pending) 0) 0)
+                        (copy-sequence (plist-get app :optimistic-keys)))))
     (etaf-ncm--call
      app (list :op :status)
      :on-ok (lambda (data)
@@ -1322,33 +1379,35 @@ the progress bar run one backend latency behind the song."
                       (plist-get app :last-tick) now)
                 (etaf-ncm--apply-status
                  app (plist-put status :elapsed (+ elapsed trip))
-                 requested-at)))
+                 requested-at protected)))
      :on-error (lambda (_message _hint _code)
                  (setf (plist-get app :status-in-flight) nil
                        (plist-get app :polled-at) (float-time))))))
 
-(defun etaf-ncm--apply-status (app status &optional requested-at)
+(defun etaf-ncm--apply-status (app status &optional requested-at protected)
   "Publish STATUS and fetch the lyric when the song changed.
 A reply that only moves the position is displayed through
 `etaf-ncm--set-clock', so a playing second does not republish the view; a
 reply that carries new playback facts publishes `:status'.  A reply that left
 the backend before the user's last command keeps that command's display for
 the fields it changed, so the bar does not jump back and forth.  REQUESTED-AT
-is when the answered status request was sent."
+is when the answered status request was sent, and PROTECTED the fields a
+still-unsettled command published when that request was sent."
   (etaf-batch
   (let* ((previous (etaf-ncm--read app :status))
          (song-id (plist-get status :song-id))
          (lyric (etaf-ncm--read app :lyric))
-         (stale-p (and requested-at
-                       (let ((optimistic-at (plist-get app :optimistic-at)))
-                         (and optimistic-at (< requested-at optimistic-at)))))
-         (protected (and stale-p (plist-get app :optimistic-keys)))
+         (stale-p (or protected
+                      (and requested-at
+                           (let ((optimistic-at (plist-get app :optimistic-at)))
+                             (and optimistic-at (< requested-at optimistic-at))))))
+         (protected (or protected (and stale-p (plist-get app :optimistic-keys))))
          (elapsed (or (plist-get status :elapsed) 0)))
     ;; A status reply older than the user's last command still describes the
     ;; old playback facts.  Keep the command's optimistic display for the
     ;; fields it changed until its own follow-up status confirms them.
     (when stale-p
-      (dolist (key (plist-get app :optimistic-keys))
+      (dolist (key protected)
         (setq status (plist-put status key (plist-get previous key)))
         (when (eq key :elapsed)
           (setq elapsed (or (plist-get previous :elapsed) elapsed)))))

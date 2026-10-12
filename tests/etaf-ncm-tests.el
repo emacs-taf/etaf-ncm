@@ -715,6 +715,58 @@ publishing a selection can delay it past any fixed window."
     (should (= (plist-get (etaf-ncm-tests--request :play) :start) 4))
     (should-not (etaf-ncm-tests--request :jump))))
 
+(ert-deftest etaf-ncm-tests-play-shows-the-picked-song-while-the-command-runs ()
+  "A status poll answered during a slow play cannot move the track back.
+The backend builds a queue before it switches, so a status command sent
+while the play command is still running reports the previous song.  The
+marker, the title and the queue count stay on the picked song until the
+command settles; after that a fresh reply is the truth again."
+  (setq etaf-ncm-tests--requests nil)
+  (let* (play-reply
+         (applied nil)
+         (client (lambda (request callback)
+                   (pcase (plist-get request :op)
+                     (:play
+                      (push request etaf-ncm-tests--requests)
+                      (setq play-reply
+                            (lambda (result)
+                              (setq applied t)
+                              (funcall callback result))))
+                     (:status
+                      (push request etaf-ncm-tests--requests)
+                      (let ((status (etaf-ncm-tests--fixture "status")))
+                        (when applied
+                          (plist-put status :song_id "9")
+                          (plist-put status :title "曲目 9")
+                          (plist-put status :artist "歌手 9")
+                          (plist-put status :queue_pos "9/30"))
+                        (etaf-ncm-tests--reply callback status)))
+                     (_ (etaf-ncm-tests--client request callback)))))
+         (app (etaf-ncm-tests--session client))
+         (reading (lambda () (etaf-ncm-state app))))
+    (etaf-ncm-refresh app)
+    ;; Double press row 4: the play command stays unanswered, like a backend
+    ;; that is still resolving the stream URLs of the whole library.
+    (etaf-ncm-press-row app 4)
+    (etaf-ncm-press-row app 4)
+    (let ((status (plist-get (funcall reading) :status)))
+      (should (= 4 (plist-get status :song-id)))
+      (should (equal "曲目 4" (plist-get status :title)))
+      (should (equal "歌手 4" (plist-get status :artist)))
+      (should (= 183 (plist-get status :duration)))
+      (should (= 12 (plist-get status :queue-count))))
+    ;; A poll sent while the backend still plays the previous song.
+    (etaf-ncm-refresh app)
+    (let ((status (plist-get (funcall reading) :status)))
+      (should (= 4 (plist-get status :song-id)))
+      (should (equal "曲目 4" (plist-get status :title)))
+      (should (= 12 (plist-get status :queue-count))))
+    ;; The command settles: its follow-up reply is the new truth.
+    (funcall play-reply '(:ok (:ok t)))
+    (let ((status (plist-get (funcall reading) :status)))
+      (should (= 9 (plist-get status :song-id)))
+      (should (equal "曲目 9" (plist-get status :title))))))
+
 (ert-deftest etaf-ncm-tests-toggle-starts-the-selected-song-when-nothing-is-loaded ()
   "SPC with an empty queue plays the selected row instead of a no-op toggle."
   ;; Bind the scripted status: it is a global default for every other

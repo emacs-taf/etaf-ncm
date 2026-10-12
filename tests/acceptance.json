@@ -107,6 +107,11 @@
       "purpose": "Pressing another row selects it; pressing it again plays its library then jumps to its loaded position."
     },
     {
+      "name": "etaf-ncm-tests-play-shows-the-picked-song-while-the-command-runs",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "A status poll answered while a slow play command still runs keeps the picked song's marker, title and queue count; a fresh reply after the command settles is the truth again."
+    },
+    {
       "name": "etaf-ncm-tests-transport-effect-is-visible-before-the-reply",
       "file": "tests/etaf-ncm-tests.el",
       "purpose": "Pausing flips the displayed playback state before the backend answers, so a transport command shows its effect immediately."

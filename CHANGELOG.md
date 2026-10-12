@@ -4,6 +4,11 @@ All notable user-visible changes to ETAF NCM.
 
 ## Unreleased
 
+- Picking a song shows it at once: the playing marker, the title, the artist,
+  the length and the queue count move to the picked row before the backend
+  answers.  A status poll that still reports the previous song no longer moves
+  the marker back while the play command is in flight, so double-pressing a
+  row no longer flashes another song's marker on the way.
 - The selection and playing highlight bars slide onto their new row on ETAF's
   shared animation clock instead of jumping, and the cursor follows the bar
   while it moves.
