@@ -19,6 +19,7 @@
 (require 'seq)
 (require 'subr-x)
 (require 'image)
+(declare-function image-size "image.c" (spec &optional pixels frame))
 (require 'etaf)
 (require 'etaf-ui)
 (require 'ebox)
