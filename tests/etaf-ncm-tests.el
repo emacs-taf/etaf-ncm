@@ -2555,7 +2555,10 @@ directory drives the queue track list."
 
 (ert-deftest etaf-ncm-tests-selection-bar-slides-across-rows ()
   "A selection move animates the overlay bar through the rows it crosses."
-  (let ((app (etaf-ncm-tests--session)))
+  ;; Slow the shared animation clock: a loaded runner can otherwise advance
+  ;; past the intermediate frames this test samples.
+  (let ((app (etaf-ncm-tests--session))
+        (etaf-animation-speed 0.1))
     (etaf-ncm-tests--with-player app
       (etaf-ncm-tests--rendered-text)
       (let* ((runtime (etaf-runtime-for-buffer (current-buffer)))
