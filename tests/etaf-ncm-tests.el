@@ -1471,9 +1471,9 @@ locate the entry by its help text instead of a character offset."
          (bounds (etaf-host-ref-bounds runtime host)))
     (should bounds)
     (let ((start (car bounds)) (end (cdr bounds)))
-      (list (ebox-string-pixel-width
+      (list (etaf-string-pixel-width
              (buffer-substring (save-excursion (goto-char start) (line-beginning-position)) start))
-            (ebox-string-pixel-width (buffer-substring start end))))))
+            (etaf-string-pixel-width (buffer-substring start end))))))
 
 (defun etaf-ncm-tests--host-text (host)
   "Return HOST's painted text in the mounted player."
