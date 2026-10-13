@@ -13,9 +13,12 @@ manual describes the workflows and the contracts behind them.
 
 - Emacs 29.1 or newer.
 - The `etaf`, `etaf-ui`, `ebox` and `ecss` repositories, each on `load-path`.
-- The `netease-music` backend skill (`scripts/netease-api.mjs`,
-  `scripts/netease-music.sh`), Node.js and mpv, with a signed-in account. The
-  backend keeps its login state and queue under its own state directory.
+- The `netease-music` backend, Node.js and mpv, with a signed-in account.
+  The backend is published as a standalone CLI package
+  (<https://forgejo.vhkd.top/pi-hub/netease-music-cli>); the README's
+  "The `netease-music` backend" section gives the clone, login and
+  `etaf-ncm-skill-directory` setup. The backend keeps its login state and queue
+  under its own state directory.
 
 ```elisp
 (add-to-list 'load-path "/path/to/etaf")
@@ -117,9 +120,9 @@ out. On success the backend stores the cookie in its own state directory and
 the player reloads its account and libraries; the login state then follows the
 normal backend resolution order (environment, then the stored cookie).
 
-The same sign-in is available in a shell (`pi-skill netease-music login --sms
-<phone>`, then `login --sms-code <code>`), and QR sign-in (`login`) remains
-available there. When a backend reply says the login expired, the player's
+The same sign-in is available in a shell (`netease-music login --sms <phone>`,
+then `login --sms-code <code>`; with Pi, `pi-skill netease-music login`), and
+QR sign-in (`login`) remains available there. When a backend reply says the login expired, the player's
 banner says so and names `L`; no shell detour is needed.
 
 A failure the backend explains stays on display in the red banner above the
@@ -413,7 +416,7 @@ selected.
 
 | Symptom | Cause and remedy |
 | --- | --- |
-| The message line shows `netease-music skill script is missing: ...` | `etaf-ncm-skill-directory` does not point at the skill; set it or install the skill. |
+| The message line shows `netease-music skill script is missing: ...` | `etaf-ncm-skill-directory` does not point at the backend checkout; set it (see the README) or install the backend. |
 | The message line shows the backend error | Login, Node.js or mpv is the usual cause. Run `netease-music status` in a shell, then press `g`. |
 | The banner says `登录已过期：按 L 用短信验证码重新登录` | Press `L` (or `M-x etaf-ncm-login`), confirm the phone number, then enter the code from the SMS. |
 | Every library is empty | The backend replied with an error; check `:error` in `etaf-ncm-state`. |

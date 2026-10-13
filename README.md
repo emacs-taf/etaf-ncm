@@ -49,7 +49,7 @@ tabs:
 | Node.js | runs the backend scripts | `command -v node` |
 | mpv | plays the audio | `command -v mpv` |
 | `etaf`, `etaf-ui`, `ebox`, `ecss` | the framework; each repository's root entry must be on `load-path` | every checkout is readable |
-| `netease-music` backend | library, playback, lyric and login | `netease-music check` or its `scripts/` directory exists |
+| `netease-music` backend | library, playback, lyric and login | `netease-music check` (CLI) or the checkout's `scripts/` directory exists |
 
 The player is the interface only: the backend owns the account, the queue file
 and mpv.  Install and sign in to the backend first, then the Emacs package.
@@ -67,14 +67,19 @@ login needs neither.
 
 ### 2. The `netease-music` backend
 
-When the skill directory is already on the machine (for example
-`~/.pi/agent/shared/skills/netease-music` from a Pi checkout), put its CLI on
-`PATH` and run its self-check:
+The backend is an independent command-line package, published at
+<https://forgejo.vhkd.top/pi-hub/netease-music-cli>.  Clone it anywhere, link
+its command and point the app at the same checkout:
 
 ```sh
-/path/to/netease-music/scripts/install-cli.sh   # links ~/.local/bin/netease-music
-export PATH="$HOME/.local/bin:$PATH"            # or call it through pi-skill
-netease-music check                             # dependencies + login state
+git clone https://forgejo.vhkd.top/pi-hub/netease-music-cli.git ~/src/netease-music-cli
+cd ~/src/netease-music-cli && ./scripts/install-cli.sh   # links ~/.local/bin/netease-music
+export PATH="$HOME/.local/bin:$PATH"
+netease-music check                                      # dependencies + login state
+```
+
+```elisp
+(setq etaf-ncm-skill-directory "~/src/netease-music-cli")
 ```
 
 Log in once; the cookie stays local to this machine:
@@ -85,6 +90,14 @@ netease-music login --sms <phone> --sms-code <code>
 # or scan a QR code with the NetEase Cloud Music app:
 netease-music login
 ```
+
+With Pi the same backend installs as a skill package —
+`pi install git:forgejo.vhkd.top/pi-hub/netease-music@v0.2.1` — and
+`etaf-ncm-skill-directory` points at the installed skill directory (for a
+`pi install`ed package:
+`~/.pi/agent/git/forgejo.vhkd.top/pi-hub/netease-music/skills/netease-music`).
+A Pi checkout of the shared skill tree (`~/.pi/agent/shared/skills/netease-music`)
+matches the default and needs no configuration.
 
 The login, queue and saved queues live in the skill's state directory
 (`~/.pi/agent/local/skills/netease-music` by default).  A standalone install
