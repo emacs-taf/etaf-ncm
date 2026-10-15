@@ -100,6 +100,27 @@
   "Return APP's library rows."
   (plist-get (etaf-ncm-state app) :items))
 
+(defvar etaf-ncm-tests--poll-interval 3600
+  "Playback polling interval used by mounted acceptance sessions.")
+
+(defmacro etaf-ncm-tests--with-player (app &rest body)
+  "Open APP in an isolated buffer and a roomy window while running BODY."
+  (declare (indent 1) (debug t))
+  `(let ((etaf-ncm-buffer-name (generate-new-buffer-name " *ncm-acceptance*"))
+         (etaf-ncm-status-interval etaf-ncm-tests--poll-interval)
+         (display-buffer-overriding-action '((display-buffer-same-window)))
+         (frame (selected-frame))
+         (width (frame-width))
+         (height (frame-height)))
+     (unwind-protect
+         (save-window-excursion
+           (delete-other-windows)
+           (set-frame-size frame 180 48)
+           (etaf-ncm-open ,app)
+           ,@body)
+       (etaf-ncm-close)
+       (set-frame-size frame width height))))
+
 (ert-deftest etaf-ncm-tests-new-session-is-headless ()
   "A new session starts on the daily library without touching the backend."
   (setq etaf-ncm-tests--requests nil)
@@ -976,27 +997,6 @@ The background reply must not move the reader's selection."
            collect (list :id index :name (format "%s%03d" (or prefix "长列表") index)
                          :artist "歌手" :album "专辑" :ms 180000)))
 
-(defvar etaf-ncm-tests--poll-interval 3600
-  "Playback polling interval used by mounted acceptance sessions.")
-
-(defmacro etaf-ncm-tests--with-player (app &rest body)
-  "Open APP in an isolated buffer and a roomy window while running BODY."
-  (declare (indent 1) (debug t))
-  `(let ((etaf-ncm-buffer-name (generate-new-buffer-name " *ncm-acceptance*"))
-         (etaf-ncm-status-interval etaf-ncm-tests--poll-interval)
-         (display-buffer-overriding-action '((display-buffer-same-window)))
-         (frame (selected-frame))
-         (width (frame-width))
-         (height (frame-height)))
-     (unwind-protect
-         (save-window-excursion
-           (delete-other-windows)
-           (set-frame-size frame 180 48)
-           (etaf-ncm-open ,app)
-           ,@body)
-       (etaf-ncm-close)
-       (set-frame-size frame width height))))
-
 (defun etaf-ncm-tests--rendered-text ()
   "Flush the current mounted player and read its text without properties."
   (etaf-runtime-flush (etaf-runtime-for-buffer (current-buffer)))
@@ -1856,8 +1856,48 @@ precedence over it, so the real command loop finds the player command."
       (condition-case nil (etaf-palette) (quit nil)))
     names))
 
+(ert-deftest etaf-ncm-tests-help-is-modal-read-only-and-restores-selection ()
+  "Question mark shows real keys in place without changing playback or selection."
+  (let ((app (etaf-ncm-tests--session)))
+    (etaf-ncm-tests--with-player app
+      (let* ((runtime (etaf-runtime-for-buffer (current-buffer)))
+             (buffer (current-buffer))
+             (windows (window-list)) (buffers (buffer-list))
+             (before (etaf-ncm-state app)))
+        (etaf-focus runtime 'ncm-list)
+        (etaf-ncm-tests--key "?")
+        (let* ((data (etaf-help-data runtime))
+               (title (plist-get data :title))
+               (entries (mapcan (lambda (group) (copy-sequence (plist-get group :entries)))
+                                (plist-get data :groups)))
+               (alias (cl-find "=" entries :key (lambda (entry) (plist-get entry :key))
+                               :test #'equal)))
+          (should (equal title "网易云音乐"))
+          (should alias))
+        (should (equal windows (window-list)))
+        (should (equal buffers (buffer-list)))
+        (should (eq buffer (window-buffer)))
+        (setq etaf-ncm-tests--requests nil)
+        (etaf-ncm-tests--key "n p a f <down>")
+        (should-not etaf-ncm-tests--requests)
+        (etaf-ncm-tests--key "/ n ? <escape>")
+        (let ((editing (etaf-text-input-active-p runtime))
+              (text (buffer-substring-no-properties (point-min) (point-max))))
+          (should-not editing)
+          (should (string-match-p "快捷键" text)))
+        (etaf-ncm-tests--key "<escape>")
+        (let* ((after (etaf-ncm-state app))
+               (selection (plist-get after :selection))
+               (status (plist-get after :status))
+               (focus (etaf-focused-host-ref runtime))
+               (closed (etaf-help-close runtime)))
+          (should (equal selection (plist-get before :selection)))
+          (should (equal status (plist-get before :status)))
+          (should (eq focus 'ncm-list))
+          (should-not closed))))))
+
 (ert-deftest etaf-ncm-tests-palette-lists-and-runs-the-player-keys ()
-  "`?' opens the ETAF palette with the player keys and its controls."
+  "The explicit ETAF palette lists and executes player keys and controls."
   (let ((app (etaf-ncm-tests--session)))
     (etaf-ncm-refresh app)
     (etaf-ncm-tests--with-player app

@@ -42,7 +42,12 @@ list. Every control is reachable from the keyboard through ETAF's shared
 navigation: `TAB` / `S-TAB` move between regions (sidebar, chips, list, pane
 tabs, side panel, player controls), arrows and `C-n` / `C-p` / `C-b` / `C-f`
 move inside a region, `RET` / `SPC` activate the focused control and `?`
-opens a palette of every key and control. `M-x etaf-ncm-close` unmounts the
+opens read-only, searchable help inside the same buffer and Emacs window.
+Its bindings come from the current player region; browsing help does not
+change playback or the queue. Escape leaves search editing first, then closes
+help, while clicking the backdrop closes it directly and restores the opening
+focus. The execution palette remains available via `M-x etaf-palette`.
+`M-x etaf-ncm-close` unmounts the
 player and kills the buffer; the session behind it stays usable, so reopening
 with the same session keeps its library, selection and queue.
 
@@ -92,7 +97,7 @@ is revived by its next mount.
 | `,` / `.` | Seek ten seconds back / forward |
 | `1`-`9` | Jump to the nth sidebar library |
 | `T` | Switch between the dark and the light palette |
-| `?` | Open the command palette listing every key and focusable control |
+| `?` | Open read-only, searchable keyboard help inside the player |
 | `TAB` / `S-TAB` | Move focus between regions; arrows move inside the sidebar, chips, tabs and player controls |
 | `Esc` | Close an open surface |
 | `q` | Close the player window; the backend keeps playing |

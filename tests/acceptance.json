@@ -12,6 +12,11 @@
   "support": [],
   "cases": [
     {
+      "name": "etaf-ncm-tests-help-is-modal-read-only-and-restores-selection",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "Native question mark opens same-buffer help with named effective bindings and aliases; browsing and searching preserve playback, selection and focus without backend actions."
+    },
+    {
       "name": "etaf-ncm-tests-library-snapshot-survives-restart",
       "file": "tests/etaf-ncm-tests.el",
       "purpose": "Restore populated and empty sidebar snapshots without network calls; keep file private and reject another account."

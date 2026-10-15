@@ -128,7 +128,10 @@ etaf-ncm-close` closes the window and keeps the backend playing, while `Q` /
 `M-x etaf-ncm-quit` stops the backend player and closes.  Exiting Emacs stops
 a player the app started.  `etaf-ncm-theme-mode` (`dark` or `light`) selects
 the palette, and `etaf-ncm-refresh` (or `g` in the player) reloads the
-library, playback truth, queue and account.
+library, playback truth, queue and account. `?` opens searchable keyboard
+help in the player buffer without splitting the window or changing playback.
+Escape leaves search editing, then closes help; a click on the backdrop also
+closes it and restores focus. Use `M-x etaf-palette` to execute commands by name.
 
 ### Quick start for an agent
 

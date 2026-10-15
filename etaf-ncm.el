@@ -41,7 +41,8 @@
 ;; instead of letting a display rule split the frame.  The buffer hides its
 ;; mode line and takes its keys from the view's ETAF `:keys'; closing the buffer releases the
 ;; session's polling and pending requests, so a later `etaf-ncm-open' with the
-;; same MODEL works again.
+;; same MODEL works again.  ? opens searchable, read-only help in this buffer;
+;; dismissing it restores focus without changing playback or the queue.
 ;;
 ;; Function: etaf-ncm-close ()
 ;;;###autoload (autoload 'etaf-ncm-close "etaf-ncm" nil t)

@@ -13,7 +13,7 @@
 ;; on unmount.
 ;;
 ;; Every key is a `:keys' binding of the View, so an embedded player keeps them
-;; and `?' lists them in the ETAF command palette.  `etaf-ncm-open' adds what a
+;; and `?' lists them in ETAF's read-only help modal.  `etaf-ncm-open' adds what a
 ;; Component cannot own by itself: the buffer name, the wheel bindings and the
 ;; window-fitting page size.
 
@@ -435,7 +435,7 @@ or the library list keeps them; `?' opens the read-only ETAF key help."
       ("f" etaf-ncm--like "喜欢")
       ("F" etaf-ncm--unlike "取消喜欢")
       ("+" etaf-ncm--volume-up "音量 +10")
-      ("=" etaf-ncm--volume-up nil)
+      ("=" etaf-ncm--volume-up "音量 +10")
       ("-" etaf-ncm--volume-down "音量 -10")
       ("," etaf-ncm--seek-back "快退 10 秒")
       ("." etaf-ncm--seek-forward "快进 10 秒")
@@ -712,7 +712,9 @@ releases the polling timer and the session's pending backend requests."
         ;; the panels' own top padding and one under the player belongs to the
         ;; player bar, so the surface stays one background at every size.
         :color (etaf-ncm-color :ink) :bgcolor (etaf-ncm-color :bg)
-        :keys keys
+        :keys keys :aria-label "网易云音乐"
+        :help '("音乐由独立的 mpv 后端播放；查看帮助不会暂停播放或改变队列。"
+                "关闭窗口后音乐继续，退出客户端才会停止播放。登录过期时可重新登录并刷新曲库。")
     (box :width 'stretch :flex-grow 1 :flex-basis '(lh 0) :min-height '(lh 0))
       (etaf-ncm--view-sidebar
        :if (eq (etaf-ncm--read session :layout) 'wide)

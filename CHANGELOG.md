@@ -4,6 +4,10 @@ All notable user-visible changes to ETAF NCM.
 
 ## Unreleased
 
+- `?` shows searchable, read-only key help inside the player without splitting
+  its window or changing playback. Escape and backdrop dismissal restore the
+  opening focus; command execution stays in `M-x etaf-palette`. The volume
+  `=` alias is included alongside `+` in the effective binding list.
 - The window and the client are separate now.  `q` (or `etaf-ncm-close`) closes
   the window and leaves the backend playing, like a client minimized to the
   tray; `Q` (or `etaf-ncm-quit`) quits the client: it stops the backend player
