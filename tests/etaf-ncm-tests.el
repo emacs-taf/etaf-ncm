@@ -1861,6 +1861,56 @@ precedence over it, so the real command loop finds the player command."
       (condition-case nil (etaf-palette) (quit nil)))
     names))
 
+(ert-deftest etaf-ncm-tests-embedded-letters-and-layered-return ()
+  "An embedded player's letters and help stay inside the entered host layer."
+  (let* ((app (etaf-ncm-tests--session))
+         (buffer (generate-new-buffer " *ncm-embedded-keys*"))
+         (etaf-ncm-tests--requests nil)
+         (exits 0) (host-actions 0))
+    (unwind-protect
+        (progn
+          (etaf-mount
+           buffer
+           (etaf-view
+            (column :keys (list (list "a" (lambda () (cl-incf host-actions)) "Host action"))
+              (box :ref 'ncm-test-shell :tab-index 0 "Host")
+              (box :key-scope 'local :region '(:id ncm-test-content :label "Music")
+                   :on-dismiss (lambda () (cl-incf exits)
+                                 (etaf-focus (etaf-runtime-for-buffer buffer) 'ncm-test-shell))
+                (expr (etaf-ncm-view app)))))
+           '(:viewport-width 1300 :viewport-height 48))
+          (let ((runtime (etaf-runtime-for-buffer buffer)))
+            (etaf-runtime-refit runtime 1300 48)
+            (etaf-focus runtime 'ncm-list)
+            (with-current-buffer buffer
+              (call-interactively (key-binding (kbd "a") t))
+              (should (etaf-ncm-tests--request :add))
+              (should (= host-actions 0))
+              (let ((before (etaf-ncm-state app)))
+                (etaf-help runtime)
+                (call-interactively (key-binding (kbd "a") t))
+                (should (= host-actions 0))
+                (should (= 1 (etaf-ncm-tests--request-count :add)))
+                (call-interactively (key-binding (kbd "<escape>") t))
+                (should (= exits 0))
+                (should (eq (etaf-focused-host-ref runtime) 'ncm-list))
+                (call-interactively (key-binding (kbd "<escape>") t))
+                (should (= exits 1))
+                (should (eq (etaf-focused-host-ref runtime) 'ncm-test-shell))
+                (setq etaf-ncm-tests--requests nil)
+                (call-interactively (key-binding (kbd "a") t))
+                (should (= host-actions 1))
+                (should-not etaf-ncm-tests--requests)
+                (etaf-region-focus 'ncm-test-content runtime)
+                (should (eq (etaf-focused-host-ref runtime) 'ncm-list))
+                (let* ((after (etaf-ncm-state app))
+                       (selection (plist-get after :selection))
+                       (status (plist-get after :status)))
+                  (should (equal selection (plist-get before :selection)))
+                  (should (equal status (plist-get before :status))))))))
+      (when-let* ((runtime (etaf-runtime-for-buffer buffer))) (etaf-unmount runtime))
+      (kill-buffer buffer))))
+
 (ert-deftest etaf-ncm-tests-help-is-modal-read-only-and-restores-selection ()
   "Question mark shows real keys in place without changing playback or selection."
   (let ((app (etaf-ncm-tests--session)))

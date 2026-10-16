@@ -12,6 +12,11 @@
   "support": [],
   "cases": [
     {
+      "name": "etaf-ncm-tests-embedded-letters-and-layered-return",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "Embedded a appends a song without invoking its host; help and application Escape exit separately, and reentry restores the list focus and player state."
+    },
+    {
       "name": "etaf-ncm-tests-help-is-modal-read-only-and-restores-selection",
       "file": "tests/etaf-ncm-tests.el",
       "purpose": "Native question mark opens same-buffer help with named effective bindings and aliases; browsing and searching preserve playback, selection and focus without backend actions."
