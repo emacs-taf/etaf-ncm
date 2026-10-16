@@ -1392,7 +1392,10 @@ the page is not capped below the rows the window can show."
         (goto-char (point-min))
         (search-forward "队列045")
         (backward-char 1)
-        (let ((event (list 'mouse-1 (list window (point) (cons right 8) 0))))
+        (let* ((event (list 'mouse-1 (list window (point) (cons right 8) 0)))
+               ;; Direct command invocation must supply the same input source
+               ;; that Emacs binds while dispatching a native pointer event.
+               (last-input-event event))
           (setq etaf-ncm-tests--requests nil)
           ;; A real click enters the command with the mouse event as
           ;; `last-input-event'; activation distinguishes it from RET.
@@ -1519,6 +1522,7 @@ locate the entry by its help text instead of a character offset."
         (goto-char label)
         (let* ((window (selected-window))
                (event (list 'mouse-1 (list window label '(1 . 1) 0)))
+               (last-input-event event)
                (command (key-binding (vector event))))
           (should (commandp command))
           (let ((last-input-event event))
