@@ -46,62 +46,49 @@ tabs:
 | Requirement | Why | Check |
 | --- | --- | --- |
 | Emacs 29.1 or newer | the ETAF runtime | `emacs --version` |
-| Node.js | runs the backend scripts | `command -v node` |
+| Node.js 22 or newer | runs the backend's API client | `command -v node` |
+| Python 3 | the backend's queue, download and mpv helpers | `command -v python3` |
 | mpv | plays the audio | `command -v mpv` |
 | `etaf`, `etaf-ui`, `ebox`, `ecss` | the framework; each repository's root entry must be on `load-path` | every checkout is readable |
-| `netease-music` backend | library, playback, lyric and login | `netease-music check` (CLI) or the checkout's `scripts/` directory exists |
+| Bundled backend | library, playback, lyric and login | ships inside this package; its scripts are readable |
 
 The player is the interface only: the backend owns the account, the queue file
-and mpv.  Install and sign in to the backend first, then the Emacs package.
+and mpv.  Install the tools, sign in once, then open the player.
 
 ## Installation
 
 ### 1. System tools
 
 ```sh
-brew install node mpv            # macOS; Debian: apt install nodejs mpv
+brew install node python3 mpv    # macOS; Debian: apt install nodejs python3 mpv
 ```
 
-`python3` and `qrencode` are optional and only used by the QR login; the SMS
-login needs neither.
+`qrencode` is optional and only used when you sign in by scanning a QR code;
+the SMS login needs nothing extra.
 
-### 2. The `netease-music` backend
+### 2. The bundled backend and its one-time login
 
-The backend is an independent command-line package, published at
-<https://forgejo.vhkd.top/pi-hub/netease-music-cli>.  Clone it anywhere, link
-its command and point the app at the same checkout:
+The account, queue and playback backend ships inside this package under
+`backends/netease/`; nothing else has to be installed or cloned.  Check the
+tools and the login:
 
 ```sh
-git clone https://forgejo.vhkd.top/pi-hub/netease-music-cli.git ~/src/netease-music-cli
-cd ~/src/netease-music-cli && ./scripts/install-cli.sh   # links ~/.local/bin/netease-music
-export PATH="$HOME/.local/bin:$PATH"
-netease-music check                                      # dependencies + login state
-```
-
-```elisp
-(setq etaf-ncm-skill-directory "~/src/netease-music-cli")
+BACKEND="$(dirname "$(locate-library etaf-ncm)")/backends/netease"
+bash "$BACKEND/scripts/netease-music.sh" check     # dependencies + login state
 ```
 
 Log in once; the cookie stays local to this machine:
 
 ```sh
-netease-music login --sms <phone>               # sends a code, then
-netease-music login --sms <phone> --sms-code <code>
+bash "$BACKEND/scripts/netease-music.sh" login --sms <phone>   # sends a code, then
+bash "$BACKEND/scripts/netease-music.sh" login --sms <phone> --sms-code <code>
 # or scan a QR code with the NetEase Cloud Music app:
-netease-music login
+bash "$BACKEND/scripts/netease-music.sh" login
 ```
 
-With Pi the same backend installs as a skill package —
-`pi install git:forgejo.vhkd.top/pi-hub/netease-music@v0.2.1` — and
-`etaf-ncm-skill-directory` points at the installed skill directory (for a
-`pi install`ed package:
-`~/.pi/agent/git/forgejo.vhkd.top/pi-hub/netease-music/skills/netease-music`).
-A Pi checkout of the shared skill tree (`~/.pi/agent/shared/skills/netease-music`)
-matches the default and needs no configuration.
-
-The login, queue and saved queues live in the skill's state directory
-(`~/.pi/agent/local/skills/netease-music` by default).  A standalone install
-can point the skill at its own directory with `NETEASE_MUSIC_STATE_DIR`.
+The login, queue and saved queues live in the backend's state directory,
+`${XDG_STATE_HOME:-~/.local/state}/netease-music`.  The player passes
+`etaf-ncm-state-directory` to the backend, so both always read the same files.
 
 ### 3. The Emacs package
 
@@ -116,10 +103,11 @@ can point the skill at its own directory with `NETEASE_MUSIC_STATE_DIR`.
 (global-set-key (kbd "C-c m") #'etaf-ncm-open)
 ```
 
-When the backend is not in the default location, point the app at it:
+To try a modified backend copy, or to keep the state somewhere else, point the
+app at it:
 
 ```elisp
-(setq etaf-ncm-skill-directory "/path/to/netease-music"
+(setq etaf-ncm-backend-directory "/path/to/netease"
       etaf-ncm-state-directory "~/.local/state/netease-music")
 ```
 
@@ -139,11 +127,11 @@ A non-interactive path to a working player (the login itself needs the user's
 phone or QR scan once):
 
 ```sh
-command -v node mpv || brew install node mpv
-SKILL="${ETAF_NCM_SKILL_DIR:-$HOME/.pi/agent/shared/skills/netease-music}"
-test -x "$SKILL/scripts/netease-music.sh" || {
-  echo "netease-music backend not found: $SKILL" >&2; exit 1; }
-"$SKILL/scripts/netease-music.sh" check || "$SKILL/scripts/netease-music.sh" login
+command -v node python3 mpv || brew install node python3 mpv
+BACKEND="$(dirname "$(locate-library etaf-ncm)")/backends/netease"
+test -x "$BACKEND/scripts/netease-music.sh" || {
+  echo "netease-music backend not found: reinstall etaf-ncm" >&2; exit 1; }
+bash "$BACKEND/scripts/netease-music.sh" check || bash "$BACKEND/scripts/netease-music.sh" login
 ```
 
 ```elisp

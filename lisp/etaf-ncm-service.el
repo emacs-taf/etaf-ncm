@@ -5,11 +5,11 @@
 
 ;;; Commentary:
 ;;
-;; The player does not re-implement the NetEase protocol.  It drives the
-;; `netease-music' Pi skill through its two documented entry points:
+;; The player does not re-implement the NetEase protocol.  It drives the backend
+;; bundled under the package's `backends/' through its two entry points:
 ;;
-;;   node <skill>/scripts/netease-api.mjs COMMAND ...   reading API data
-;;   bash <skill>/scripts/netease-music.sh COMMAND ...  playback and state
+;;   node <backend>/scripts/netease-api.mjs COMMAND ...   reading API data
+;;   bash <backend>/scripts/netease-music.sh COMMAND ...  playback and state
 ;;
 ;; Both print JSON.  Requests are plists such as (:op :browse :resource :daily)
 ;; and every call is asynchronous: CALLBACK runs later in the Emacs event loop
@@ -29,24 +29,30 @@
 
 (define-error 'etaf-ncm-error "NetEase Cloud Music player error")
 
-(defcustom etaf-ncm-skill-directory
-  (expand-file-name "~/.pi/agent/shared/skills/netease-music")
-  "Directory holding the netease-music skill scripts.
+(defcustom etaf-ncm-backend-directory
+  (expand-file-name "backends/netease"
+                    (file-name-directory (or (locate-library "etaf-ncm")
+                                             load-file-name
+                                             buffer-file-name)))
+  "Directory holding this package's NetEase backend.
 `etaf-ncm-make-client' uses it to locate `scripts/netease-api.mjs' and
-`scripts/netease-music.sh'."
+`scripts/netease-music.sh'.  The backend ships inside the package; point it
+elsewhere only to try a modified copy."
   :type 'directory
   :group 'etaf-ncm)
 
 (defcustom etaf-ncm-state-directory
-  (expand-file-name "~/.pi/agent/local/skills/netease-music")
-  "Directory holding the netease-music skill state files.
+  (expand-file-name "netease-music"
+                    (or (getenv "XDG_STATE_HOME") "~/.local/state"))
+  "Directory holding the backend's state files.
 The queue panel reads the documented `queue.json' track list from it; the
-playback truth for the current index still comes from the skill command."
+playback truth for the current index still comes from the backend command.
+The client passes it to the backend as `NETEASE_MUSIC_STATE_DIR'."
   :type 'directory
   :group 'etaf-ncm)
 
 (defcustom etaf-ncm-node-program "node"
-  "Node executable used to run the skill's API client."
+  "Node executable used to run the backend's API client."
   :type 'string
   :group 'etaf-ncm)
 
@@ -65,20 +71,20 @@ It is called with no arguments and must return a client built by
 tests bind this to a fake client.")
 
 (cl-defstruct (etaf-ncm--client (:constructor etaf-ncm--client-create))
-  "Backend client that runs the netease-music skill as child processes."
-  skill-directory state-directory node-program timeout (pending nil))
+  "Backend client that runs the bundled backend as child processes."
+  backend-directory state-directory node-program timeout (pending nil))
 
 (cl-defstruct (etaf-ncm--pending (:constructor etaf-ncm--pending-create))
   "One in-flight backend request."
   process timer cancelled stdout stderr)
 
-(cl-defun etaf-ncm-make-client (&key skill-directory state-directory node-program timeout)
-  "Create a client that runs the netease-music skill as child processes.
-SKILL-DIRECTORY, STATE-DIRECTORY, NODE-PROGRAM and TIMEOUT default to
-`etaf-ncm-skill-directory', `etaf-ncm-state-directory', `etaf-ncm-node-program'
-and `etaf-ncm-request-timeout'."
+(cl-defun etaf-ncm-make-client (&key backend-directory state-directory node-program timeout)
+  "Create a client that runs the bundled backend as child processes.
+BACKEND-DIRECTORY, STATE-DIRECTORY, NODE-PROGRAM and TIMEOUT default to
+`etaf-ncm-backend-directory', `etaf-ncm-state-directory',
+`etaf-ncm-node-program' and `etaf-ncm-request-timeout'."
   (etaf-ncm--client-create
-   :skill-directory (or skill-directory etaf-ncm-skill-directory)
+   :backend-directory (or backend-directory etaf-ncm-backend-directory)
    :state-directory (or state-directory etaf-ncm-state-directory)
    :node-program (or node-program etaf-ncm-node-program)
    :timeout (or timeout etaf-ncm-request-timeout)))
@@ -288,7 +294,7 @@ Keys are the keyword kinds used by play targets, exactly as in
 `etaf-ncm--browse-resources'.")
 
 (defun etaf-ncm--client-request (client request callback)
-  "Run REQUEST through the skill processes of CLIENT, then call CALLBACK."
+  "Run REQUEST through the backend processes of CLIENT, then call CALLBACK."
   (let* ((command (condition-case error
                       (etaf-ncm--client-command client request)
                     (error (funcall callback
@@ -311,9 +317,9 @@ Keys are the keyword kinds used by play targets, exactly as in
   "Return the command line for REQUEST as (PROGRAM . ARGUMENTS).
 The result is ready for `make-process': its first element is the program and
 the rest are the arguments.  Signal `etaf-ncm-error' for an unknown request."
-  (let* ((skill (etaf-ncm--client-skill-directory client))
-         (api (expand-file-name "scripts/netease-api.mjs" skill))
-         (music (expand-file-name "scripts/netease-music.sh" skill))
+  (let* ((backend (etaf-ncm--client-backend-directory client))
+         (api (expand-file-name "scripts/netease-api.mjs" backend))
+         (music (expand-file-name "scripts/netease-music.sh" backend))
          (node (etaf-ncm--client-node-program client))
          (op (plist-get request :op)))
     (pcase op
@@ -335,7 +341,7 @@ the rest are the arguments.  Signal `etaf-ncm-error' for an unknown request."
   "Return PROGRAM to run SCRIPT, verifying both exist."
   (unless (file-readable-p script)
     (signal 'etaf-ncm-error
-            (list (format "netease-music skill script is missing: %s" script))))
+            (list (format "Netease backend script is missing: %s" script))))
   (or (executable-find program)
       (signal 'etaf-ncm-error (list (format "Executable is missing: %s" program)))))
 
@@ -343,7 +349,7 @@ the rest are the arguments.  Signal `etaf-ncm-error' for an unknown request."
   "Return the shell program used to run SCRIPT."
   (unless (file-readable-p script)
     (signal 'etaf-ncm-error
-            (list (format "netease-music skill script is missing: %s" script))))
+            (list (format "Netease backend script is missing: %s" script))))
   (or (executable-find "bash") "/bin/bash"))
 
 (defun etaf-ncm--login-phone-argument (request)
@@ -647,8 +653,9 @@ The value is the rest of that line."
 
 (defun etaf-ncm--environment (client)
   "Return the process environment for CLIENT's child processes.
-The stored login cookie is exported in the names the skill reads, so the skill
-also works when only the shell environment was configured.  A UTF-8 locale is
+The stored login cookie is exported in the names the backend reads, and the
+state directory is passed explicitly, so the backend and the queue panel always
+agree on one place.  A UTF-8 locale is
 forced when the parent has none: the backend prints and parses Chinese text,
 and under a C locale its shell reads a multibyte character after a variable
 name as part of that name."
@@ -664,11 +671,12 @@ name as part of that name."
                            process-environment)))
     (append
      base
+     (list (concat "NETEASE_MUSIC_STATE_DIR="
+                   (etaf-ncm--client-state-directory client)))
      (unless utf8
        (list (concat "LC_CTYPE=" (if (eq system-type 'darwin) "en_US.UTF-8" "C.UTF-8"))))
      (when (and cookie (not (string-empty-p cookie)))
-       (list (concat "NETEASE_COOKIE=" cookie)
-             (concat "PI_SKILL_NETEASE_MUSIC_COOKIE=" cookie))))))
+       (list (concat "NETEASE_COOKIE=" cookie))))))
 
 (defun etaf-ncm--state-value (client key)
   "Return the string stored under KEY in CLIENT's state config, or nil.
@@ -686,11 +694,10 @@ or a non-string value reads as nil."
 
 (defun etaf-ncm--cookie (client)
   "Return the NetEase login cookie known to CLIENT, or nil.
-The skill environment wins over its state file, matching the skill's own
+The process environment wins over the state file, matching the backend's own
 resolution order; a missing cookie is not an error here, because the backend
 reports the login failure with its own message."
-  (or (getenv "PI_SKILL_NETEASE_MUSIC_COOKIE")
-      (getenv "NETEASE_COOKIE")
+  (or (getenv "NETEASE_COOKIE")
       (etaf-ncm--state-value client :cookie)))
 
 (defun etaf-ncm--stored-phone (client)
@@ -701,10 +708,10 @@ as the default when signing in again.  A function client has no state file."
     (etaf-ncm--state-value client :phone)))
 
 (defun etaf-ncm--queue-tracks (client)
-  "Return the queue track list recorded by the skill for CLIENT.
-The list comes from the skill's documented `queue.json' state file; the current
-index always comes from the skill command, so a stale file cannot invent a
-playing position."
+  "Return the queue track list recorded by the backend for CLIENT.
+The list comes from the backend's documented `queue.json' state file; the
+current index always comes from the backend command, so a stale file cannot
+invent a playing position."
   (let ((file (expand-file-name "queue.json" (etaf-ncm--client-state-directory client))))
     (when (file-readable-p file)
       (let ((data (etaf-ncm--decode

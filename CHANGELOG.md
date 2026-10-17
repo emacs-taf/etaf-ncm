@@ -4,6 +4,16 @@ All notable user-visible changes to ETAF NCM.
 
 ## Unreleased
 
+- The NetEase backend now ships inside this package under `backends/netease/`
+  and no longer needs a Pi skill, `pi-skill`, or a separate `netease-music-cli`
+  checkout. Node.js, Python 3 and mpv are the system tools; `qrencode` is
+  optional and only used by QR sign-in. The login, queue and saved queues move
+  to `${XDG_STATE_HOME:-~/.local/state}/netease-music`; the client passes the
+  state directory to the backend, so both always agree.
+  `etaf-ncm-skill-directory` became `etaf-ncm-backend-directory`, the client
+  keyword `:skill-directory` became `:backend-directory`, and
+  `etaf-ncm-doctor` reports the tools, the bundled scripts and the login state.
+
 - `?` shows searchable, read-only key help inside the player without splitting
   its window or changing playback. Escape and backdrop dismissal restore the
   opening focus; command execution stays in `M-x etaf-palette`. The volume

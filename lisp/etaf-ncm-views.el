@@ -85,6 +85,9 @@ spacer line so a height-constrained sidebar shows every entry."
         :aria-label (or help label "音乐库")
         :help-echo (or help label "音乐库")
         :on-press on-press
+        ;; The row is a keyboard stop of the sidebar's focus group; RET opens
+        ;; the library the focused row names, as a click does.
+        :keys (and on-press (list (list "RET" on-press "打开")))
     ;; A callbackless button here would block the cell's inherited keymap.
     (flex :width 'stretch :height '(lh 1) :gap '((lh 0) (ch 1))
           :align-items 'center
@@ -756,6 +759,12 @@ static tab row."
         :color (if (plist-get (etaf-value entry) :current) (etaf-ncm-color :accent) (etaf-ncm-color :muted))
         :font-weight (if (plist-get (etaf-value entry) :current) 'bold 'normal)
         :on-press (lambda () (when-let* ((row (etaf-value entry))) (funcall on-jump (plist-get row :index))))
+        ;; The cell is a keyboard stop of the queue's focus group; RET jumps to
+        ;; the entry the focused cell shows, as a click does.
+        :keys (list (list "RET" (lambda ()
+                                  (when-let* ((row (etaf-value entry)))
+                                    (funcall on-jump (plist-get row :index))))
+                          "跳转到这首"))
     (box :width '(ch 5) :height '(lh 1) :color (etaf-ncm-color :dim)
       (text (expr (let ((row (etaf-value entry)))
                     (cond ((null row) "") ((plist-get row :current) glyph)

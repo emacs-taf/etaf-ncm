@@ -13,12 +13,11 @@ manual describes the workflows and the contracts behind them.
 
 - Emacs 29.1 or newer.
 - The `etaf`, `etaf-ui`, `ebox` and `ecss` repositories, each on `load-path`.
-- The `netease-music` backend, Node.js and mpv, with a signed-in account.
-  The backend is published as a standalone CLI package
-  (<https://forgejo.vhkd.top/pi-hub/netease-music-cli>); the README's
-  "The `netease-music` backend" section gives the clone, login and
-  `etaf-ncm-skill-directory` setup. The backend keeps its login state and queue
-  under its own state directory.
+- The bundled backend, Node.js, Python 3 and mpv, with a signed-in account.
+  The backend ships inside this package under `backends/netease/`; the README's
+  "The bundled backend and its one-time login" section gives the check, login
+  and state directory. The backend keeps its login state and queue under
+  `etaf-ncm-state-directory`, which the client passes to it.
 
 ```elisp
 (add-to-list 'load-path "/path/to/etaf")
@@ -126,7 +125,7 @@ the player reloads its account and libraries; the login state then follows the
 normal backend resolution order (environment, then the stored cookie).
 
 The same sign-in is available in a shell (`netease-music login --sms <phone>`,
-then `login --sms-code <code>`; with Pi, `pi-skill netease-music login`), and
+then `login --sms-code <code>`; see the README for the bundled command), and
 QR sign-in (`login`) remains available there. When a backend reply says the login expired, the player's
 banner says so and names `L`; no shell detour is needed.
 
@@ -360,7 +359,7 @@ displayed as kbps; a textual bitrate hint is preserved. Missing hints produce
 no quality badge. These fields describe the playing song, independently of
 the selected library row.
 
-`etaf-ncm-make-client` builds the default client: pass `:skill-directory`,
+`etaf-ncm-make-client` builds the default client: pass `:backend-directory`,
 `:state-directory`, `:node-program` or `:timeout` to point it at a different
 checkout, state directory, Node.js binary or request budget.
 
@@ -421,7 +420,7 @@ selected.
 
 | Symptom | Cause and remedy |
 | --- | --- |
-| The message line shows `netease-music skill script is missing: ...` | `etaf-ncm-skill-directory` does not point at the backend checkout; set it (see the README) or install the backend. |
+| The message line shows `Netease backend script is missing: ...` | `etaf-ncm-backend-directory` does not point at a backend; reinstall etaf-ncm or set it to a valid copy. |
 | The message line shows the backend error | Login, Node.js or mpv is the usual cause. Run `netease-music status` in a shell, then press `g`. |
 | The banner says `登录已过期：按 L 用短信验证码重新登录` | Press `L` (or `M-x etaf-ncm-login`), confirm the phone number, then enter the code from the SMS. |
 | Every library is empty | The backend replied with an error; check `:error` in `etaf-ncm-state`. |

@@ -11,7 +11,7 @@ owns presentation and interaction.
 | --- | --- |
 | `etaf-ncm-theme.el` | Palettes, `etaf-ncm-color`, `etaf-ncm-theme-defaults` and the mode selection. No ETAF dependency beyond the token plist it produces. |
 | `etaf-ncm-layout.el` | The responsive decision table: breakpoints derived from the header/row/chip parts they must fit, the vertical budget, the row variants and the two-size type scale. |
-| `etaf-ncm-service.el` | The backend client: request translation to skill commands, child processes, timeouts, cookie injection, reply decoding, queue state reading, LRC parsing. |
+| `etaf-ncm-service.el` | The backend client: request translation to backend commands, child processes, timeouts, cookie injection, reply decoding, queue state reading, LRC parsing. |
 | `etaf-ncm-cache.el` | The SQLite media cache built on ETAF DB: lyric text and cover file index keyed by song id, opened beside the library snapshot and failing open. |
 | `etaf-ncm-model.el` | One session: reactive sources, library loading, search, every playback and queue action, selection and paging, status polling, dispose. |
 | `etaf-ncm-views.el` | Pure presentational Components: sidebar, header, list, lyrics, queue, aside, player bar. They receive values and callbacks only. |
@@ -26,7 +26,7 @@ windows and keymaps.
 ## Data flow
 
 ```
-key or mouse ─▶ app command ─▶ model action ─▶ client request ─▶ skill process
+key or mouse ─▶ app command ─▶ model action ─▶ client request ─▶ backend process
                                                      │
       view tree ◀─ app Component ◀─ reactive sources ◀┘ reply callback
 ```
@@ -302,7 +302,7 @@ Two failure classes are kept apart on purpose:
   row, out-of-range volume) signal `etaf-ncm-error` immediately, because they are
   programming or input errors rather than backend state.
 
-The default client runs the skill's scripts as child processes with the stored
+The default client runs the bundled backend's scripts as child processes with the stored
 cookie in the child environment (`process-environment` is bound around
 `make-process`; that function has no `:environment` keyword). Each request has a
 timeout, and unmounting deletes the processes.

@@ -2,7 +2,7 @@
 
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 ;; Author: ETAF contributors
-;; Version: 0.1.0
+;; Version: 0.1.1
 ;; Package-Requires: ((emacs "29.1") (etaf "0.2.1") (etaf-ui "0.1.0") (ebox "3.0.0") (etaf-db "0.1.0"))
 ;; Keywords: multimedia, ui
 ;; URL: https://github.com/emacs-taf/etaf-ncm
@@ -30,6 +30,12 @@
 ;; consumers.  This Commentary is the authoritative export list; implementations
 ;; and precise docstrings remain beside their definitions, and the manual
 ;; contains workflows.
+;;
+;; Function: etaf-ncm-doctor ()
+;; Return capability facts for playing music.  The shape matches
+;; `etaf-install-doctor': the backend, its Node.js and Python 3 helpers and mpv
+;; are what a session needs; the account login is optional until the first
+;; request, and a QR terminal is only needed for QR sign-in.
 ;;
 ;; Function: etaf-ncm-open (&optional model)
 ;;;###autoload (autoload 'etaf-ncm-open "etaf-ncm" nil t)
@@ -291,8 +297,8 @@
 ;; The list is what the mounted player provides to the ETAF UI controls in its
 ;; subtree, so buttons, inputs and badges follow the same palette.
 ;;
-;; Function: etaf-ncm-make-client (&key skill-directory state-directory node-program timeout)
-;; Return a client that calls the `netease-music' backend of SKILL-DIRECTORY.
+;; Function: etaf-ncm-make-client (&key backend-directory state-directory node-program timeout)
+;; Return a client that calls the backend in BACKEND-DIRECTORY.
 ;; STATE-DIRECTORY is where the backend keeps its queue and login state,
 ;; NODE-PROGRAM runs the backend scripts, and TIMEOUT is the seconds a request
 ;; may take before it fails.  Every argument defaults to the matching
@@ -312,8 +318,8 @@
 ;; `:like', `:unlike', `:liked-ids', `:shuffle', `:repeat', `:queue-save',
 ;; `:queue-load', `:login-sms' or `:login-sms-code').
 ;; CALLBACK receives `(:ok DATA)' on success and `(:error MESSAGE :hint HINT)' on
-;; failure, at most once.  A failure the backend explains itself (the skill's
-;; refusal report) keeps that explanation as MESSAGE and its code as `:code';
+;; failure, at most once.  A failure the backend explains itself (its refusal
+;; report) keeps that explanation as MESSAGE and its code as `:code';
 ;; only a crash without a report falls back to naming the exit status.  A client
 ;; that cannot answer calls it neither; a session that is disposed by
 ;; `etaf-ncm-cancel' drops late replies.
@@ -327,11 +333,13 @@
 ;; usable as the `:lines' of a lyric; an empty result means an instrumental
 ;; track.
 ;;
-;; Variable: etaf-ncm-skill-directory
-;; Directory of the `netease-music' backend scripts used by the default client.
+;; Variable: etaf-ncm-backend-directory
+;; Directory of the backend scripts used by the default client. The backend
+;; ships inside this package; point it elsewhere only to try a modified copy.
 ;;
 ;; Variable: etaf-ncm-state-directory
-;; Directory holding the backend's queue and login state.
+;; Directory holding the backend's queue and login state. The client passes it
+;; to the backend as `NETEASE_MUSIC_STATE_DIR'.
 ;;
 ;; Variable: etaf-ncm-node-program
 ;; Program used to run the backend's Node.js scripts.
@@ -359,6 +367,31 @@
 (require 'etaf-ncm-model)
 (require 'etaf-ncm-views)
 (require 'etaf-ncm-app)
+
+(defun etaf-ncm-doctor ()
+  "Return capability facts for playing music.
+The shape matches `etaf-install-doctor': :required and :optional lists of
+(LABEL AVAILABLE REMEDY).  Nothing is installed or changed."
+  (let ((backend (expand-file-name "scripts/netease-music.sh"
+                                   etaf-ncm-backend-directory))
+        (api (expand-file-name "scripts/netease-api.mjs"
+                               etaf-ncm-backend-directory))
+        (state (expand-file-name "config.json" etaf-ncm-state-directory)))
+    (list :required
+          (list (list "Bundled backend"
+                      (and (file-readable-p backend) (file-readable-p api))
+                      "Reinstall etaf-ncm; its backend ships inside the package.")
+                (list "Node.js" (and (executable-find etaf-ncm-node-program) t)
+                      "Install Node.js 22 or newer with your system package manager.")
+                (list "Python 3" (and (executable-find "python3") t)
+                      "Install Python 3; the backend's queue, download and mpv helpers are Python scripts.")
+                (list "mpv" (and (executable-find "mpv") t)
+                      "Install mpv with your system package manager; playback runs through it."))
+          :optional
+          (list (list "qrencode" (and (executable-find "qrencode") t)
+                      "Optional: install qrencode for the QR sign-in code; sms login works without it.")
+                (list "Account login" (and (file-readable-p state) t)
+                      "Sign in once with the bundled backend's login --sms command.")))))
 
 (provide 'etaf-ncm)
 ;;; etaf-ncm.el ends here

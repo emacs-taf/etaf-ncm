@@ -384,20 +384,20 @@ arrived, and liking a song keeps the session table in step."
 (ert-deftest etaf-ncm-tests-missing-backend-is-reported-not-signaled ()
   "A backend whose scripts are absent reports an error instead of raising."
   (let ((app (etaf-ncm-create :client (etaf-ncm-make-client
-                                       :skill-directory "/nonexistent-etaf-ncm-skill"))))
+                                       :backend-directory "/nonexistent-etaf-ncm-backend"))))
     (etaf-ncm-refresh app)
     (let ((state (etaf-ncm-state app)))
       (should (string-match-p "missing" (or (plist-get state :error) "")))
       (should (string-match-p "missing" (plist-get state :message)))
       (should-not (plist-get state :loading)))))
 
-(ert-deftest etaf-ncm-tests-skill-refusal-reports-its-own-message ()
-  "A refused skill command reports the backend's own error and hint.
+(ert-deftest etaf-ncm-tests-backend-refusal-reports-its-own-message ()
+  "A refused backend command reports its own error and hint.
 The netease-music scripts exit non-zero with a report on stderr: the shell
 entry writes `error=' and `hint=' lines, the mpv bridge writes a JSON object.
 Both must reach the caller as the message, and a crash without a report keeps
 the exit status as the message."
-  (let* ((directory (make-temp-file "etaf-ncm-refusal-skill" t))
+  (let* ((directory (make-temp-file "etaf-ncm-refusal-backend" t))
          (scripts (expand-file-name "scripts" directory))
          (script (expand-file-name "netease-music.sh" scripts)))
     (unwind-protect
@@ -412,7 +412,7 @@ the exit status as the message."
                     "esac\n"
                     "exit 1\n"))
           (set-file-modes script #o755)
-          (let* ((client (etaf-ncm-make-client :skill-directory directory :timeout 10))
+          (let* ((client (etaf-ncm-make-client :backend-directory directory :timeout 10))
                  (ask (lambda (request)
                         (let (reply (deadline (+ (float-time) 10)))
                           (etaf-ncm-client-call client request (lambda (result) (setq reply result)))
@@ -492,7 +492,7 @@ still has to act on."
                                                :code "notfound"))
                               (funcall callback (list :ok (list)))))
                      (:browse (if auth-browse
-                                  (funcall callback (list :error "登录已过期或未登录：跑 pi-skill netease-music login --sms <手机号>" :code "auth"))
+                                  (funcall callback (list :error "登录已过期或未登录：跑 netease-music.sh login --sms <手机号>" :code "auth"))
                                 (etaf-ncm-tests--client request callback)))
                      (_ (etaf-ncm-tests--client request callback)))))
          (app (etaf-ncm-tests--session client)))
@@ -558,12 +558,12 @@ still has to act on."
     (should (equal seen '((:ok (:op t)) (:op :status))))
     (etaf-ncm-cancel (lambda (_request _callback) nil))))
 
-(ert-deftest etaf-ncm-tests-default-client-runs-the-skill-command ()
-  "The default client calls the skill script with the arguments of the request.
-A stub skill records the command line, so a request that translates into the
+(ert-deftest etaf-ncm-tests-default-client-runs-the-backend-command ()
+  "The default client calls the backend script with the arguments of the request.
+A stub backend records the command line, so a request that translates into the
 wrong argument (a keyword instead of the song id, say) fails here instead of
 silently doing nothing against the real backend."
-  (let* ((directory (make-temp-file "etaf-ncm-skill" t))
+  (let* ((directory (make-temp-file "etaf-ncm-backend" t))
          (scripts (expand-file-name "scripts" directory))
          (script (expand-file-name "netease-music.sh" scripts))
          (log (expand-file-name "calls.log" directory))
@@ -576,7 +576,7 @@ silently doing nothing against the real backend."
                     (format "printf '%%s\\n' \"$*\" >> %s\n" (shell-quote-argument log))
                     "printf '{\"ok\": true, \"state\": \"playing\"}\\n'\n"))
           (set-file-modes script #o755)
-          (let ((client (etaf-ncm-make-client :skill-directory directory :timeout 10)))
+          (let ((client (etaf-ncm-make-client :backend-directory directory :timeout 10)))
             (dolist (case '(((:op :play :target (:kind :song :id 4242)) "play 4242")
                             ((:op :play :target (:kind :fm) :ids (7 2 7) :start 3)
                              "play-ids 7,2,7 --start 3")
@@ -1394,7 +1394,10 @@ the page is not capped below the rows the window can show."
         (backward-char 1)
         (let ((event (list 'mouse-1 (list window (point) (cons right 8) 0))))
           (setq etaf-ncm-tests--requests nil)
-          (funcall (key-binding [mouse-1]) event)
+          ;; A real click enters the command with the mouse event as
+          ;; `last-input-event'; activation distinguishes it from RET.
+          (let ((last-input-event event))
+            (funcall (key-binding [mouse-1]) event))
           (should (= (plist-get (etaf-ncm-tests--request :jump) :index) 45)))
         (etaf-ncm-tests--rendered-text)
         (let (index)
@@ -1518,7 +1521,8 @@ locate the entry by its help text instead of a character offset."
                (event (list 'mouse-1 (list window label '(1 . 1) 0)))
                (command (key-binding (vector event))))
           (should (commandp command))
-          (funcall command event)
+          (let ((last-input-event event))
+            (funcall command event))
           (etaf-ncm-tests--rendered-text)
           (should (eq (plist-get (etaf-ncm-state app) :section) :fm))))
       ;; Exercise the native press/release route on both lines of the cell.
@@ -1537,7 +1541,8 @@ locate the entry by its help text instead of a character offset."
             (should (commandp command))
             (should (eq command (lookup-key (get-text-property position 'keymap)
                                            [down-mouse-1])))
-            (funcall command press)
+            (let ((last-input-event press))
+              (funcall command press))
             (etaf-ncm-tests--rendered-text)
             (should (eq (plist-get (etaf-ncm-state app) :section) (nth 1 target))))))
       ;; The sidebar is one Tab stop entered at the current library; arrows
@@ -2026,7 +2031,7 @@ precedence over it, so the real command loop finds the player command."
                          (push request etaf-ncm-tests--requests)
                          (funcall callback
                                   (list :error "登录已过期"
-                                        :hint "pi-skill netease-music login"
+                                        :hint "netease-music.sh login"
                                         :code "auth")))
                      (etaf-ncm-tests--client request callback)))))
     (setq app (etaf-ncm-tests--session client))
@@ -2191,8 +2196,8 @@ precedence over it, so the real command loop finds the player command."
 
 (ert-deftest etaf-ncm-tests-child-environment-always-has-a-utf8-locale ()
   "The backend child runs with a UTF-8 locale even when the parent has none.
-The skill prints and parses Chinese text, so a missing or non-UTF-8 locale
-breaks it; a stub skill records the environment it was spawned with."
+The backend prints and parses Chinese text, so a missing or non-UTF-8 locale
+breaks it; a stub backend records the environment it was spawned with."
   (let* ((directory (make-temp-file "etaf-ncm-locale" t))
          (scripts (expand-file-name "scripts" directory))
          (script (expand-file-name "netease-music.sh" scripts))
@@ -2207,7 +2212,7 @@ breaks it; a stub skill records the environment it was spawned with."
                     "printf '{\"ok\": true}\\n'\n"))
           (set-file-modes script #o755)
           (let ((process-environment '("PATH=/usr/bin" "LC_ALL=en_US.ISO8859-1"))
-                (client (etaf-ncm-make-client :skill-directory directory
+                (client (etaf-ncm-make-client :backend-directory directory
                                               :state-directory directory
                                               :timeout 10))
                 (deadline (+ (float-time) 10)))
@@ -2268,8 +2273,8 @@ makes the whole list look as if every song were playing."
     (set-buffer-multibyte nil)
     (insert (base64-decode-string etaf-ncm-tests--cover-png))))
 
-(defun etaf-ncm-tests--stub-cover-skill (directory)
-  "Create a stub netease-music skill in DIRECTORY; return its script path.
+(defun etaf-ncm-tests--stub-cover-backend (directory)
+  "Create a stub netease-music backend in DIRECTORY; return its script path.
 The script records its arguments, materializes the requested cover download,
 and answers with the documented JSON shapes.  A queue.json in the same
 directory drives the queue track list."
@@ -2294,15 +2299,15 @@ directory drives the queue track list."
     (set-file-modes (expand-file-name "netease-music.sh" scripts) #o755)
     (expand-file-name "netease-music.sh" scripts)))
 
-(ert-deftest etaf-ncm-tests-cover-request-downloads-through-the-skill-entry ()
-  "The cover request records the skill command and reports the saved file."
-  (let* ((directory (make-temp-file "ncm-cover-skill" t))
+(ert-deftest etaf-ncm-tests-cover-request-downloads-through-the-backend-entry ()
+  "The cover request records the backend command and reports the saved file."
+  (let* ((directory (make-temp-file "ncm-cover-backend" t))
          (target (expand-file-name "art.img" directory))
          reply)
     (unwind-protect
         (progn
-          (etaf-ncm-tests--stub-cover-skill directory)
-          (let* ((client (etaf-ncm-make-client :skill-directory directory :timeout 10))
+          (etaf-ncm-tests--stub-cover-backend directory)
+          (let* ((client (etaf-ncm-make-client :backend-directory directory :timeout 10))
                  (deadline (+ (float-time) 10)))
             (etaf-ncm-client-call client (list :op :cover :id 7 :file target)
                                   (lambda (result) (setq reply result)))
@@ -2320,13 +2325,13 @@ directory drives the queue track list."
       (delete-directory directory t))))
 
 (ert-deftest etaf-ncm-tests-queue-tracks-keep-the-cover-url ()
-  "Queue tracks normalized from the skill state carry the cover URL."
+  "Queue tracks normalized from the backend state carry the cover URL."
   (let* ((directory (make-temp-file "ncm-cover-queue" t))
          reply)
     (unwind-protect
         (progn
-          (etaf-ncm-tests--stub-cover-skill directory)
-          (let* ((client (etaf-ncm-make-client :skill-directory directory
+          (etaf-ncm-tests--stub-cover-backend directory)
+          (let* ((client (etaf-ncm-make-client :backend-directory directory
                                                :state-directory directory
                                                :timeout 10))
                  (ask (lambda ()
