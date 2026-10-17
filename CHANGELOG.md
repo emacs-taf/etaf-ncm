@@ -4,6 +4,11 @@ All notable user-visible changes to ETAF NCM.
 
 ## Unreleased
 
+- Installing from the package archive now compiles every module: the entry
+  resolves its `lisp/` directory from the file being compiled, so an
+  installation started from a script cannot point the compiler at the script's
+  own directory.
+
 - The NetEase backend now ships inside this package under `backends/netease/`
   and no longer needs a Pi skill, `pi-skill`, or a separate `netease-music-cli`
   checkout. Node.js, Python 3 and mpv are the system tools; `qrencode` is

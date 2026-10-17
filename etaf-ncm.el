@@ -2,7 +2,7 @@
 
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 ;; Author: ETAF contributors
-;; Version: 0.1.1
+;; Version: 0.1.2
 ;; Package-Requires: ((emacs "29.1") (etaf "0.2.1") (etaf-ui "0.1.0") (ebox "3.0.0") (etaf-db "0.1.0"))
 ;; Keywords: multimedia, ui
 ;; URL: https://github.com/emacs-taf/etaf-ncm
@@ -355,10 +355,15 @@
 
 ;;; Code:
 
+;; The archive compiles this entry from a script that is still being loaded, so
+;; `load-file-name` names that script.  `byte-compile-current-file` names the
+;; file being compiled and must win, then `lisp/` resolves while the compiler
+;; works on the independent modules an archive install compiles one by one.
 (eval-and-compile
-  (let ((directory (file-name-directory (or load-file-name
-                                            (bound-and-true-p byte-compile-current-file)
-                                            buffer-file-name))))
+  (let ((directory (file-name-directory
+                    (or (bound-and-true-p byte-compile-current-file)
+                        load-file-name
+                        buffer-file-name))))
     (add-to-list 'load-path (expand-file-name "lisp" directory))))
 
 (require 'etaf-ncm-theme)
