@@ -227,7 +227,9 @@ The grid keeps FILE's aspect ratio; Ebox scales the raster to it, so both
 dimensions stay cell-aligned and every row is fully covered."
   (let* ((size (etaf-ncm--cover-size file))
          (cell-w (max 1 (frame-char-width)))
-         (cell-h (max 1 (frame-char-height)))
+         ;; A terminal cell is about twice as tall as it is wide, and the text
+         ;; image adapter draws two vertical pixels per row with half blocks.
+         (cell-h (max 1 (if (display-graphic-p) (frame-char-height) 2)))
          (image-w (max 1 (or (car-safe size) 1)))
          (image-h (max 1 (or (cdr-safe size) 1)))
          (cols (max 1 (round (/ (* (float lines) cell-h image-w)
@@ -713,12 +715,16 @@ static tab row."
     (&key title artist album cover projection rows)
   "Render retained metadata and a viewport-sized lyric row pool."
   :render
-  (let ((offsets (and (> rows 0) (number-sequence 0 (1- rows)))))
+  (let ((offsets (and (> rows 0) (number-sequence 0 (1- rows))))
+        ;; A terminal cell is half-block sized, so the same square cover needs
+        ;; more columns there while the graphical frame keeps its 10-char box.
+        (cover-chars (if (display-graphic-p) 10 14)))
    (etaf-view
   (flex :flex-direction 'column :width 'stretch :flex-grow 1 :flex-basis '(lh 0)
         :min-height '(lh 0) :gap '((lh 0) (px 0)) :overflow 'hidden
     (flex :width 'stretch :gap '((lh 0) (ch 1)) :align-items 'center
-      (etaf-ncm--view-cover :size '(ch 10) :chars 10 :lines 7 :file cover)
+      (etaf-ncm--view-cover :size (list 'ch cover-chars) :chars cover-chars
+                            :lines 7 :file cover)
       (column :flex-grow 1 :flex-basis '(px 0) :min-width '(ch 0) :item-gap '(lh 0)
         (box :height '(lh 1) :overflow 'hidden :font-weight 'bold
           (text (expr (or (etaf-ncm--reactive-text title) "还没有播放"))))

@@ -4,6 +4,10 @@ All notable user-visible changes to ETAF NCM.
 
 ## Unreleased
 
+- Terminal frames size album art by the cell's half-block pixels, so a square
+  cover keeps its aspect instead of turning into a tall mosaic, and the lyric
+  pane gives the cover a wider grid.
+
 - The seek and volume meters draw a one-pixel rule again. `etaf-range` now
   honors `:bar-height` on graphical frames, so an unset value made both bars
   six pixels tall; the player asks for the hairline its native-style bar

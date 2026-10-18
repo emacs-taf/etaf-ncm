@@ -2292,7 +2292,7 @@ makes the whole list look as if every song were playing."
     (etaf-ncm-tests--with-player app
       (etaf-ncm-refresh app)
       (let ((text (etaf-ncm-tests--rendered-text)))
-        (should (string-match-p "> +曲目 1" text))
+        (should (string-match-p "▶ +曲目 1" text))
         (should (string-match-p "3  曲目 3" text))
         (should (string-match-p "4  曲目 4" text))))))
 
