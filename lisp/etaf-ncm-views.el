@@ -981,6 +981,9 @@ instead of re-rendering this Component and republishing the view."
       (etaf-range :value elapsed :min 0 :max duration
                   :ref 'ncm-seek :fill-ref 'ncm-meter :key-step 5
                   :aria-label "播放进度，点击或拖动跳转"
+                  ;; One-pixel rule: a native-style player reads the meter as a
+                  ;; hairline inside a full-height hit row, not as a slider bar.
+                  :bar-height 8
                   :color (etaf-ncm-color :accent)
                   :track-color (etaf-ncm-color :panel3)
                   :on-commit on-seek))
@@ -1018,6 +1021,7 @@ Controls sit in separated groups so the right edge reads as three ideas
       (etaf-range :value (or volume 0) :min 0 :max 100 :ref 'ncm-volume :key-step 5
                   :fill-ref 'ncm-volume-fill
                   :aria-label "音量，点击或拖动调节"
+                  :bar-height 8
                   :color (etaf-ncm-color :accent)
                   :track-color (etaf-ncm-color :panel3)
                   :on-commit on-volume))

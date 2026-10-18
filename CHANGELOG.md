@@ -4,6 +4,10 @@ All notable user-visible changes to ETAF NCM.
 
 ## Unreleased
 
+- The seek and volume meters draw a one-pixel rule again. `etaf-range` now
+  honors `:bar-height` on graphical frames, so an unset value made both bars
+  six pixels tall; the player asks for the hairline its native-style bar
+  reserves inside the full-height hit row.
 - Installing from the package archive now compiles every module: the entry
   resolves its `lisp/` directory from the file being compiled, so an
   installation started from a script cannot point the compiler at the script's
