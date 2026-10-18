@@ -966,7 +966,7 @@ which a terminal-cell layout cannot round away."
         :gap (if compact '((lh 0) (ch 1)) '((lh 0) (ch 3)))
         :align-items 'center :justify-content 'center :focus-group 'horizontal
     (etaf-ncm--view-control :ref 'ncm-previous :icon 'previous :help "上一首 (p)" :on-press on-previous)
-    (box :id "ncm-play" :ref 'ncm-play :width (if compact '(ch 3) '(ch 4))
+    (box :id "ncm-play" :ref 'ncm-play :width '(ch 4)
          :height '(lh 1) :flex-shrink 0
          :role 'button :tab-index 0 :aria-label "播放 / 暂停"
          :help-echo "播放 / 暂停 (SPC)" :on-press on-toggle
@@ -975,7 +975,7 @@ which a terminal-cell layout cannot round away."
                            :color (etaf-ncm-color :ink) :on-color (etaf-ncm-color :ink)
                            ;; Span the whole pill so the glyph centres with one inset on
                            ;; both sides; a narrower icon leaves the right side heavier.
-                           :min-width (if compact 3 4)
+                           :min-width 4
                            :help-echo "播放 / 暂停 (SPC)" :tab-index -1
                            :on-press on-toggle))
     (etaf-ncm--view-control :ref 'ncm-next :icon 'next :help "下一首 (n)" :on-press on-next)
