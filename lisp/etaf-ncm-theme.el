@@ -20,11 +20,11 @@
   :group 'applications)
 
 (defconst etaf-ncm--palettes
-  '((dark :bg "#0E1013" :panel "#15181D" :panel2 "#1B1F26" :panel3 "#232832"
-          :line "#262B34" :ink "#E9ECF1" :muted "#98A0AC" :dim "#6A727E"
+  '((dark :bg "#191a1c" :panel "#202225" :panel2 "#25272b" :panel3 "#2b2e33"
+          :line "#303338" :ink "#E9ECF1" :muted "#98A0AC" :dim "#6A727E"
           :accent "#EC4141" :accent-soft "#2A1619" :gold "#E8B45C" :ok "#4FB477"
           :warn "#E8B45C" :danger "#FF7A7A" :danger-bg "#3A1D22" :info "#6FB4E8"
-          :playing "#EC4141" :selected "#1B1F26" :meter "#EC4141" :cover "#232832")
+          :playing "#EC4141" :selected "#25272b" :meter "#EC4141" :cover "#2b2e33")
     (light :bg "#FFFFFF" :panel "#F6F7F9" :panel2 "#EFF1F4" :panel3 "#E4E7EB"
            :line "#E1E4E9" :ink "#1B1F24" :muted "#5C6470" :dim "#8A919C"
            :accent "#D8232A" :accent-soft "#FBE9EA" :gold "#B07A16" :ok "#2E7D4F"
