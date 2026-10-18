@@ -271,6 +271,17 @@ browse rows without losing the row arrows and presses still act on."
   (interactive)
   (etaf-ncm-download-selection (etaf-ncm--current-model)))
 
+(defun etaf-ncm-open-cover ()
+  "Open the current track's album art in the system image viewer.
+A terminal cannot show the original pixels inside the buffer, so this opens
+the cached artwork at full size."
+  (interactive)
+  (let* ((model (etaf-ncm--current-model))
+         (file (etaf-ncm--read model :cover-file)))
+    (unless (and (stringp file) (file-readable-p file))
+      (user-error "当前歌曲没有可读取的封面"))
+    (call-process (if (eq system-type 'darwin) "open" "xdg-open") nil 0 nil file)))
+
 (defun etaf-ncm--search ()
   "Ask for a keyword and search it."
   (interactive)
@@ -432,6 +443,7 @@ or the library list keeps them; `?' opens the read-only ETAF key help."
       ("v" etaf-ncm--toggle-pane "切换列表 / 面板")
       ("r" etaf-ncm--toggle-repeat "列表循环")
       ("z" etaf-ncm--toggle-shuffle "随机播放")
+      ("c" etaf-ncm-open-cover "在系统查看器打开封面")
       ("f" etaf-ncm--like "喜欢")
       ("F" etaf-ncm--unlike "取消喜欢")
       ("+" etaf-ncm--volume-up "音量 +10")

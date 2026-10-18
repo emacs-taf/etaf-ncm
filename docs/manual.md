@@ -81,6 +81,7 @@ is revived by its next mount.
 | click the cover / `词` / queue control | Show lyrics / lyrics / the queue, preserving the current selection and queue window |
 | click a row's download / `+` icon | Download / add to queue directly; the compact layout keeps download |
 | `SPC` | Pause or resume; with an empty queue it plays the selected song |
+| `c` | Open the playing track's album art in the system image viewer |
 | `n` / `p` | Next / previous queue entry |
 | `a` | Append the selected song to the queue |
 | `d` | Download the selected song into the local library |

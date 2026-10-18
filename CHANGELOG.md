@@ -4,6 +4,13 @@ All notable user-visible changes to ETAF NCM.
 
 ## Unreleased
 
+- The sidebar marks are Han characters (`荐` `台` `心` `单` `碟` `人` `榜` `筒`
+  `近`) in terminal frames: a terminal draws CJK at one exact width in its own
+  font, so the category column shares size and alignment, and each entry keeps
+  a distinct mark.  `c` opens the playing track's album art in the system image
+  viewer, and a terminal cover uses a wider grid (18x9) so the approximation
+  keeps more of the artwork.
+
 - Terminal frames size album art by the cell's half-block pixels, so a square
   cover keeps its aspect instead of turning into a tall mosaic, and the lyric
   pane gives the cover a wider grid.

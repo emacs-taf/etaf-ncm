@@ -26,6 +26,17 @@
 (require 'etaf-ncm-theme)
 (require 'etaf-ncm-model)
 
+(etaf-ui-icon-set-register
+ 'ncm-nav
+ '(:kind font :family "monospace" :height 1.0
+   ;; The sidebar marks are Han characters: a terminal draws CJK at one exact
+   ;; width in its own font, so the category column shares size and alignment.
+   :glyphs ((star . "荐") (radio . "台") (heart . "心") (list . "单")
+            (disc . "碟") (account . "人") (chart . "榜") (mic . "筒")
+            (clock . "近"))
+   :fallback ((star . "*") (radio . "~") (heart . "<3") (list . "=")
+              (disc . "o") (account . "u") (chart . "=") (mic . "!") (clock . "c"))))
+
 (declare-function etaf-ncm--view-entries "etaf-ncm-app" (model))
 
 ;;; ---------------------------------------------------------------------------
@@ -102,7 +113,8 @@ spacer line so a height-constrained sidebar shows every entry."
           :color (if (etaf-value active) (etaf-ncm-color :ink) (etaf-ncm-color :muted))
           :font-weight 'normal
       (etaf-ui-toggle-icon :value active :off (or icon 'music) :on (or icon 'music)
-                           :set 'svg :size 1.0 :min-width 3
+                           :set (if (display-graphic-p) 'svg 'ncm-nav)
+                           :size 1.0 :min-width (if (display-graphic-p) 3 2)
                            :color (etaf-ncm-color :muted)
                            :on-color (etaf-ncm-color :accent))
       (box :if (and (not chip) (not compact)) :flex-grow 1 :flex-basis '(px 0)
@@ -189,7 +201,7 @@ key (`download' or `queue') of the inline action the reader pressed."
       ;; song shows a check and stays clickable to refresh the file.  The SVG
       ;; icon keeps the row at one line height.
       (etaf-ui-toggle-icon :value downloaded :off 'download :on 'check
-                           :set 'svg :size 1.0 :min-width 3
+                           :set 'svg :size 1.0 :min-width 2
                            :color (etaf-ncm-color :dim)
                            :on-color (etaf-ncm-color :accent)
                            :help-echo "下载到本地（勾号表示已下载，点击可重新下载）"
@@ -197,7 +209,7 @@ key (`download' or `queue') of the inline action the reader pressed."
                            :on-press (lambda () (when (etaf-ncm--reactive-text row)
                                                   (funcall on-action (etaf-ncm--active-value index) 'download)))))
     (box :if (eq variant 'full) :height '(lh 1) :justify-self 'center :min-width '(ch 2)
-      (etaf-ui-icon :name 'plus :set 'svg :size 1.0 :min-width 3
+      (etaf-ui-icon :name 'plus :set 'svg :size 1.0 :min-width 2
                     :color (etaf-ncm-color :dim)
                     :help-echo "加入队列" :tab-index -1
                     :on-press (lambda () (when (etaf-ncm--reactive-text row)
@@ -304,7 +316,7 @@ application."
           :align-items 'center
           :justify-content (if compact 'center 'start)
           :padding (if compact '((lh 0) (ch 0)) '((lh 0) (ch 1)))
-      (etaf-ui-icon :name 'music :set 'svg :size 1.0 :min-width 3
+      (etaf-ui-icon :name 'music :set 'svg :size 1.0 :min-width 2
                     :color (etaf-ncm-color :accent))
       (box :if (not compact) :height '(lh 1)
         (text :font-weight 'bold "网易云音乐")))
@@ -334,7 +346,7 @@ application."
                           (format "%s%s" nick (if vip " · VIP" ""))
                         "未登录：按 L 登录")
           :on-press (unless account on-login)
-      (etaf-ui-icon :name 'account :set 'svg :size 1.0 :min-width 3
+      (etaf-ui-icon :name 'account :set 'svg :size 1.0 :min-width 2
                     :color (if account (etaf-ncm-color :ok) (etaf-ncm-color :dim)))
       (box :if (not compact) :flex-grow 1 :flex-basis '(px 0) :min-width '(ch 0)
            :height '(lh 1) :overflow 'hidden
@@ -718,13 +730,14 @@ static tab row."
   (let ((offsets (and (> rows 0) (number-sequence 0 (1- rows))))
         ;; A terminal cell is half-block sized, so the same square cover needs
         ;; more columns there while the graphical frame keeps its 10-char box.
-        (cover-chars (if (display-graphic-p) 10 14)))
+        (cover-chars (if (display-graphic-p) 10 18))
+        (cover-lines (if (display-graphic-p) 7 9)))
    (etaf-view
   (flex :flex-direction 'column :width 'stretch :flex-grow 1 :flex-basis '(lh 0)
         :min-height '(lh 0) :gap '((lh 0) (px 0)) :overflow 'hidden
     (flex :width 'stretch :gap '((lh 0) (ch 1)) :align-items 'center
       (etaf-ncm--view-cover :size (list 'ch cover-chars) :chars cover-chars
-                            :lines 7 :file cover)
+                            :lines cover-lines :file cover)
       (column :flex-grow 1 :flex-basis '(px 0) :min-width '(ch 0) :item-gap '(lh 0)
         (box :height '(lh 1) :overflow 'hidden :font-weight 'bold
           (text (expr (or (etaf-ncm--reactive-text title) "还没有播放"))))
