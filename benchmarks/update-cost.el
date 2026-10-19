@@ -6,8 +6,8 @@
 ;; tick (the player bar repaints).  Run it with the framework byte-compiled,
 ;; which is what an installed checkout uses:
 ;;
-;;   emacs -Q --batch -L . -L lisp -L tests -L ../../etaf -L ../../etaf-ui \
-;;         -L ../../ebox -L ../../ecss -l benchmarks/update-cost.el
+;;   emacs -Q --batch -L . -L lisp -L tests -L ../etaf -L ../etaf-ui \
+;;         -L ../ebox -L ../ecss -l benchmarks/update-cost.el
 ;;
 ;; Each write updates only the Hosts whose bindings read the changed source:
 ;; a selection write repaints the two affected rows, and a clock tick

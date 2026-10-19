@@ -16,7 +16,7 @@
 ;; From a checkout with sibling provider repositories:
 ;;
 ;;   cd etaf-ncm
-;;   emacs -Q -L ../../ecss -L ../../ebox -L ../../etaf -L ../../etaf-ui \
+;;   emacs -Q -L ../ecss -L ../ebox -L ../etaf -L ../etaf-ui \
 ;;         -L . -l examples/etaf-ncm-demo.el -f etaf-ncm-demo-open
 
 ;;; Code:
