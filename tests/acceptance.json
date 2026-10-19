@@ -212,6 +212,11 @@
       "purpose": "Opening installs the player keymap, routes active wheel bindings above the renderer, hides the mode line, and closing kills the buffer."
     },
     {
+      "name": "etaf-ncm-tests-root-keys-own-the-canvas",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "The palette paints the canvas; T recolours it and q closes the player through root keys that beat the renderer's bindings."
+    },
+    {
       "name": "etaf-ncm-tests-close-keeps-playing-and-quit-stops-it",
       "file": "tests/etaf-ncm-tests.el",
       "purpose": "Closing the window leaves the backend playing, while quitting the client sends the backend stop before the buffer is gone."

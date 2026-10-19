@@ -661,6 +661,28 @@ silently doing nothing against the real backend."
       (when (get-buffer etaf-ncm-buffer-name)
         (kill-buffer etaf-ncm-buffer-name)))))
 
+(ert-deftest etaf-ncm-tests-root-keys-own-the-canvas ()
+  "The palette paints the canvas and `T' and `q' beat renderer bindings."
+  (save-window-excursion
+    (let* ((etaf-ncm-buffer-name " *etaf-ncm-tests-keys*")
+           (etaf-ncm-theme-mode 'dark)
+           (app (etaf-ncm-tests--session))
+           (buffer (etaf-ncm-open app))
+           (canvas (lambda ()
+                     (with-current-buffer buffer
+                       ;; The application owns the base remap; Ebox adds
+                       ;; the root's own background as a relative remap.
+                       (plist-get (car (last (alist-get 'default face-remapping-alist)))
+                                  :background)))))
+      (unwind-protect
+          (with-current-buffer buffer
+            (should (equal (funcall canvas) (etaf-ncm-color :bg 'dark)))
+            (execute-kbd-macro (kbd "T"))
+            (should (equal (funcall canvas) (etaf-ncm-color :bg 'light)))
+            (execute-kbd-macro (kbd "q"))
+            (should-not (buffer-live-p buffer)))
+        (when (buffer-live-p buffer) (kill-buffer buffer))))))
+
 (ert-deftest etaf-ncm-tests-close-keeps-playing-and-quit-stops-it ()
   "Closing the window leaves playback; quitting the client stops it.
 `q' only closes the client window, `Q' ends the client and must stop the
@@ -1007,14 +1029,13 @@ The background reply must not move the reader's selection."
   (execute-kbd-macro (kbd key)))
 
 (defun etaf-ncm-tests--wheel (window direction column row)
-  "Send DIRECTION at COLUMN and ROW through WINDOW's active wheel binding.
+  "Send DIRECTION at COLUMN and ROW over WINDOW through the command loop.
 The synthetic wheel event carries pixels, just like an Emacs mouse event."
-  (funcall (with-current-buffer (window-buffer window)
-             (key-binding (vector direction)))
-           (list direction
+  (execute-kbd-macro
+   (vector (list direction
                  (list window (window-start window)
                        (cons (* column (window-font-width window))
-                             (* row (window-font-height window))) 0))))
+                             (* row (window-font-height window))) 0)))))
 
 (ert-deftest etaf-ncm-tests-browse-limit-covers-long-libraries ()
   "Browse loads 500 rows and respects the new limit, old limit and page floor."

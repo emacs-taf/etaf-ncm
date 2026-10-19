@@ -38,24 +38,15 @@
   :type 'string
   :group 'etaf-ncm)
 
-(defvar-local etaf-ncm--model nil
-  "Player model shown by the current buffer's runtime.")
-
-(defvar etaf-ncm--command-maps
-  (list (cons 'etaf-ncm--model
-              (let ((map (make-sparse-keymap)))
-                ;; The renderer's minor-mode map scrolls the buffer on the
-                ;; wheel; the player scrolls the queue or library window under
-                ;; the pointer instead.  Every key lives on the View's `:keys'.
-                (define-key map [wheel-up] #'etaf-ncm--wheel-up)
-                (define-key map [wheel-down] #'etaf-ncm--wheel-down)
-                map)))
-  "Wheel bindings that take precedence over the renderer's minor-mode map.
-The alist is enabled only in an opened player buffer.")
+(defvar etaf-ncm--model nil
+  "Player model a key command acts on.
+Key commands bind it to their session, so an embedded player shares the
+buffer-free commands; other commands use the opened player's state.")
 
 (defun etaf-ncm--current-model ()
   "Return the model of the current player buffer."
   (or etaf-ncm--model
+      (etaf-app-state)
       (user-error "Current buffer is not an etaf-ncm player")))
 
 ;;; ---------------------------------------------------------------------------
@@ -200,16 +191,6 @@ browse rows without losing the row arrows and presses still act on."
            ((etaf-ncm--list-shown-p model)
             (etaf-ncm--scroll-list model delta))))))))
 
-(defun etaf-ncm--wheel-up (event)
-  "Scroll the queue or library window one row up at EVENT."
-  (interactive "e")
-  (etaf-ncm--wheel event -1))
-
-(defun etaf-ncm--wheel-down (event)
-  "Scroll the queue or library window one row down at EVENT."
-  (interactive "e")
-  (etaf-ncm--wheel event 1))
-
 (defun etaf-ncm--first-item ()
   "Select the first row of the library."
   (interactive)
@@ -297,9 +278,8 @@ asks for it.  On success the backend stores the cookie and the player reloads
 its account and libraries."
   (interactive)
   (let* ((app (or app
-                  (and (bound-and-true-p etaf-ncm--model) etaf-ncm--model)
-                  (let ((buffer (get-buffer etaf-ncm-buffer-name)))
-                    (and buffer (buffer-local-value 'etaf-ncm--model buffer)))
+                  etaf-ncm--model
+                  (etaf-app-state etaf-ncm-buffer-name)
                   (user-error "没有打开的网易云音乐播放器")))
          (stored (etaf-ncm--stored-phone (etaf-ncm--client app)))
          (phone (string-trim
@@ -395,16 +375,7 @@ In a wide layout, which shows both, this keeps the library list focused."
     (etaf-ncm--write model :message
                      (format "外观：%s" (if (eq etaf-ncm-theme-mode 'dark)
                                            "深色"
-                                         "浅色")))
-    (when-let* ((buffer (plist-get model :buffer)))
-      (with-current-buffer buffer (etaf-ncm--remap-canvas-face)))))
-
-(defun etaf-ncm--remap-canvas-face ()
-  "Paint this buffer's unpainted cells with the palette background.
-Ebox paints whole character cells, so a window body that is not a whole number
-of cells keeps a sub-cell remainder at its right or bottom edge.  Remapping the
-default face shows the player background there instead of the frame's."
-  (face-remap-set-base 'default (list :background (etaf-ncm-color :bg))))
+                                         "浅色")))))
 
 (defun etaf-ncm--locate-index (index)
   "Show the sidebar library at 1-based position INDEX."
@@ -455,6 +426,16 @@ or the library list keeps them; `?' opens the read-only ETAF key help."
       ("T" etaf-ncm--toggle-theme "切换深浅色")
       ("q" etaf-ncm-close "关闭窗口（音乐继续）")
       ("Q" etaf-ncm-quit "退出客户端（停止音乐）")))
+   ;; The renderer scrolls the buffer on the wheel; the player scrolls the
+   ;; queue or library window under the pointer instead.
+   (mapcar (lambda (entry)
+             (let ((delta (cdr entry)))
+               (list (car entry)
+                     (lambda (event)
+                       (interactive "e")
+                       (let ((etaf-ncm--model session))
+                         (etaf-ncm--wheel event delta))))))
+           '(("<wheel-up>" . -1) ("<wheel-down>" . 1)))
    (cl-loop for entry in (apply #'append (mapcar #'cdr etaf-ncm-sections))
             for index from 1 to 9
             collect (let ((index index))
@@ -918,39 +899,17 @@ daily recommendation with the signed-in account, queue and playback status of
 the backend.  A caller-provided MODEL keeps its library, queue and selection."
   (interactive)
   (let* ((model (or model (etaf-ncm-create)))
-         (buffer (get-buffer-create etaf-ncm-buffer-name)))
-    (plist-put model :buffer buffer)
-    (with-current-buffer buffer
-      (setq-local etaf-ncm--model model)
-      (setq-local truncate-lines t)
-      ;; The player is an absolutely positioned canvas: a horizontal window
-      ;; scroll (C-e on a wide row, a narrower resize with point off screen)
-      ;; would shift every region, so never let redisplay auto-scroll it.
-      (setq-local auto-hscroll-mode nil)
-      (setq-local mode-line-format nil)
-      (setq-local emulation-mode-map-alists
-                  (cons 'etaf-ncm--command-maps
-                        (remq 'etaf-ncm--command-maps emulation-mode-map-alists)))
-      ;; The player owns every column it paints.  A sub-cell rounding
-      ;; remainder must not surface as Emacs's truncation glyph, so keep the
-      ;; truncation slot blank instead of advertising a cut line.
-      (setq-local buffer-display-table
-                  (let ((table (copy-sequence (or standard-display-table
-                                                  (make-display-table)))))
-                    (set-display-table-slot table 'truncation ?\s)
-                    table))
-      (etaf-ncm--remap-canvas-face))
-    ;; A native text app owns the window it was opened from: a general
-    ;; `display-buffer' rule must not split the frame into a playground-style
-    ;; pane, so open in the selected window and let the app fill it.
-    (let ((display-buffer-overriding-action '((display-buffer-same-window))))
-      (pop-to-buffer buffer))
-    ;; The mounted player reads its viewport from the region it is given, so
-    ;; the first paint already fits this window and later resizes follow it.
-    ;; Let ETAF choose its display-safe viewport from the visible window.
-    ;; Passing the raw window body width overrides that policy and forces a
-    ;; full refit on the first input when the renderer reserves its margins.
-    (etaf-mount buffer (etaf-ncm-view model))
+         ;; Ebox paints whole character cells, so a window body that is not
+         ;; a whole number of cells keeps a sub-cell remainder at its edge;
+         ;; the canvas background shows the palette there.  ETAF chooses the
+         ;; display-safe viewport from the visible window, so the player
+         ;; passes no geometry of its own.
+         (buffer (etaf-app-open
+                  etaf-ncm-buffer-name (etaf-ncm-view model)
+                  :state model
+                  :background (lambda () (plist-get (etaf-ncm--read model :theme) :ui-bg))
+                  ;; Mount-time focus and highlight work reads the buffer.
+                  :on-fit (lambda (_window) (plist-put model :buffer (current-buffer))))))
     (etaf-runtime-flush (etaf-runtime-for-buffer buffer))
     (etaf-ncm--apply-list-highlights model (etaf-ncm--list-highlights model))
     buffer))
@@ -958,10 +917,8 @@ the backend.  A caller-provided MODEL keeps its library, queue and selection."
 (defun etaf-ncm-close ()
   "Unmount the player and kill its buffer."
   (interactive)
-  (when-let* ((runtime (etaf-runtime-for-buffer etaf-ncm-buffer-name)))
-    (etaf-unmount runtime))
-  (when-let* ((buffer (get-buffer etaf-ncm-buffer-name)))
-    (kill-buffer buffer)))
+  (when (etaf-app-state etaf-ncm-buffer-name)
+    (etaf-app-close etaf-ncm-buffer-name)))
 
 (defun etaf-ncm-quit ()
   "Stop the backend player and close the client.
@@ -972,8 +929,8 @@ The backend keeps its queue files, so `back' can still bring the queue
 back."
   (interactive)
   (setq etaf-ncm--player-owner nil)
-  (when etaf-ncm--model
-    (etaf-ncm--stop-synchronously (etaf-ncm--client etaf-ncm--model)))
+  (when-let* ((model (or etaf-ncm--model (etaf-app-state etaf-ncm-buffer-name))))
+    (etaf-ncm--stop-synchronously (etaf-ncm--client model)))
   (etaf-ncm-close))
 
 ;; The backend player is an external mpv process: exiting Emacs must not

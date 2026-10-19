@@ -4,6 +4,11 @@ All notable user-visible changes to ETAF NCM.
 
 ## Unreleased
 
+- The player opens as an ETAF application: every key, the wheel included,
+  is a root key of its View, the canvas follows the palette and `q` closes
+  the window through the application lifecycle. It requires ETAF 0.3.0 and
+  ETAF UI 0.2.0.
+
 - The sidebar marks are Han characters (`荐` `台` `心` `单` `碟` `人` `榜` `筒`
   `近`) in terminal frames: a terminal draws CJK at one exact width in its own
   font, so the category column shares size and alignment, and each entry keeps
