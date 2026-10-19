@@ -147,6 +147,11 @@
       "purpose": "Showing a pane records it in the snapshot and an unknown pane signals while keeping the previous pane."
     },
     {
+      "name": "etaf-ncm-tests-wide-layout-remembers-the-pane",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "A pane chosen in a wide layout stays chosen instead of being reset by the player's own viewport sync."
+    },
+    {
       "name": "etaf-ncm-tests-queue-and-lyric-follow-playback",
       "file": "tests/etaf-ncm-tests.el",
       "purpose": "The snapshot reports the queue around the playing entry and the lyric line of the elapsed position."

@@ -4,6 +4,10 @@ All notable user-visible changes to ETAF NCM.
 
 ## Unreleased
 
+- `v` switches between the library list and the lyrics and queue panel in a
+  wide layout too; the player no longer resets the pane on its own layout
+  pass.
+
 - The player opens as an ETAF application: every key, the wheel included,
   is a root key of its View, the canvas follows the palette and `q` closes
   the window through the application lifecycle. It requires ETAF 0.3.0 and

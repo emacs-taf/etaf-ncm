@@ -343,6 +343,25 @@ arrived, and liking a song keeps the session table in step."
     (should-error (etaf-ncm-show-pane app 'queue) :type 'etaf-ncm-error)
     (should (eq (plist-get (etaf-ncm-state app) :pane) 'list))))
 
+(ert-deftest etaf-ncm-tests-wide-layout-remembers-the-pane ()
+  "A pane chosen in a wide layout stays chosen until the viewport changes."
+  (let ((app (etaf-ncm-tests--session))
+        (buffer (get-buffer-create " *etaf-ncm-tests-wide-pane*")))
+    (unwind-protect
+        (progn
+          (etaf-mount buffer (etaf-ncm-view app)
+                      (list :viewport-width 1600 :viewport-height 40))
+          (let ((runtime (etaf-runtime-for-buffer buffer)))
+            (etaf-runtime-flush runtime)
+            (should (eq (plist-get (etaf-ncm-state app) :layout) 'wide))
+            (etaf-ncm-show-pane app 'aside)
+            (etaf-runtime-flush runtime)
+            (should (eq (plist-get (etaf-ncm-state app) :pane) 'aside))
+            (etaf-ncm-show-pane app 'list)
+            (etaf-runtime-flush runtime)
+            (should (eq (plist-get (etaf-ncm-state app) :pane) 'list))))
+      (kill-buffer buffer))))
+
 (ert-deftest etaf-ncm-tests-queue-and-lyric-follow-playback ()
   "The snapshot reports the queue around the playing song and the lyric line."
   (let* ((app (etaf-ncm-tests--session))

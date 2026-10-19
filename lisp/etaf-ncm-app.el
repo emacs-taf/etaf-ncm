@@ -652,10 +652,15 @@ releases the polling timer and the session's pending backend requests."
     ;; The mounted player lays out for the region it is given: its own
     ;; buffer window when it stands alone, or the host window, pane or tab
     ;; that embeds it (see `etaf-viewport').
-    (etaf-watch-effect
-     (lambda ()
-       (when-let* ((viewport (etaf-viewport)))
-         (etaf-ncm--sync-viewport session viewport))))
+    ;; A watcher, not an effect: the sync reads the values it writes, and
+    ;; an effect would rerun on its own writes and undo a pane chosen in a
+    ;; wide layout.
+    (etaf-watch #'etaf-viewport
+                (lambda (viewport _old)
+                  (when viewport
+                    (etaf-ncm--sync-viewport session viewport))
+                  nil)
+                :immediate t)
     ;; The two overlay bars follow line targets through `etaf-transition':
     ;; a selection or playback move slides each bar on the shared clock, so
     ;; only the damaged rows repaint.  The Scope owns both runs and stops
