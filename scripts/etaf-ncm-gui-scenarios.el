@@ -28,6 +28,17 @@
 (require 'emacs-gui-verifier)
 (require 'etaf-ncm)
 
+(etaf-define-component etaf-ncm-gui-embed-region (&key model width)
+  "Render MODEL's player inside a region WIDTH characters wide.
+The player is embedded here, so its layout must follow the region rather than
+the canvas a host paints around it."
+  :view (etaf-viewport-region :width (list 'ch (etaf-value width))
+          (etaf-ncm-app :model model)))
+
+(etaf-define-component etaf-ncm-gui-embed-canvas (&key model)
+  "Render MODEL's player filling its canvas, with no enclosing region."
+  :view (etaf-ncm-app :model model))
+
 ;;; ---------------------------------------------------------------------------
 ;;; Scripted backend
 ;;; ---------------------------------------------------------------------------
@@ -123,6 +134,33 @@ SCREENSHOT asks the engine for a window capture after the action settles."
    :id id :execute execute :screenshot screenshot
    :settled-p (lambda (context) (ignore context) t)
    :assertions assertions))
+
+(defun etaf-ncm-gui--embed-budget (columns)
+  "Mount a player in a COLUMNS-wide region and return its state snapshot.
+COLUMNS zero mounts the same player with no region, so the two readings differ
+only in the region the player is embedded in."
+  (let* ((app (etaf-ncm-create :client #'etaf-ncm-gui--client))
+         (width (and (> columns 0) (etaf-ref columns)))
+         (view (if width
+                   (etaf-view (etaf-ncm-gui-embed-region :model app :width width))
+                 (etaf-view (etaf-ncm-gui-embed-canvas :model app))))
+         (buffer (get-buffer-create (format " *ncm-embed-%s*" columns)))
+         (window (selected-window))
+         (original (window-buffer window))
+         (state nil))
+    (unwind-protect
+        (progn
+          (set-window-buffer window buffer)
+          (with-current-buffer buffer
+            (etaf-mount (buffer-name buffer) view
+                        (list :viewport-width (window-body-width window t)
+                              :viewport-height (window-body-height window)))
+            (etaf-runtime-flush (etaf-runtime-for-buffer (current-buffer)))
+            (setq state (etaf-ncm-state app))
+            (etaf-unmount)))
+      (set-window-buffer window original)
+      (when (buffer-live-p buffer) (kill-buffer buffer)))
+    state))
 
 (defun etaf-ncm-gui--focused (context)
   "Return the ref of the Host focused in CONTEXT's player."
@@ -236,7 +274,7 @@ closed."
   (etaf-gui-verifier-run
    (etaf-gui-verifier-scenario-create
     :name "ncm-player"
-    :claim "Documented keys and the whole layout matrix on a scripted backend"
+    :claim "Documented keys, the layout matrix and an embedded region on a scripted backend"
     :invariants
     (lambda (context)
       ;; Row heights stay within the frame line height at every checkpoint,
@@ -611,6 +649,45 @@ closed."
         (list (etaf-ncm-gui--assert "narrow returns to the list"
                                     (etaf-ncm-gui--shows context "曲目 1")))))
      (etaf-ncm-gui--resize 150 14 'wide screenshots)
+     ;; --- Embedded region ---------------------------------------------------
+     ;; A host that embeds the player gives it a region, not the canvas.  Both
+     ;; readings below come from the same player code: only the enclosing
+     ;; region differs, so an embedded player that laid out for the canvas
+     ;; would report the canvas width here as well.
+     ;; --- Embedded region ---------------------------------------------------
+     ;; A host that embeds the player gives it a region, not the canvas.  The
+     ;; 60-column region sits below the medium breakpoint while the canvas of
+     ;; the 150-column frame sits above the wide one, so a player that read the
+     ;; canvas would report `wide' in both readings.
+     (etaf-ncm-gui--action
+      "embed-region-follows-the-region"
+      (lambda (context)
+        (ignore context)
+        (etaf-gui-verifier-context-put
+         context 'region-state (etaf-ncm-gui--embed-budget 60)))
+      (lambda (context)
+        (let ((state (etaf-gui-verifier-context-get context 'region-state)))
+          (list
+           (etaf-ncm-gui--assert
+            (format "a 60-column region lays out narrow (got %s, %s rows a page)"
+                    (plist-get state :layout) (plist-get state :page-size))
+            (eq (plist-get state :layout) 'narrow))
+           (etaf-ncm-gui--assert
+            "the embedded player still loads the library"
+            (> (or (plist-get state :rows-total) 0) 0))))))
+     (etaf-ncm-gui--action
+      "embed-canvas-fills-the-canvas"
+      (lambda (context)
+        (ignore context)
+        (etaf-gui-verifier-context-put
+         context 'canvas-state (etaf-ncm-gui--embed-budget 0)))
+      (lambda (context)
+        (let ((state (etaf-gui-verifier-context-get context 'canvas-state)))
+          (list
+           (etaf-ncm-gui--assert
+            (format "the same player without a region lays out wide (got %s)"
+                    (plist-get state :layout))
+            (eq (plist-get state :layout) 'wide))))))
      (etaf-ncm-gui--action
       "short-frame-keeps-the-bar"
       (lambda (context) (ignore context))
