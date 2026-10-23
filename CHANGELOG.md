@@ -4,6 +4,15 @@ All notable user-visible changes to ETAF NCM.
 
 ## Unreleased
 
+- A frame too small for the stacked layout now becomes a card instead of
+  squeezing the header, chip strip and player bar into it. The card keeps the
+  cover, the track, one pane, its `列表` / `歌词` / `队列` switch and the
+  transport, with one clear row between the bands, and opens on the lyric. A
+  still smaller frame becomes a tile: the track, the lyric and the transport
+  only, without the progress line or a switch row, so every remaining row
+  belongs to the lyric. `v` and `i` still switch panes there, and growing the
+  window restores the larger layout.
+
 - `v` switches between the library list and the lyrics and queue panel in a
   wide layout too; the player no longer resets the pane on its own layout
   pass.

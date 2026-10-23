@@ -1703,11 +1703,11 @@ a host that gives the player its own content font keeps the frame metric for
 the breakpoints."
   (max 1 (floor pixels (max 1 (frame-char-width)))))
 
-(defun etaf-ncm--layout-for (columns)
-  "Return the layout COLUMNS columns of text can hold.
-The result is `wide', `medium' or `narrow'; the breakpoints live in
-`etaf-ncm-layout'."
-  (etaf-ncm-layout-for columns))
+(defun etaf-ncm--layout-for (columns &optional window-rows)
+  "Return the layout COLUMNS by WINDOW-ROWS of text can hold.
+The result is `wide', `medium', `narrow', `card' or `tile'; the breakpoints
+live in `etaf-ncm-layout'."
+  (etaf-ncm-layout-for columns window-rows))
 
 (defun etaf-ncm--sync-viewport (app viewport)
   "Match APP's layout and row budgets to VIEWPORT.
@@ -1719,20 +1719,34 @@ and a standalone player lay out by the same rule."
          ;; The panels own their one clear line at the top and the player bar
          ;; owns the one under it, so the region's rows are the row budget.
          (height (max 1 (cdr viewport)))
-         (layout (etaf-ncm--layout-for columns))
-         (size (etaf-ncm-layout-page-rows layout height)))
+         (layout (etaf-ncm--layout-for columns height))
+         (widget (etaf-ncm-layout-widget-p layout))
+         ;; A card opens on what it is read for.  Entering the card family
+         ;; from a larger layout brings the lyric pane to the front; moving
+         ;; between card sizes leaves the chosen pane alone.
+         (entering (and widget
+                        (not (etaf-ncm-layout-widget-p (etaf-ncm--read app :layout)))))
+         ;; A card shows one pane in its content area and nothing else, so the
+         ;; library page and the lyric pool share one row budget.
+         (size (etaf-ncm-layout-content-rows layout height)))
     (etaf-batch
       (when (eq layout 'wide)
         (etaf-ncm--write app :pane 'list))
+      (when entering
+        (etaf-ncm--write app :pane 'aside))
       (etaf-ncm--write app :columns columns)
       (etaf-ncm--write app :window-rows height)
       (etaf-ncm--write app :layout layout)
       (etaf-ncm--write app :page-size size)
       (etaf-ncm--refresh-slots app)
-      (etaf-ncm--write app :queue-rows (etaf-ncm-layout-queue-rows layout height))
+      (etaf-ncm--write app :queue-rows
+                       (if widget size
+                         (etaf-ncm-layout-queue-rows layout height)))
       ;; The lyric cover, spacer and footer take seven more lines than the
       ;; queue heading.  Translations share this budget with lyric lines.
-      (etaf-ncm--write app :lyric-rows (etaf-ncm-layout-lyric-rows layout height)))
+      (etaf-ncm--write app :lyric-rows
+                       (if widget size
+                         (etaf-ncm-layout-lyric-rows layout height))))
     layout))
 
 (defun etaf-ncm--compact-layout-p (app)

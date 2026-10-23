@@ -20,6 +20,16 @@ tabs:
 
 ![The player at a narrow frame](examples/etaf-ncm-narrow.png)
 
+A frame too small for that chrome becomes a card: the cover, the track, one
+pane, its switch and the transport, with one clear row between the bands.
+
+![The player as a card](examples/etaf-ncm-card.png)
+
+At the smallest size the card becomes a tile that keeps only the track, the
+lyric and the transport:
+
+![The player as a tile](examples/etaf-ncm-tile.png)
+
 ## Capabilities
 
 - Libraries: daily recommendation, private FM, liked songs, playlists, saved
@@ -39,7 +49,9 @@ tabs:
 - Headless sessions for scripts and tests: no buffer, no timer and a scripted
   client are all supported.
 - Window layouts: three columns on a wide frame, a glyph-only rail with one pane
-  on a medium one, and a phone-like stacked layout on a narrow one.
+  on a medium one, a phone-like stacked layout on a narrow one, and a card or
+  tile that keeps only the playing essentials when the frame is too small for
+  that chrome.
 
 ## Prerequisites
 

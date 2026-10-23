@@ -533,7 +533,9 @@ thing that moves; rows stay transparent and content-driven, so moving the
 highlight never repaints the whole plane.  The page fills every row the
 window budget leaves after the header, the tabs and the player bar, and the
 wheel scrolls the window through the loaded rows, so a long library is fully
-reachable.  SELECTION is the player's reactive selection source; ON-PRESS is
+reachable.  In the card family the list fills the card's content area
+instead: no footer, no header, and the page is that content area.
+SELECTION is the player's reactive selection source; ON-PRESS is
 called with a row's page index when that row is clicked, and ON-ACTION with
 that index plus an inline action key.  The list is one keyboard stop: KEYS
 are its `:keys', and ON-FOCUS runs when focus enters it."
@@ -541,41 +543,46 @@ are its `:keys', and ON-FOCUS runs when focus enters it."
   (let* ((slots (plist-get model :row-slots))
          (playing (plist-get model :row-playing))
          (visible (etaf-ncm--ref model :visible-count))
-         (count (min (etaf-ncm--read model :page-size) (length slots)))
-         (offsets (and (> count 0) (number-sequence 0 (1- count))))
+         (count (max 1 (min (etaf-ncm--read model :page-size) (length slots))))
+         (offsets (number-sequence 0 (1- count)))
          (page-label (etaf-ncm--ref model :page-label))
          (loaded-label (etaf-ncm--ref model :loaded-label))
          (footer-visible (etaf-ncm--ref model :footer-visible))
          (more-visible (etaf-ncm--ref model :more-visible))
          (empty-note (etaf-ncm--ref model :empty-note))
          (layout (etaf-ncm--read model :layout))
+         (widget (etaf-ncm-layout-widget-p layout))
          (columns (or (etaf-ncm--read model :columns) 0))
          (window-rows (etaf-ncm--read model :window-rows))
          (variant (etaf-ncm-layout-row-variant layout columns))
          (short (etaf-ncm-layout-short-p window-rows))
          ;; The view lives in the list panel, whose content box starts one
          ;; row below the window top; the layout budget counts from the
-         ;; window, hence the conversion.
-         (top (1- (etaf-ncm-layout-list-top layout)))
-         (footer-rows (etaf-ncm-layout-footer-rows-for window-rows))
-         (hint (cond ((and (not compact) (not short)) "↑↓ 选择 · RET 播放 · a 入队 · d 下载 · / 搜索 · i 歌词 · Tab 切换区域 · ? 帮助")
+         ;; window, hence the conversion.  A card already owns that inset.
+         (top (if widget 0 (1- (etaf-ncm-layout-list-top layout))))
+         (footer-rows (if widget 0 (etaf-ncm-layout-footer-rows-for window-rows)))
+         (hint (cond (widget nil)
+                     ((and (not compact) (not short)) "↑↓ 选择 · RET 播放 · a 入队 · d 下载 · / 搜索 · i 歌词 · Tab 切换区域 · ? 帮助")
                      ((and (<= 44 columns) (not short)) "↑↓ 选择 · Tab 切换 · ? 命令")
                      (t nil)))
-         (height (if (and window-rows (> window-rows 0))
-                     ;; The panel inset converts the window-level budget into
-                     ;; this view's coordinate: page rows plus the footer
-                     ;; reach exactly the bar, so the footer cannot slide
-                     ;; under it.
-                     (max 1 (- window-rows (1+ top)
-                               (etaf-ncm-layout-tabs-rows layout)
-                               etaf-ncm-layout-bar-rows))
-                   (+ count footer-rows))))
+         (height (cond
+                  (widget count)
+                  ((and window-rows (> window-rows 0))
+                   ;; The panel inset converts the window-level budget into
+                   ;; this view's coordinate: page rows plus the footer
+                   ;; reach exactly the bar, so the footer cannot slide
+                   ;; under it.
+                   (max 1 (- window-rows (1+ top)
+                             (etaf-ncm-layout-tabs-rows layout)
+                             etaf-ncm-layout-bar-rows)))
+                  (t (+ count footer-rows)))))
     (etaf-view
      (flex :position 'absolute :z-index 0
-           :left (list 'ch (if (eq layout 'wide) 2 1))
+           :left (list 'ch (cond (widget 0) ((eq layout 'wide) 2) (t 1)))
            :top (list 'lh top)
            :flex-direction 'column
-           :width (list 'ch (etaf-ncm-layout-list-columns layout columns))
+           :width (if widget 'stretch
+                    (list 'ch (etaf-ncm-layout-list-columns layout columns)))
            :height (list 'lh height)
            :min-height '(lh 0) :gap '((lh 0) (px 0)) :overflow 'hidden
            :ref 'ncm-list :role 'listbox :aria-label "歌曲列表" :tab-index 0
@@ -607,7 +614,7 @@ are its `:keys', and ON-FOCUS runs when focus enters it."
              :variant variant
              :press on-press
              :on-action on-action)))
-       (flex :position 'absolute :z-index 0 :left '(ch 0)
+       (flex :if (not widget) :position 'absolute :z-index 0 :left '(ch 0)
              :top (list 'lh (max 0 (- height footer-rows)))
              :flex-direction 'column
              :width 'stretch :height (list 'lh footer-rows)
@@ -710,12 +717,13 @@ static tab row."
          :on-press (lambda () (funcall on-switch 'queue))
       (text "播放队列"))))
 
-(etaf-define-component etaf-ncm--view-lyric-cell (&key projection index)
-  "Keep one physical lyric row while its text and current-line paint change."
+(etaf-define-component etaf-ncm--view-lyric-cell (&key projection index (align 'left))
+  "Keep one physical lyric row while its text and current-line paint change.
+ALIGN centres the line in a small-size card and keeps it left in the panel."
   :bindings ((cell (etaf-computed
                    (lambda () (nth index (plist-get (etaf-value projection) :cells))) :test #'equal)))
   :view
-  (box :height '(lh 1) :overflow 'hidden
+  (box :height '(lh 1) :overflow 'hidden :text-align align
        :color (let ((row (etaf-value cell)))
                 (etaf-ncm-color (cond ((plist-get row :current) :accent)
                                       ((plist-get row :translation) :dim) (t :muted))))
@@ -793,24 +801,25 @@ static tab row."
     (box :width '(ch 5) :height '(lh 1) :text-align 'right :color (etaf-ncm-color :dim)
       (text (expr (or (plist-get (etaf-value entry) :right) ""))))))
 
-(etaf-define-component etaf-ncm--view-queue (&key projection rows keys direction on-jump)
+(etaf-define-component etaf-ncm--view-queue (&key projection rows keys direction on-jump bare)
   "Render a viewport-sized queue pool without replacing rows on every scroll.
 The cells form one vertical focus group entered at the playing entry; KEYS
 are the group's `:keys' and DIRECTION moves its selection and scrolls past
-the pool's first and last cell."
+the pool's first and last cell.  BARE drops the heading and its count line, so
+the pool fills a small-size card's content area."
   :render
   (let ((offsets (and (> rows 0) (number-sequence 0 (1- rows)))))
    (etaf-view
   (flex :position 'relative :flex-direction 'column :width 'stretch :flex-grow 1 :flex-basis '(lh 0)
         :min-height '(lh 0) :gap '((lh 0) (px 0)) :overflow 'hidden
         :ref 'ncm-queue :focus-group 'vertical :keys keys :on-direction direction
-    (column :width 'stretch :height '(lh 2) :item-gap '(lh 0)
+    (column :if (not bare) :width 'stretch :height '(lh 2) :item-gap '(lh 0)
       (text :font-weight 'bold "播放队列")
       (text :color (etaf-ncm-color :dim)
             (expr (let* ((data (etaf-value projection)) (entries (plist-get data :entries)))
                     (format "第 %s-%s 首 / 共 %s 首" (or (plist-get (car entries) :index) 0)
                             (or (plist-get (car (last entries)) :index) 0) (or (plist-get data :count) 0))))))
-    (box :position 'absolute :z-index 0 :top '(lh 2) :left '(ch 0) :height '(lh 1)
+    (box :position 'absolute :z-index 0 :top (list 'lh (if bare 0 2)) :left '(ch 0) :height '(lh 1)
          :visibility (if (plist-get (etaf-value projection) :entries) 'hidden 'visible)
          :color (etaf-ncm-color :dim)
       (text "队列是空的"))
@@ -954,13 +963,14 @@ pictures.  LABEL appends a small count or state next to the icon."
         (text (expr (or (etaf-ncm--reactive-text message) "")))))))
 
 (etaf-define-component etaf-ncm--view-transport
-    (&key playing repeat compact on-like on-previous on-toggle on-next on-repeat)
+    (&key playing repeat compact (repeat-control t) on-like on-previous on-toggle on-next on-repeat)
   "Render the centred transport with an accent play control.
 PLAYING is the reactive boolean that selects the play/pause glyph, and REPEAT
 the reactive flag that paints the repeat control; both publish through
 retained Host text, so a toggle never rebuilds the bar.  The play control is a
 one-line accent pill: a bigger glyph would paint outside its row and clip,
-which a terminal-cell layout cannot round away."
+which a terminal-cell layout cannot round away.  REPEAT-CONTROL nil drops the
+repeat control, which a small-size card leaves to its keyboard shortcut."
   :view
   (flex :height (if compact '(lh 1) '(lh 2))
         :gap (if compact '((lh 0) (ch 1)) '((lh 0) (ch 3)))
@@ -979,7 +989,8 @@ which a terminal-cell layout cannot round away."
                            :help-echo "播放 / 暂停 (SPC)" :tab-index -1
                            :on-press on-toggle))
     (etaf-ncm--view-control :ref 'ncm-next :icon 'next :help "下一首 (n)" :on-press on-next)
-    (etaf-ncm--view-control :ref 'ncm-repeat :icons '(repeat . repeat) :value repeat
+    (etaf-ncm--view-control :if repeat-control :ref 'ncm-repeat
+                            :icons '(repeat . repeat) :value repeat
                             :help "列表循环 (r)" :on-press on-repeat)))
 
 (etaf-define-component etaf-ncm--view-progress
@@ -1098,6 +1109,174 @@ separator where one is drawn."
                                      :on-volume on-volume)))
       (etaf-ncm--view-progress :elapsed elapsed :duration duration
                              :on-seek on-seek))))
+
+;;; ---------------------------------------------------------------------------
+;;; The small-size card
+;;; ---------------------------------------------------------------------------
+
+(etaf-define-component etaf-ncm--view-lyric-list
+    (&key projection rows (align 'center))
+  "Render a viewport-sized lyric pool, centred by default.
+The pool keeps one retained Host per row, so the moving current line repaints
+its text without rebuilding the card."
+  :render
+  (let ((offsets (and (> rows 0) (number-sequence 0 (1- rows)))))
+    (etaf-view
+     (flex :flex-direction 'column :width 'stretch :height (list 'lh (max 1 rows))
+           :min-height '(lh 0) :gap '((lh 0) (px 0))
+           :justify-content 'center :overflow 'hidden
+       (etaf-ncm--view-lyric-cell :for (index offsets) :key index
+                                  :projection projection :index index :align align)))))
+
+(etaf-define-component etaf-ncm--view-tile-head
+    (&key title artist liked on-like)
+  "Render the tile's single header row: the track and the like.
+At the smallest size every row belongs to the lyric, so the switch keeps to
+its keys and returns as tabs one size up."
+  :view
+  (flex :width 'stretch :height '(lh 1) :gap '((lh 0) (ch 1)) :align-items 'center
+    (box :flex-grow 1 :flex-basis '(px 0) :min-width '(ch 0) :height '(lh 1)
+         :overflow 'hidden :font-weight 'bold
+      (text :ref 'ncm-track-title (expr (etaf-ncm--track-label title artist nil))))
+    (etaf-ncm--view-control :ref 'ncm-like :icons '(heart . heart-filled) :value liked
+                            :help "喜欢 / 取消喜欢 (f / F)" :on-press on-like)))
+
+(etaf-define-component etaf-ncm--view-card-head
+    (&key title artist album cover liked on-like on-lyrics)
+  "Render the now-playing identity of a card: the cover, the track and the like.
+Pressing the cover shows the lyric pane, as the player bar's cover does."
+  :view
+  (box :width 'stretch
+   (flex :width 'stretch :height '(lh 3)
+         :gap '((lh 0) (ch 1)) :align-items 'center
+     (box :id "ncm-cover" :ref 'ncm-cover :width '(ch 6) :height '(lh 3)
+          :role 'button :tab-index 0 :aria-label "显示歌词"
+          :help-echo "显示歌词" :on-press on-lyrics
+       (etaf-ncm--view-cover :size '(ch 6) :height '(lh 3) :chars 6 :lines 3 :file cover))
+     (flex :flex-direction 'column :flex-grow 1 :flex-basis '(px 0)
+           :min-width '(ch 0) :height '(lh 3) :gap '((lh 0) (px 0))
+           :justify-content 'center :overflow 'hidden
+       (box :height '(lh 1) :overflow 'hidden :font-weight 'bold
+         (text :ref 'ncm-track-title (expr (or (etaf-ncm--reactive-text title) "未在播放"))))
+       (box :height '(lh 1) :overflow 'hidden :color (etaf-ncm-color :muted)
+         (text (expr (or (etaf-ncm--reactive-text artist) ""))))
+       (box :height '(lh 1) :overflow 'hidden :color (etaf-ncm-color :dim)
+             :font-size etaf-ncm-font-meta
+         (text (expr (or (etaf-ncm--reactive-text album) "")))))
+     (etaf-ncm--view-control :ref 'ncm-like :icons '(heart . heart-filled) :value liked
+                             :help "喜欢 / 取消喜欢 (f / F)" :on-press on-like))))
+
+(etaf-define-component etaf-ncm--view-card-tabs
+    (&key pane-list lyrics queue on-pane on-aside)
+  "Render the one-row pane switch of the card.
+The three tabs name the card's content panes.  Each reads its own source
+inside the Host binding, so a switch repaints the tabs rather than the card."
+  :view
+  (flex :ref 'ncm-card-tabs :width 'stretch :height '(lh 1)
+        :gap '((lh 0) (ch 2))
+        :align-items 'center :justify-content 'center
+        :flex-shrink 0 :overflow 'hidden
+        :focus-group 'horizontal
+    (box :for (tab (list (list 'list "列表") (list 'lyrics "歌词") (list 'queue "队列")))
+         :key (car tab)
+         :height '(lh 1) :padding '((lh 0) (ch 1))
+         :role 'tab :tab-index 0
+         :aria-selected (etaf-value (etaf-ncm--pane-tab-source (car tab) pane-list lyrics queue))
+         :hover-style (unless (etaf-value (etaf-ncm--pane-tab-source
+                                           (car tab) pane-list lyrics queue))
+                        (etaf-ncm--hover-surface))
+         :help-echo (nth 1 tab)
+         :background-color (if (etaf-value (etaf-ncm--pane-tab-source
+                                            (car tab) pane-list lyrics queue))
+                               (etaf-ncm-color :accent-soft)
+                             (etaf-ncm-color :panel))
+         :color (if (etaf-value (etaf-ncm--pane-tab-source
+                                 (car tab) pane-list lyrics queue))
+                    (etaf-ncm-color :accent)
+                  (etaf-ncm-color :muted))
+         :font-weight (if (etaf-value (etaf-ncm--pane-tab-source
+                                       (car tab) pane-list lyrics queue))
+                          'bold 'normal)
+         :on-press (if (eq (car tab) 'list)
+                       (lambda () (funcall on-pane 'list))
+                     (lambda () (funcall on-aside (car tab))))
+      (text (expr (nth 1 tab))))))
+
+(etaf-define-component etaf-ncm--view-card
+    (&key model tile title artist album cover liked projection rows queue-projection
+          pane-list lyrics queue playing elapsed duration error message
+          selection list-keys list-direction on-list-focus on-press on-action
+          queue-keys queue-direction on-jump
+          on-toggle on-next on-previous on-like on-seek on-pane on-aside)
+  "Render the small-size player: identity, one content pane, switch, transport.
+The card replaces the header, chip strip, panel and player bar a stacked
+layout would draw, and keeps only what a small frame is read for: the track,
+the lyric or the library, the pane switch and the transport.  One clear row
+separates the cover band, the content and the pane switch, so the card never
+reads as one dense block.  TILE drops the cover, the album line and the
+progress line: at that size the track, the lyric and the three transport
+controls are the whole interface.  PANE-LIST, LYRICS and QUEUE are reactive
+sources; the three content panes stay mounted and only their visibility
+changes, so a switch keeps their retained hosts.  ERROR reveals MESSAGE over
+the content, because the card has no banner row."
+  :render
+  (let ((content-rows (or rows 1)))
+    (etaf-view
+     (box :position 'absolute :left '(ch 0) :top '(lh 0)
+          :width 'stretch :height 'stretch :z-index 1 :overflow 'hidden
+          :background-color (etaf-ncm-color :bg)
+          :padding (if tile
+                       (list '(lh 1) (list 'ch etaf-ncm-layout-tile-pad-columns)
+                             '(lh 1) (list 'ch etaf-ncm-layout-tile-pad-columns))
+                     (list '(lh 1) (list 'ch etaf-ncm-layout-card-pad-columns)
+                           '(lh 1) (list 'ch etaf-ncm-layout-card-pad-columns)))
+       (flex :flex-direction 'column :width 'stretch :height 'stretch
+             :gap '((lh 0) (px 0)) :min-height '(lh 0)
+         (etaf-ncm--view-tile-head
+          :if tile :title title :artist artist :liked liked :on-like on-like)
+         (etaf-ncm--view-card-head
+          :if (not tile) :title title :artist artist :album album :cover cover
+          :liked liked :on-like on-like
+          :on-lyrics (lambda () (funcall on-aside 'lyrics)))
+         (box :width 'stretch :height '(lh 1) :flex-shrink 0)
+         (box :position 'relative :width 'stretch :flex-grow 1 :flex-basis '(lh 0)
+              :min-height '(lh 0) :overflow 'hidden
+           (box :position 'absolute :left '(ch 0) :top '(lh 0)
+                :width 'stretch :height 'stretch :overflow 'hidden
+                :visibility (if (etaf-value pane-list) 'visible 'hidden)
+             (etaf-ncm--view-list
+              :model model :compact t :selection selection
+              :keys list-keys :direction list-direction :on-focus on-list-focus
+              :on-press on-press :on-action on-action))
+           (box :position 'absolute :left '(ch 0) :top '(lh 0)
+                :width 'stretch :height 'stretch :overflow 'hidden
+                :visibility (if (etaf-value lyrics) 'visible 'hidden)
+             (etaf-ncm--view-lyric-list :projection projection :rows content-rows))
+           (box :position 'absolute :left '(ch 0) :top '(lh 0)
+                :width 'stretch :height 'stretch :overflow 'hidden
+                :visibility (if (etaf-value queue) 'visible 'hidden)
+             (etaf-ncm--view-queue
+              :bare t :projection queue-projection :rows content-rows
+              :keys queue-keys :direction queue-direction :on-jump on-jump))
+           (box :position 'absolute :z-index 3 :left '(ch 0) :top '(lh 0)
+                :width 'stretch :height '(lh 2) :overflow 'hidden
+                :visibility (if error 'visible 'hidden)
+                :padding '((lh 0) (ch 1))
+                :background-color (etaf-ncm-color :danger-bg)
+                :color (etaf-ncm-color :danger)
+             (box :height 'stretch :overflow 'hidden :wrap-mode 'word
+               (text (expr (or (etaf-ncm--reactive-text message) ""))))))
+         (box :width 'stretch :height '(lh 1) :flex-shrink 0)
+         (etaf-ncm--view-card-tabs
+          :if (not tile)
+          :pane-list pane-list :lyrics lyrics :queue queue
+          :on-pane on-pane :on-aside on-aside)
+         (box :if (not tile) :width 'stretch :height '(lh 1) :flex-shrink 0)
+         (etaf-ncm--view-progress :if (not tile) :elapsed elapsed :duration duration
+                                  :on-seek on-seek)
+         (etaf-ncm--view-transport
+          :compact t :repeat-control nil :playing playing
+          :on-previous on-previous :on-toggle on-toggle :on-next on-next))))))
 
 (provide 'etaf-ncm-views)
 ;;; etaf-ncm-views.el ends here

@@ -137,14 +137,26 @@ playback polls.
 
 ### Window layouts
 
-The player reads the width of the window that shows it and adapts, so a narrow
-frame behaves like a phone instead of squeezing three columns into it:
+The player reads the width and the height of the region that shows it and
+adapts, so a narrow frame behaves like a phone and a small one behaves like a
+widget instead of squeezing three columns into either:
 
-| Width | Layout | What is visible |
+| Region | Layout | What is visible |
 | --- | --- | --- |
 | `etaf-ncm-wide-columns` and wider | `wide` | Library sidebar, song list and side panel at the same time |
 | `etaf-ncm-medium-columns` up to that width | `medium` | Glyph-only library rail, one pane at a time |
-| Narrower than `etaf-ncm-medium-columns` | `narrow` | Library chips under the header, one full-width pane |
+| `narrow` width, enough rows for a page | `narrow` | Library chips under the header, one full-width pane |
+| Narrower than 46 columns, or too short for a ten-row page | `card` | Cover, track, one pane, its switch and the transport |
+| Narrower than 30 columns, or shorter than 16 rows | `tile` | Track, the lyric and the transport |
+
+The card family is the small-size player: it draws no header, no library
+strip and no player bar.  A card keeps the cover band, the track, one content
+pane, the `列表` / `歌词` / `队列` switch and the transport, with one clear row
+between the bands; it opens on the lyric when the window shrinks from a larger
+layout.  A tile drops the cover, the progress line and the switch row, so every
+row it has left belongs to the lyric; `v` and `i` still switch panes there.
+Growing the window restores the larger layout, and neither size keeps hidden
+state of its own.
 
 The thresholds are derived from what the panes are made of, not from a screen
 size: the header and a full row declare the columns their labels and actions

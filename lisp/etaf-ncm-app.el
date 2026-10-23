@@ -94,15 +94,23 @@ LRC repeats a timestamp."
          (start (car window))
          (visible (cl-loop for line in (cdr window)
                            for ordinal from start
-                           collect (list (car line) (cdr line) ordinal))))
+                           collect (list (car line) (cdr line) ordinal)))
+         (cells (if visible
+                    (cl-loop for line in visible
+                             append (append (list (list :text (nth 1 line)
+                                                        :current (equal (car line) (car (nth index lines)))))
+                                            (when-let* ((translation (cl-assoc (car line) trans :test #'=)))
+                                              (list (list :text (cdr translation) :translation t)))))
+                  (list (list :text (if (plist-get lyric :loading) "正在取歌词..." "这首歌没有歌词")))))
+         ;; A card shows the lyric as one centred block.  Padding the pool here
+         ;; keeps the view a fixed number of retained cells: it never has to
+         ;; read the projection to decide where the block starts.
+         (pad (if (and (etaf-ncm-layout-widget-p (etaf-ncm--read model :layout))
+                       (> budget (length cells)))
+                  (truncate (/ (- budget (length cells)) 2))
+                0)))
     (list :lines visible
-          :cells (if visible
-                     (cl-loop for line in visible
-                              append (append (list (list :text (nth 1 line)
-                                                         :current (equal (car line) (car (nth index lines)))))
-                                             (when-let* ((translation (cl-assoc (car line) trans :test #'=)))
-                                               (list (list :text (cdr translation) :translation t)))))
-                   (list (list :text (if (plist-get lyric :loading) "正在取歌词..." "这首歌没有歌词"))))
+          :cells (append (make-list pad (list :text "")) cells)
           :current (and lines (car (nth index lines)))
           :position (and index (1+ index))
           :total (and lines (length lines))
@@ -505,14 +513,23 @@ The list is one focus stop, so the cursor follows the selection bar."
 (defun etaf-ncm--settle-focus (session)
   "Keep keyboard focus inside a visible region of SESSION.
 Hiding a pane clears the focus inside it; the shown pane then receives it:
-the library list, else the queue at its playing entry, else the lyric tabs."
+inside a card the library list or the card's pane switch, otherwise the
+library list, else the queue at its playing entry, else the lyric tabs."
   (when-let* ((buffer (plist-get session :buffer))
               ((buffer-live-p buffer))
               (runtime (etaf-runtime-for-buffer buffer)))
     (with-current-buffer buffer
       (unless (etaf-focused-host-ref runtime)
         (ignore-errors
-          (cond ((and (etaf-ncm--aside-shown-p session)
+          (cond ((etaf-ncm-layout-widget-p (etaf-ncm--read session :layout))
+                 (cond ((etaf-ncm--list-shown-p session)
+                        (etaf-focus runtime 'ncm-list))
+                       ;; A tile has no switch row; its play control is the
+                       ;; nearest stop, and it keeps point off the buffer end
+                       ;; where a stray cursor would paint under the transport.
+                       ((ignore-errors (etaf-focus-within runtime 'ncm-card-tabs) t))
+                       (t (ignore-errors (etaf-focus runtime 'ncm-play) t))))
+                ((and (etaf-ncm--aside-shown-p session)
                       (or (eq (etaf-ncm--read session :pane) 'aside)
                           (not (etaf-ncm--list-shown-p session))))
                  (etaf-focus-within runtime (if (eq (etaf-ncm--read session :aside) 'queue)
@@ -713,6 +730,25 @@ releases the polling timer and the session's pending backend requests."
         :keys keys :aria-label "网易云音乐"
         :help '("音乐由独立的 mpv 后端播放；查看帮助不会暂停播放或改变队列。"
                 "关闭窗口后音乐继续，退出客户端才会停止播放。登录过期时可重新登录并刷新曲库。")
+    (etaf-ncm--view-card
+     :if (etaf-ncm-layout-widget-p (etaf-ncm--read session :layout))
+     :model session
+     :tile (eq (etaf-ncm--read session :layout) 'tile)
+     :title track-title :artist track-artist :album selected-album :cover cover-file
+     :liked (etaf-ncm--ref session :liked-ref)
+     :projection lyric-panel :rows (etaf-ncm--read session :lyric-rows)
+     :queue-projection queue-panel
+     :pane-list pane-list :lyrics lyrics-visible :queue queue-visible
+     :playing playing :elapsed position :duration track-duration
+     :selection (etaf-ncm--ref session :selection)
+     :list-keys list-keys :list-direction list-direction :on-list-focus on-list-focus
+     :on-press on-press-row :on-action on-row-action
+     :queue-keys queue-keys :queue-direction queue-direction :on-jump on-jump-queue
+     :on-toggle on-toggle :on-next on-next :on-previous on-previous
+     :on-like on-like :on-seek on-seek
+     :on-pane on-show-pane :on-aside on-show-aside
+     :error (etaf-ncm--read session :error)
+     :message (etaf-ncm--ref session :message))
     (box :width 'stretch :flex-grow 1 :flex-basis '(lh 0) :min-height '(lh 0))
       (etaf-ncm--view-sidebar
        :if (eq (etaf-ncm--read session :layout) 'wide)
@@ -736,6 +772,7 @@ releases the polling timer and the session's pending backend requests."
        :on-locate on-locate
        :on-login on-login)
       (etaf-ncm--view-list-panel
+       :if (not (etaf-ncm-layout-widget-p (etaf-ncm--read session :layout)))
        :layout (etaf-ncm--read session :layout)
        :columns (etaf-ncm--read session :columns)
        :window-rows (etaf-ncm--read session :window-rows)
@@ -783,6 +820,7 @@ releases the polling timer and the session's pending backend requests."
          :on-press on-press-row
          :on-action on-row-action))
       (etaf-ncm--view-aside
+       :if (not (etaf-ncm-layout-widget-p (etaf-ncm--read session :layout)))
        :kind 'lyrics :visible lyrics-visible
        :layout (etaf-ncm--read session :layout)
        :columns (etaf-ncm--read session :columns)
@@ -791,6 +829,7 @@ releases the polling timer and the session's pending backend requests."
        :projection lyric-panel :rows (etaf-ncm--read session :lyric-rows)
        :on-switch on-switch-aside)
       (etaf-ncm--view-aside
+       :if (not (etaf-ncm-layout-widget-p (etaf-ncm--read session :layout)))
        :kind 'queue :visible queue-visible
        :layout (etaf-ncm--read session :layout)
        :columns (etaf-ncm--read session :columns)
@@ -801,7 +840,8 @@ releases the polling timer and the session's pending backend requests."
        :on-switch on-switch-aside
        :on-jump on-jump-queue)
     (etaf-ncm--view-pane-tabs
-     :if (etaf-ncm--compact-layout-p session)
+     :if (and (etaf-ncm--compact-layout-p session)
+              (not (etaf-ncm-layout-widget-p (etaf-ncm--read session :layout))))
      :pane-list pane-list
      :lyrics lyrics-visible
      :queue queue-visible
@@ -810,7 +850,8 @@ releases the polling timer and the session's pending backend requests."
     ;; The bar reserves five lines; the positioned host in flow and the
     ;; absolute panel inside is the retained publication address, so a control
     ;; toggle updates its Hosts without a view rebuild.
-    (box :position 'relative :z-index 0 :width 'stretch
+    (box :if (not (etaf-ncm-layout-widget-p (etaf-ncm--read session :layout)))
+         :position 'relative :z-index 0 :width 'stretch
          :height (list 'lh etaf-ncm-layout-bar-rows)
          :flex-shrink 0
       (etaf-ncm--view-player

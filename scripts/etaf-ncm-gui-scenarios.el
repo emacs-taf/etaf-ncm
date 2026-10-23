@@ -648,7 +648,83 @@ closed."
       (lambda (context)
         (list (etaf-ncm-gui--assert "narrow returns to the list"
                                     (etaf-ncm-gui--shows context "曲目 1")))))
+     ;; --- The small-size card family --------------------------------------
+     ;; A card replaces the header, chip strip, panel and bar with one content
+     ;; pane, its switch and the transport.  It is entered from a stacked
+     ;; layout, so the lyric pane comes to the front.
+     (etaf-ncm-gui--resize 46 20 'card screenshots)
+     (etaf-ncm-gui--action
+      "card-keeps-the-essentials"
+      (lambda (context) (ignore context))
+      (lambda (context)
+        (let ((pane (plist-get (etaf-ncm-gui--state context) :pane)))
+          (list (etaf-ncm-gui--assert "the card opens on the lyric pane"
+                                      (eq pane 'aside))
+                (etaf-ncm-gui--assert "the card shows the pane switch"
+                                      (etaf-ncm-gui--shows context "歌词"))
+                (etaf-ncm-gui--assert "the card keeps the progress line"
+                                      (etaf-ncm-gui--shows context "03:00"))
+                (etaf-ncm-gui--assert "the card drops the search field"
+                                      (not (etaf-ncm-gui--shows context "搜索歌曲")))
+                (etaf-ncm-gui--assert "the card drops the chip strip"
+                                      (not (etaf-ncm-gui--shows context "播放全部"))))))
+      screenshots)
+     (etaf-ncm-gui--action
+      "card-switches-to-the-library"
+      (lambda (context) (etaf-ncm-gui--key context "v"))
+      (lambda (context)
+        (list (etaf-ncm-gui--assert "v brings the library into the card"
+                                    (etaf-ncm-gui--shows context "曲目 1"))
+              (etaf-ncm-gui--assert "the library keeps the card chrome"
+                                    (etaf-ncm-gui--shows context "列表"))))
+      screenshots)
+     (etaf-ncm-gui--resize 34 14 'tile screenshots)
+     (etaf-ncm-gui--action
+      "tile-keeps-only-the-essentials"
+      (lambda (context) (ignore context))
+      (lambda (context)
+        (list (etaf-ncm-gui--assert "the tile keeps the library"
+                                    (etaf-ncm-gui--shows context "曲目 1"))
+              (etaf-ncm-gui--assert "the tile drops the switch row"
+                                    (not (etaf-ncm-gui--shows context "列表")))
+              (etaf-ncm-gui--assert "the tile drops the progress line"
+                                    (not (etaf-ncm-gui--shows context "03:00")))
+              (etaf-ncm-gui--assert "the tile drops the cover band"
+                                    (not (etaf-ncm-gui--shows context "专辑")))))
+      screenshots)
+     (etaf-ncm-gui--action
+      "tile-keys-still-switch-panes"
+      (lambda (context) (etaf-ncm-gui--key context "v"))
+      (lambda (context)
+        (list (etaf-ncm-gui--assert "v shows the lyric in the tile"
+                                    (etaf-ncm-gui--shows context "第一行歌词"))))
+      screenshots)
+     ;; A medium-width frame that is too short for its chrome is a card too.
+     (etaf-ncm-gui--resize 90 20 'card screenshots)
+     (etaf-ncm-gui--action
+      "short-medium-frame-is-a-card"
+      (lambda (context) (ignore context))
+      (lambda (context)
+        (list (etaf-ncm-gui--assert "a short medium frame becomes a card"
+                                    (eq (plist-get (etaf-ncm-gui--state context) :layout)
+                                        'card))))
+      screenshots)
      (etaf-ncm-gui--resize 150 14 'wide screenshots)
+     (etaf-ncm-gui--action
+      "short-frame-keeps-the-bar"
+      (lambda (context) (ignore context))
+      (lambda (context)
+        (let ((state (etaf-ncm-gui--state context)))
+          (list (etaf-ncm-gui--assert "short frame keeps a positive page"
+                                      (> (plist-get state :page-size) 0))
+                (etaf-ncm-gui--assert "short frame keeps the player bar"
+                                      (etaf-ncm-gui--shows context "00:42"))
+                (etaf-ncm-gui--assert "short frame keeps the player tools"
+                                      (etaf-ncm-gui--shows context "55%")))))
+      screenshots)
+     ;; The embedded region check isolates width: the frame is tall enough that
+     ;; only the region, not its rows, decides the tier.
+     (etaf-ncm-gui--resize 150 40 'wide)
      ;; --- Embedded region ---------------------------------------------------
      ;; A host that embeds the player gives it a region, not the canvas.  Both
      ;; readings below come from the same player code: only the enclosing
@@ -688,18 +764,6 @@ closed."
             (format "the same player without a region lays out wide (got %s)"
                     (plist-get state :layout))
             (eq (plist-get state :layout) 'wide))))))
-     (etaf-ncm-gui--action
-      "short-frame-keeps-the-bar"
-      (lambda (context) (ignore context))
-      (lambda (context)
-        (let ((state (etaf-ncm-gui--state context)))
-          (list (etaf-ncm-gui--assert "short frame keeps a positive page"
-                                      (> (plist-get state :page-size) 0))
-                (etaf-ncm-gui--assert "short frame keeps the player bar"
-                                      (etaf-ncm-gui--shows context "00:42"))
-                (etaf-ncm-gui--assert "short frame keeps the player tools"
-                                      (etaf-ncm-gui--shows context "55%")))))
-      screenshots)
      (etaf-ncm-gui--resize 150 40 'wide screenshots))
     :completion
     (lambda (context)

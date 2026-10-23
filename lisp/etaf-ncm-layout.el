@@ -25,6 +25,12 @@
 ;; - The chip plan keeps every library in the strip: the strip first drops its
 ;;   gaps and then narrows each chip to the icon's inset before a library
 ;;   could fall off the edge.
+;; - A frame too small for that chrome uses the card family instead: `card'
+;;   keeps the cover band, one content pane (lyrics, library or queue), the
+;;   pane switch and the transport; `tile' is the same without the cover
+;;   band.  The family starts where the compact player controls no longer fit
+;;   side by side, or where the tier's chrome would leave the library fewer
+;;   rows than a page is worth reading.
 ;; - The type scale has two sizes: the frame default for everything a reader
 ;;   acts on, and `etaf-ncm-font-meta' for secondary facts (subtitles,
 ;;   counters, hints, credits).  Emphasis uses weight, never a larger size, so
@@ -73,6 +79,11 @@ the box holds no slack row and the clear line under the bar stays single.")
 
 (defconst etaf-ncm-layout-min-page-rows 4
   "Smallest library page kept even in a very short window.")
+
+(defconst etaf-ncm-layout-page-comfort-rows 10
+  "Library rows a tier must afford before it is worth its chrome.
+Below this the stacked header, chip strip, pane switch and player bar cost
+more than they give, and the card family takes over.")
 
 ;;; What the header, a row and a chip are made of
 
@@ -131,6 +142,56 @@ name column is the only flexible one and never leaves.")
 
 (defconst etaf-ncm-layout-chip-min-columns 4
   "Narrowest library chip that still fits its icon.")
+
+;;; The small-size cards
+;;
+;; The compact player bar puts its transport and its tool group side by side;
+;; below the sum of those parts the two groups overlap, so the card family
+;; takes over before a narrow frame has to squeeze them.  The two parts are
+;; declared here because they are what the threshold is derived from.
+
+(defconst etaf-ncm-layout-bar-transport-columns 16
+  "Columns the compact transport keeps for its four controls and gaps.")
+
+(defconst etaf-ncm-layout-bar-tools-columns 24
+  "Columns the compact tool group keeps for its pane and volume controls.")
+
+(defconst etaf-ncm-layout-bar-gap-columns 2
+  "Gap columns between the compact bar's transport and tool groups.")
+
+(defconst etaf-ncm-layout-bar-pad-columns 4
+  "Horizontal padding columns of the player bar, two per side.")
+
+(defconst etaf-ncm-layout-widget-columns
+  (+ etaf-ncm-layout-bar-transport-columns etaf-ncm-layout-bar-tools-columns
+     etaf-ncm-layout-bar-gap-columns etaf-ncm-layout-bar-pad-columns)
+  "Width at which the compact player bar stops holding both of its groups.")
+
+(defconst etaf-ncm-layout-card-columns 30
+  "Narrowest card that still holds its cover band and a lyric line.")
+
+(defconst etaf-ncm-layout-card-rows 16
+  "Shortest card that still holds its cover band, five content rows and the
+pane switch, progress and transport under them, with one clear row between
+each band.")
+
+(defconst etaf-ncm-layout-card-chrome-rows 11
+  "Rows a card spends outside its content area: the top padding, the cover
+band, a clear row under it, a clear row above and below the pane switch, the
+progress line, the transport and the bottom padding.")
+
+(defconst etaf-ncm-layout-tile-chrome-rows 6
+  "Rows a tile spends outside its content area: one clear row at the top, the
+header row, a clear row under it, a clear row above the transport, the
+transport and one clear row under it.  A tile has no progress line and no
+switch row: at that size every row left belongs to the lyric, and the pane
+keys still switch it.")
+
+(defconst etaf-ncm-layout-card-pad-columns 4
+  "Horizontal padding columns of a card, two per side.")
+
+(defconst etaf-ncm-layout-tile-pad-columns 2
+  "Horizontal padding columns of a tile, one per side.")
 
 ;;; Derived breakpoints
 ;;
@@ -226,17 +287,56 @@ squeezing the library page."
 
 ;;; Vertical plan
 
-(defun etaf-ncm-layout-for (columns)
-  "Return the layout COLUMNS columns of text can hold.
-The result is `wide', `medium' or `narrow'; see `etaf-ncm-wide-columns' and
-`etaf-ncm-medium-columns'."
-  (cond ((>= (or columns 0) etaf-ncm-wide-columns) 'wide)
-        ((>= (or columns 0) etaf-ncm-medium-columns) 'medium)
-        (t 'narrow)))
+(defun etaf-ncm-layout-for (columns &optional window-rows)
+  "Return the layout COLUMNS by WINDOW-ROWS of text can hold.
+The result is `wide', `medium', `narrow', `card' or `tile'; see
+`etaf-ncm-wide-columns' and `etaf-ncm-medium-columns'.  A frame too small for
+the chrome of its width tier falls back to the card family: `card' while it
+can hold the cover band, `tile' below that."
+  (let ((layout (cond ((>= (or columns 0) etaf-ncm-wide-columns) 'wide)
+                      ((>= (or columns 0) etaf-ncm-medium-columns) 'medium)
+                      (t 'narrow))))
+    (if (etaf-ncm-layout-small-p layout columns window-rows)
+        (if (and (>= (or columns 0) etaf-ncm-layout-card-columns)
+                 (>= (or window-rows 0) etaf-ncm-layout-card-rows))
+            'card
+          'tile)
+      layout)))
+
+(defun etaf-ncm-layout-small-p (layout columns window-rows)
+  "Return non-nil when LAYOUT cannot afford its chrome at COLUMNS by WINDOW-ROWS.
+LAYOUT is the tier COLUMNS alone would pick.  A frame whose width cannot hold
+the compact player bar keeps no bar worth stacking, and one whose rows leave
+fewer than `etaf-ncm-layout-page-comfort-rows' library rows spends more on the
+header, chip strip, pane switch and bar than it gives back.  A wide layout is
+exempt: its columns are the content, and it stays readable when it is short."
+  (and (not (eq layout 'wide))
+       (or (< (or columns 0) etaf-ncm-layout-widget-columns)
+           (let ((rows (or window-rows 0)))
+             (and (> rows 0)
+                  (< rows (+ (etaf-ncm-layout-list-top layout)
+                             (etaf-ncm-layout-footer-rows-for rows)
+                             (etaf-ncm-layout-tabs-rows layout)
+                             etaf-ncm-layout-bar-rows
+                             etaf-ncm-layout-page-comfort-rows)))))))
+
+(defun etaf-ncm-layout-widget-p (layout)
+  "Return non-nil when LAYOUT is one of the small-size cards."
+  (memq layout '(card tile)))
 
 (defun etaf-ncm-layout-compact-p (layout)
   "Return non-nil when LAYOUT shows one content pane at a time."
   (not (eq layout 'wide)))
+
+(defun etaf-ncm-layout-content-rows (layout window-rows)
+  "Return the rows LAYOUT spends on its content area inside WINDOW-ROWS.
+In the card family that is the lyric pool and the library page at once: the
+chrome above and below it is the cover band, the pane switch, the progress
+line and the transport."
+  (pcase layout
+    ('card (max 1 (- (or window-rows 0) etaf-ncm-layout-card-chrome-rows)))
+    ('tile (max 1 (- (or window-rows 0) etaf-ncm-layout-tile-chrome-rows)))
+    (_ (etaf-ncm-layout-page-rows layout window-rows))))
 
 (defun etaf-ncm-layout-header-rows (layout)
   "Return the rows the content header occupies in LAYOUT.
@@ -303,15 +403,19 @@ queue heading; translations share the same budget."
 
 (defun etaf-ncm-layout-list-columns (layout columns)
   "Return the list pane's content width in COLUMNS for LAYOUT.
-It matches what `etaf-ncm--view-list-panel' draws, minus its padding, so a
-view can test whether a part fits without duplicating the panel geometry."
-  (let* ((columns (or columns 0))
-         (wide-p (eq layout 'wide)))
-    (max 1 (- columns
-              (if wide-p
-                  (+ etaf-ncm-layout-sidebar-columns etaf-ncm-layout-aside-columns)
-                (if (eq layout 'medium) etaf-ncm-layout-rail-columns 0))
-              (if wide-p etaf-ncm-layout-panel-pad-columns 2)))))
+It matches what `etaf-ncm--view-list-panel' and the card draw, minus their
+padding, so a view can test whether a part fits without duplicating the
+panel geometry."
+  (let ((columns (or columns 0)))
+    (pcase layout
+      ('wide (max 1 (- columns
+                       etaf-ncm-layout-sidebar-columns
+                       etaf-ncm-layout-aside-columns
+                       etaf-ncm-layout-panel-pad-columns)))
+      ('medium (max 1 (- columns etaf-ncm-layout-rail-columns 2)))
+      ('card (max 1 (- columns etaf-ncm-layout-card-pad-columns)))
+      ('tile (max 1 (- columns etaf-ncm-layout-tile-pad-columns)))
+      (_ (max 1 (- columns 2))))))
 
 (defun etaf-ncm-layout-subtitle-p (layout columns)
   "Return non-nil when LAYOUT at COLUMNS can show the header subtitle.

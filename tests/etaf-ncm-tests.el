@@ -2719,6 +2719,38 @@ directory drives the queue track list."
                        (car (etaf-host-ref-bounds runtime 'ncm-list-selection)))
                       target-line))))))))
 
+(ert-deftest etaf-ncm-tests-small-frames-use-the-card-family ()
+  "A frame too small for its chrome keeps only what it is read for.
+A card keeps the cover band, one pane and the transport; a tile drops the
+cover, the progress line and the switch row, and gives every remaining row to
+the lyric.  Neither draws the header, the chip strip or the player bar."
+  (dolist (sample '((46 18 card) (34 14 tile)))
+    (let ((app (etaf-ncm-tests--session)))
+      (etaf-ncm-tests--with-player app
+        (etaf-ncm-refresh app)
+        (set-frame-size (selected-frame) (car sample) (cadr sample))
+        (etaf-refit)
+        (etaf-ncm-refresh app)
+        (let* ((layout (plist-get (etaf-ncm-state app) :layout))
+               (text (etaf-ncm-tests--rendered-text)))
+          (should (eq layout (caddr sample)))
+          (should (> (plist-get (etaf-ncm-state app) :page-size) 0))
+          (should (string-match-p "第一行歌词" text))
+          (should-not (string-match-p "搜索歌曲" text))
+          (should-not (string-match-p "播放全部" text))
+          (if (eq layout 'card)
+              (progn
+                (should (eq (plist-get (etaf-ncm-state app) :pane) 'aside))
+                (should (string-match-p "专辑" text))
+                (should (string-match-p "歌词" text))
+                (should (string-match-p "03:00" text))
+                (etaf-ncm-show-pane app 'list)
+                (should (string-match-p "曲目 1" (etaf-ncm-tests--rendered-text))))
+            ;; A tile spends no row on a progress line or a switch row.
+            (should-not (string-match-p "03:00" text))
+            (should-not (string-match-p "列表" text))
+            (should (string-match-p "曲目 1 - 歌手 1" text))))))))
+
 (provide 'etaf-ncm-tests)
 
 ;;; etaf-ncm-tests.el ends here

@@ -2,7 +2,7 @@
 
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 ;; Author: ETAF contributors
-;; Version: 0.1.4
+;; Version: 0.2.0
 ;; Package-Requires: ((emacs "29.1") (etaf "0.3.0") (etaf-ui "0.2.0") (ebox "3.0.0") (etaf-db "0.1.0"))
 ;; Keywords: multimedia, ui
 ;; URL: https://github.com/emacs-taf/etaf-ncm
@@ -106,7 +106,10 @@
 ;; `:list-total', `:queue-rows', `:queue-start', `:lyric-rows',
 ;; `:status', `:queue', `:lyric', `:lyric-line', `:aside', `:theme', `:account',
 ;; `:downloads' (the local download registry), `:layout', `:pane', `:viewport-width' (the pixel canvas the player mounts
-;; into), `:loading', `:error' and `:message'.  The snapshot copies
+;; into), `:loading', `:error' and `:message'.  `:layout' is one of `wide',
+;; `medium', `narrow', `card' or `tile': the card family is the small-size
+;; player that keeps one pane, its switch and the transport, and shows no
+;; header, library strip or player bar.  The snapshot copies
 ;; every value, so mutating it never changes the player; use it to render
 ;; outside ETAF or to assert behavior in tests.
 ;; `:status' includes normalized `:vip' and `:quality' when reported by the
@@ -222,8 +225,8 @@
 ;; Show PANE in APP and return it.
 ;; PANE is `list' for the library list or `aside' for the lyric and queue panel;
 ;; any other PANE signals `etaf-ncm-error'.  A `wide' layout keeps every column
-;; visible, so there PANE is remembered without removing anything; medium and
-;; narrow layouts show that single pane.
+;; visible, so there PANE is remembered without removing anything; medium,
+;; narrow, `card' and `tile' layouts show that single pane.
 ;;
 ;; Variable: etaf-ncm-sections
 ;; Sidebar groups and their libraries, as (GROUP-NAME (SECTION LABEL ICON) ...).

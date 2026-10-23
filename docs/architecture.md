@@ -84,6 +84,18 @@ model and is expressed by the view:
   variant's fixed columns decide whether that variant is used.
 - The chip strip keeps every library: it drops the inter-chip gap and then
   narrows each chip to the icon's inset before a library could fall off.
+- A frame too small for that chrome uses the card family. The rule is derived
+  too: a stacked layout needs 46 columns for the compact player bar's
+  transport and tool groups, and a page worth browsing (ten rows) on top of
+  its header, chip strip, switch and bar. Below either, `card` keeps the cover
+  band, one content pane, the pane switch and the transport, and `tile` drops
+  the cover and the progress line as well. A wide frame is exempt: its columns
+  are the content, so it stays in the desktop layout when it is short.
+- The card's content area is one row budget shared by three panes: the library
+  page, the lyric pool and the queue. They stay mounted behind one
+  `:visibility`, so a switch keeps their retained hosts. `etaf-ncm--sync-viewport`
+  writes that budget as both `:page-size` and `:lyric-rows`, and entering the
+  family from a larger layout brings the lyric pane to the front.
 - `etaf-ncm--sync-viewport` reads `etaf-viewport' — the `(PIXELS . ROWS)`
   region the player is mounted into — and writes `:layout`, `:columns`,
   `:window-rows`, the page count (`:page-size`), `:queue-rows` and
