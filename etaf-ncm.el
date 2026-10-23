@@ -283,9 +283,10 @@
 ;; Seconds between playback checks while nothing is playing.
 ;;
 ;; Variable: etaf-ncm-theme-mode
-;; Palette used by `etaf-ncm-color' and `etaf-ncm-theme-defaults': `dark' or `light'.
-;; A mounted player repaints when a session's `:theme' value changes, which is
-;; what the player's T key does.
+;; Palette used by `etaf-ncm-color' and `etaf-ncm-theme-defaults': `auto'
+;; (default, follows the host appearance), `dark' or `light'.
+;; A mounted player repaints when the host appearance changes or a session's
+;; `:theme' value changes, which is what the player's T key does.
 ;;
 ;; Function: etaf-ncm-color (key &optional mode)
 ;; Return the palette color for KEY, optionally reading MODE instead of

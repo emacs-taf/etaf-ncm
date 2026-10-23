@@ -33,19 +33,29 @@
            :playing "#D8232A" :selected "#EFF1F4" :meter "#D8232A" :cover "#E4E7EB"))
   "Palette of every supported appearance, keyed by mode.")
 
-(defcustom etaf-ncm-theme-mode 'dark
+(defcustom etaf-ncm-theme-mode 'auto
   "Appearance used by a new player.
-`dark' (default) renders the player's own dark surface; `light' uses the
-light palette.  This is independent of the active Emacs theme."
-  :type '(choice (const :tag "Dark" dark) (const :tag "Light" light))
+`auto' (default) follows the host appearance, so a player inside a panel of a
+pinned mode matches that panel and a player in an ordinary buffer follows the
+Emacs theme.  `dark' or `light' pins the player's own surface."
+  :type '(choice (const :tag "Follow the host" auto)
+                 (const :tag "Dark" dark)
+                 (const :tag "Light" light))
   :group 'etaf-ncm)
+
+(defun etaf-ncm--effective-mode (&optional mode)
+  "Return `light' or `dark' for MODE, the app setting or the host appearance."
+  (let ((mode (or mode (if (eq etaf-ncm-theme-mode 'auto)
+                           (etaf-appearance)
+                         etaf-ncm-theme-mode))))
+    (if (eq mode 'light) 'light 'dark)))
 
 (defun etaf-ncm-color (key &optional mode)
   "Return the palette color named KEY.
 MODE defaults to `etaf-ncm-theme-mode'.  An unknown KEY signals
 `etaf-ncm-error' instead of returning a fallback, because a typo would
 otherwise paint an invisible surface."
-  (let* ((mode (if (eq (or mode etaf-ncm-theme-mode) 'light) 'light 'dark))
+  (let* ((mode (etaf-ncm--effective-mode mode))
          (palette (cdr (assq mode etaf-ncm--palettes)))
          (color (plist-get palette key)))
     (unless (and (keywordp key) color)
@@ -57,7 +67,8 @@ otherwise paint an invisible surface."
 MODE defaults to `etaf-ncm-theme-mode'.  The result is passed to
 `etaf-theme-provide' by the application so shared etaf-ui Components use the
 same colors as the player's own Views."
-  (let* ((dark (not (eq (or mode etaf-ncm-theme-mode) 'light)))
+  (let* ((mode (etaf-ncm--effective-mode mode))
+         (dark (eq mode 'dark))
          (bg (etaf-ncm-color :bg mode))
          (panel (etaf-ncm-color :panel mode))
          (panel3 (etaf-ncm-color :panel3 mode))

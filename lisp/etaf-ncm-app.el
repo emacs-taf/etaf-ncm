@@ -378,7 +378,7 @@ In a wide layout, which shows both, this keeps the library list focused."
   "Switch the player between the dark and light palette."
   (interactive)
   (let ((model (etaf-ncm--current-model)))
-    (setq etaf-ncm-theme-mode (if (eq etaf-ncm-theme-mode 'dark) 'light 'dark))
+    (setq etaf-ncm-theme-mode (if (eq (etaf-ncm--effective-mode) 'dark) 'light 'dark))
     (etaf-ncm--write model :theme (etaf-ncm-theme-defaults etaf-ncm-theme-mode))
     (etaf-ncm--write model :message
                      (format "外观：%s" (if (eq etaf-ncm-theme-mode 'dark)
