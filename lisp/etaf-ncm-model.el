@@ -1730,6 +1730,13 @@ and a standalone player lay out by the same rule."
          ;; library page and the lyric pool share one row budget.
          (size (etaf-ncm-layout-content-rows layout height)))
     (etaf-batch
+      ;; A card draws no text field, and its point can sit on a stale buffer
+      ;; position after a resize; the native cursor would then paint a stray
+      ;; bar over the canvas.  The larger tiers keep it for the search field.
+      (when-let* ((buffer (plist-get app :buffer))
+                  ((buffer-live-p buffer)))
+        (with-current-buffer buffer
+          (setq-local cursor-type (unless widget (default-value 'cursor-type)))))
       (when (eq layout 'wide)
         (etaf-ncm--write app :pane 'list))
       (when entering
