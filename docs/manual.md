@@ -292,12 +292,19 @@ and shown with the line of the elapsed position emphasized. When the backend has
 a translation for the song, each line shows its translation next to it. The
 panel switches to the queue with `i`.
 
-The palette has a dark and a light variant. `etaf-ncm-theme-mode` selects the
-active one, `etaf-ncm-color` resolves single colours and
+The palette has a dark and a light variant. `etaf-ncm-theme-mode` seeds the
+mode a new Emacs session starts with; the live mode is one reactive cell, and
+`etaf-ncm-color` resolves single colours from it while
 `etaf-ncm-theme-defaults` publishes the `:ui-*` tokens the mounted player hands
 to the shared ETAF UI controls, so buttons, inputs and badges follow the same
-palette. Pressing `T` changes the mode and repaints the mounted player; the
-`theme` value of a session is reactive, which is what makes the subtree repaint.
+palette.
+
+`T` and the title-bar switch of a panel framing the player write that same
+cell, and the player declares it to its host with `etaf-surface-declare`.  A
+panel therefore paints the player's palette and offers the player's modes with
+the current one selected; switching on either side repaints both, so the
+appearance is one state rather than one per surface.  Pressing `T` alone still
+repaints the mounted player, because the palette follows the cell.
 
 ## Scripting the player
 

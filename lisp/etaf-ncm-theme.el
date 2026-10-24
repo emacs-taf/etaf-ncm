@@ -36,25 +36,34 @@
   "Palette of every supported appearance, keyed by mode.")
 
 (defcustom etaf-ncm-theme-mode 'auto
-  "Appearance used by a new player.
+  "Appearance a new Emacs session starts with.
 `auto' (default) follows the host appearance, so a player inside a panel of a
 pinned mode matches that panel and a player in an ordinary buffer follows the
-Emacs theme.  `dark' or `light' pins the player's own surface."
+Emacs theme.  `dark' or `light' pins the player's own surface.  The running
+state is `etaf-ncm--theme-mode'; this option only seeds it."
   :type '(choice (const :tag "Follow the host" auto)
                  (const :tag "Dark" dark)
                  (const :tag "Light" light))
   :group 'etaf-ncm)
 
+(defvar etaf-ncm--theme-mode (etaf-ref etaf-ncm-theme-mode)
+  "Live appearance of the player.
+`T' and a panel's title-bar switch both write this cell, and the palette is
+derived from it, so the player and its host show one state instead of two.")
+
+(defconst etaf-ncm--theme-modes
+  '((light . "亮") (auto . "随") (dark . "暗"))
+  "Appearance modes the player offers its host, in display order.")
+
 (defun etaf-ncm--effective-mode (&optional mode)
-  "Return `light' or `dark' for MODE, the app setting or the host appearance."
-  (let ((mode (or mode (if (eq etaf-ncm-theme-mode 'auto)
-                           (etaf-appearance)
-                         etaf-ncm-theme-mode))))
+  "Return `light' or `dark' for MODE, the player's mode or the host appearance."
+  (let* ((mode (or mode (etaf-value etaf-ncm--theme-mode)))
+         (mode (if (eq mode 'auto) (etaf-appearance) mode)))
     (if (eq mode 'light) 'light 'dark)))
 
 (defun etaf-ncm-color (key &optional mode)
   "Return the palette color named KEY.
-MODE defaults to `etaf-ncm-theme-mode'.  An unknown KEY signals
+MODE defaults to the player's live mode.  An unknown KEY signals
 `etaf-ncm-error' instead of returning a fallback, because a typo would
 otherwise paint an invisible surface."
   (let* ((mode (etaf-ncm--effective-mode mode))
@@ -66,7 +75,7 @@ otherwise paint an invisible surface."
 
 (defun etaf-ncm-theme-defaults (&optional mode)
   "Return the ETAF UI token plist for MODE.
-MODE defaults to `etaf-ncm-theme-mode'.  The result is passed to
+MODE defaults to the player's live mode.  The result is passed to
 `etaf-theme-provide' by the application so shared etaf-ui Components use the
 same colors as the player's own Views."
   (let* ((mode (etaf-ncm--effective-mode mode))

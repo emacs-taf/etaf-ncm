@@ -4,6 +4,11 @@ All notable user-visible changes to ETAF NCM.
 
 ## Unreleased
 
+- The player and a panel framing it share one appearance state: `T` and the
+  panel's title-bar switch write the same mode cell, the panel paints the
+  player's palette, and either switch repaints both.  `etaf-ncm-theme-mode` now
+  seeds the live mode instead of replacing it at runtime.
+
 - A card names the two libraries a small frame is read for instead of a
   generic list tab: `收藏`, `歌词` and `推荐`.  Pressing a library tab loads it
   into the list pane, the queue keeps `i` as its way in, and a card never

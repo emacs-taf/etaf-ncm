@@ -283,14 +283,15 @@
 ;; Seconds between playback checks while nothing is playing.
 ;;
 ;; Variable: etaf-ncm-theme-mode
-;; Palette used by `etaf-ncm-color' and `etaf-ncm-theme-defaults': `auto'
-;; (default, follows the host appearance), `dark' or `light'.
-;; A mounted player repaints when the host appearance changes or a session's
-;; `:theme' value changes, which is what the player's T key does.
+;; Palette a new Emacs session starts with: `auto' (default, follows the host
+;; appearance), `dark' or `light'.  The live mode is one reactive cell; the
+;; player's T key and a panel's title-bar switch write it, and
+;; `etaf-ncm-color' and `etaf-ncm-theme-defaults' read it, so the player and a
+;; panel framing it share one appearance state.
 ;;
 ;; Function: etaf-ncm-color (key &optional mode)
-;; Return the palette color for KEY, optionally reading MODE instead of
-;; `etaf-ncm-theme-mode'.
+;; Return the palette color for KEY, optionally reading MODE instead of the
+;; player's live mode.
 ;; KEY is one of `:bg', `:panel', `:panel2', `:panel3', `:line', `:ink',
 ;; `:muted', `:dim', `:accent', `:accent-soft', `:gold', `:ok', `:danger',
 ;; `:danger-bg', `:playing', `:selected', `:meter' or `:cover'; an unknown KEY

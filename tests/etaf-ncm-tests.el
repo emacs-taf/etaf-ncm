@@ -616,30 +616,24 @@ silently doing nothing against the real backend."
 
 (ert-deftest etaf-ncm-tests-theme-tokens-cover-both-palettes ()
   "Colours resolve per palette, and the UI defaults follow the mode."
-  (unwind-protect
-      (let ((etaf-ncm-theme-mode 'dark))
-        (should (equal (etaf-ncm-color :accent) "#EC4141"))
-        (should (string-match-p "\\`#[0-9A-Fa-f]\\{6\\}\\'" (etaf-ncm-color :bg)))
-        (should (string-match-p "\\`#[0-9A-Fa-f]\\{6\\}\\'" (etaf-ncm-color :ink)))
-        (should-error (etaf-ncm-color :nonsense) :type 'etaf-ncm-error)
-        ;; Every documented key must resolve in both palettes: the error banner
-        ;; once used `:danger-bg' while the palette could not answer it.
-        (dolist (key '(:bg :panel :panel2 :panel3 :line :ink :muted :dim
-                           :accent :accent-fg :accent-soft :gold :ok :danger :danger-bg
-                           :playing :selected :meter :cover))
-          (dolist (mode '(dark light))
-            (should (string-match-p "\\`#[0-9A-Fa-f]\\{6\\}\\\'"
-                                    (etaf-ncm-color key mode)))))
-        (let ((dark (etaf-ncm-color :bg))
-              (dark-defaults (etaf-ncm-theme-defaults 'dark)))
-          (should (plist-member dark-defaults :ui-accent))
-          (should (equal (plist-get dark-defaults :ui-bg) dark))
-          (setq etaf-ncm-theme-mode 'light)
-          (should-not (equal dark (etaf-ncm-color :bg)))
-          (should (equal (etaf-ncm-color :bg 'dark) dark))
-          (should-not (equal (etaf-ncm-theme-defaults)
-                             (etaf-ncm-theme-defaults 'dark)))))
-    (setq etaf-ncm-theme-mode 'dark)))
+  (should (equal (etaf-ncm-color :accent 'dark) "#EC4141"))
+  (should-error (etaf-ncm-color :nonsense) :type 'etaf-ncm-error)
+  ;; Every documented key must resolve in both palettes: the error banner
+  ;; once used `:danger-bg' while the palette could not answer it.
+  (dolist (key '(:bg :panel :panel2 :panel3 :line :ink :muted :dim
+                     :accent :accent-fg :accent-soft :gold :ok :danger :danger-bg
+                     :playing :selected :meter :cover))
+    (dolist (mode '(dark light))
+      (should (string-match-p "\\`#[0-9A-Fa-f]\\{6\\}\\\'"
+                              (etaf-ncm-color key mode)))))
+  (let ((dark (etaf-ncm-color :bg 'dark))
+        (dark-defaults (etaf-ncm-theme-defaults 'dark)))
+    (should (plist-member dark-defaults :ui-accent))
+    (should (equal (plist-get dark-defaults :ui-bg) dark))
+    (should-not (equal dark (etaf-ncm-color :bg 'light)))
+    (should (equal (etaf-ncm-color :bg 'dark) dark))
+    (should-not (equal (etaf-ncm-theme-defaults 'light)
+                       (etaf-ncm-theme-defaults 'dark)))))
 
 (ert-deftest etaf-ncm-tests-mount-renders-and-revives ()
   "Mounting paints the library in a buffer and killing it releases the session."
@@ -695,9 +689,14 @@ silently doing nothing against the real backend."
                                   :background)))))
       (unwind-protect
           (with-current-buffer buffer
-            (should (equal (funcall canvas) (etaf-ncm-color :bg 'dark)))
-            (execute-kbd-macro (kbd "T"))
-            (should (equal (funcall canvas) (etaf-ncm-color :bg 'light)))
+            (let ((before (funcall canvas)))
+              (should (member before (list (etaf-ncm-color :bg 'dark)
+                                           (etaf-ncm-color :bg 'light))))
+              (execute-kbd-macro (kbd "T"))
+              (should (equal (funcall canvas)
+                             (if (equal before (etaf-ncm-color :bg 'dark))
+                                 (etaf-ncm-color :bg 'light)
+                               (etaf-ncm-color :bg 'dark)))))
             (execute-kbd-macro (kbd "q"))
             (should-not (buffer-live-p buffer)))
         (when (buffer-live-p buffer) (kill-buffer buffer))))))
@@ -2779,6 +2778,40 @@ brings the panel back, and the queue keeps `i' as its way in at that size."
       (should (eq (plist-get (etaf-ncm-state app) :aside) 'lyrics))
       (execute-kbd-macro (kbd "i"))
       (should (eq (plist-get (etaf-ncm-state app) :aside) 'queue)))))
+
+(defvar etaf-ncm-tests--surface-model nil
+  "Player session mounted by the surface host during a case.")
+
+(etaf-define-component etaf-ncm-tests-surface-host (&key surface)
+  "Provide SURFACE to the player mounted below."
+  :setup (etaf-surface-provide surface)
+  :view (expr (etaf-ncm-view etaf-ncm-tests--surface-model)))
+
+(ert-deftest etaf-ncm-tests-declares-its-palette-to-a-host ()
+  "A panel frames the player with the player's own palette and switch.
+The declared mode cell is the same one `T' writes, so the host's switch and
+the player's own switch are one appearance state."
+  (let ((surface (etaf-surface-create))
+        (buffer (generate-new-buffer " *etaf-ncm-tests-surface*")))
+    (let ((etaf-ncm-tests--surface-model (etaf-ncm-tests--session)))
+      (unwind-protect
+          (progn
+            (etaf-mount buffer
+                        (etaf-view (etaf-ncm-tests-surface-host :surface surface))
+                        (list :viewport-width 1200 :viewport-height 40))
+            (should (equal '((light . "亮") (auto . "随") (dark . "暗"))
+                           (etaf-surface-modes surface)))
+            (should (equal (plist-get (etaf-value (etaf-surface-theme surface))
+                                      :ui-bg)
+                           (etaf-ncm-color
+                            :bg (etaf-value (etaf-surface-mode surface)))))
+            ;; The host's switch writes the cell the player paints from.
+            (etaf-set-value (etaf-surface-mode surface) 'light)
+            (should (equal (plist-get (etaf-value (etaf-surface-theme surface))
+                                      :ui-bg)
+                           (etaf-ncm-color :bg 'light))))
+        (when (buffer-live-p buffer) (kill-buffer buffer))
+        (etaf-set-value (etaf-surface-mode surface) 'auto)))))
 
 (provide 'etaf-ncm-tests)
 

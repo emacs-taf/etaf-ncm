@@ -375,13 +375,18 @@ In a wide layout, which shows both, this keeps the library list focused."
   (etaf-ncm-seek (etaf-ncm--current-model) 10))
 
 (defun etaf-ncm--toggle-theme ()
-  "Switch the player between the dark and light palette."
+  "Switch the player between the dark and light palette.
+The mode cell is the player's one appearance state: `T' writes the same cell
+`etaf-ncm--theme-mode' that a panel's title bar writes, so whichever one
+switches, the player and the panel around it repaint together."
   (interactive)
-  (let ((model (etaf-ncm--current-model)))
-    (setq etaf-ncm-theme-mode (if (eq (etaf-ncm--effective-mode) 'dark) 'light 'dark))
-    (etaf-ncm--write model :theme (etaf-ncm-theme-defaults etaf-ncm-theme-mode))
+  (let* ((model (etaf-ncm--current-model))
+         (mode (if (eq (etaf-ncm--effective-mode) 'dark) 'light 'dark)))
+    (setq etaf-ncm-theme-mode mode)
+    (etaf-set-value etaf-ncm--theme-mode mode)
+    (etaf-ncm--write model :theme (etaf-ncm-theme-defaults mode))
     (etaf-ncm--write model :message
-                     (format "外观：%s" (if (eq etaf-ncm-theme-mode 'dark)
+                     (format "外观：%s" (if (eq mode 'dark)
                                            "深色"
                                          "浅色")))))
 
@@ -671,6 +676,16 @@ releases the polling timer and the session's pending backend requests."
   :setup
   (progn
     (etaf-theme-provide palette)
+    ;; One appearance state: the palette follows the player's mode cell and
+    ;; the appearance its host provides, and the host paints from the same
+    ;; cell, so `T' and a panel's title-bar switch repaint both.
+    (etaf-watch (lambda () (etaf-ncm-theme-defaults))
+                (lambda (theme _old) (etaf-ncm--write session :theme theme))
+                :immediate t :test #'equal :name 'etaf-ncm-theme)
+    (when-let* ((surface (etaf-surface-host)))
+      (etaf-surface-declare surface :theme palette
+                            :mode etaf-ncm--theme-mode
+                            :modes etaf-ncm--theme-modes))
     ;; The mounted player lays out for the region it is given: its own
     ;; buffer window when it stands alone, or the host window, pane or tab
     ;; that embeds it (see `etaf-viewport').
