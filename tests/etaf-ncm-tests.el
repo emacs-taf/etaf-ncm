@@ -625,7 +625,7 @@ silently doing nothing against the real backend."
         ;; Every documented key must resolve in both palettes: the error banner
         ;; once used `:danger-bg' while the palette could not answer it.
         (dolist (key '(:bg :panel :panel2 :panel3 :line :ink :muted :dim
-                           :accent :accent-soft :gold :ok :danger :danger-bg
+                           :accent :accent-fg :accent-soft :gold :ok :danger :danger-bg
                            :playing :selected :meter :cover))
           (dolist (mode '(dark light))
             (should (string-match-p "\\`#[0-9A-Fa-f]\\{6\\}\\\'"

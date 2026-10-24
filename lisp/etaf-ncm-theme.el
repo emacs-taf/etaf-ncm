@@ -23,12 +23,14 @@
 (defconst etaf-ncm--palettes
   '((dark :bg "#191a1c" :panel "#202225" :panel2 "#25272b" :panel3 "#2b2e33"
           :line "#303338" :ink "#E9ECF1" :muted "#98A0AC" :dim "#6A727E"
-          :accent "#EC4141" :accent-soft "#2A1619" :gold "#E8B45C" :ok "#4FB477"
+          :accent "#EC4141" :accent-fg "#FFFFFF" :accent-soft "#2A1619"
+          :gold "#E8B45C" :ok "#4FB477"
           :warn "#E8B45C" :danger "#FF7A7A" :danger-bg "#3A1D22" :info "#6FB4E8"
           :playing "#EC4141" :selected "#25272b" :meter "#EC4141" :cover "#2b2e33")
     (light :bg "#FFFFFF" :panel "#F6F7F9" :panel2 "#EFF1F4" :panel3 "#E4E7EB"
            :line "#E1E4E9" :ink "#1B1F24" :muted "#5C6470" :dim "#8A919C"
-           :accent "#D8232A" :accent-soft "#FBE9EA" :gold "#B07A16" :ok "#2E7D4F"
+           :accent "#D8232A" :accent-fg "#FFFFFF" :accent-soft "#FBE9EA"
+           :gold "#B07A16" :ok "#2E7D4F"
            :warn "#B07A16" :danger "#C0392B" :danger-bg "#FBE4E2" :info "#2C6FA8"
            :playing "#D8232A" :selected "#EFF1F4" :meter "#D8232A" :cover "#E4E7EB"))
   "Palette of every supported appearance, keyed by mode.")
@@ -76,6 +78,7 @@ same colors as the player's own Views."
          (line (etaf-ncm-color :line mode))
          (muted (etaf-ncm-color :muted mode))
          (accent (etaf-ncm-color :accent mode))
+         (accent-fg (etaf-ncm-color :accent-fg mode))
          (accent-soft (etaf-ncm-color :accent-soft mode))
          (ok (etaf-ncm-color :ok mode))
          (ok-bg (if dark "#17301F" "#E3F3E8"))
@@ -91,7 +94,7 @@ same colors as the player's own Views."
          (info-border (if dark "#2C4E66" "#A8CBE6")))
     (etaf-ui-theme-tokens
      (list :bg bg :fg ink :panel panel :track panel3 :border line :muted muted
-           :accent accent :accent-fg "#FFFFFF" :accent-soft accent-soft
+           :accent accent :accent-fg accent-fg :accent-soft accent-soft
            :success ok :success-bg ok-bg :success-border ok-border
            :warning warn :warning-bg warn-bg :warning-border warn-border
            :danger danger :danger-bg danger-bg :danger-border danger-border

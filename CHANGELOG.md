@@ -4,6 +4,11 @@ All notable user-visible changes to ETAF NCM.
 
 ## Unreleased
 
+- The play/pause pill keeps a white glyph on its red block in both palettes. It
+  used the body ink, which is near black in the light palette and left the glyph
+  reading as a dark smear; the pill is also one cell narrower, so the block reads
+  as a button instead of a bar.
+
 - A frame too small for the stacked layout now becomes a card instead of
   squeezing the header, chip strip and player bar into it. The card keeps the
   cover, the track, one pane, its `列表` / `歌词` / `队列` switch and the
