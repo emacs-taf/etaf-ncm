@@ -403,13 +403,19 @@ drop it.  Every width comes from `etaf-ncm-layout': the search field shrinks
 toward its minimum while the actions keep their intrinsic width, so a pressed
 button can never be clipped into a shorter word.  The component reads the
 session sources itself, so a title or loading change repaints the header
-instead of the whole application."
+instead of the whole application.  The reload action reads `换一批` only on
+private FM, where the backend answers with a new batch, and `刷新` elsewhere."
   :bindings ((playable (etaf-ncm--ref model :playable)))
   :render
   (let* ((compact (not (eq layout 'wide)))
          (title (etaf-ncm--ref model :title))
          (subtitle (etaf-ncm--ref model :subtitle))
          (query (etaf-ncm--read model :query))
+         ;; Only private FM answers a reload with a different batch, so only
+         ;; there does the action promise one; every other library reloads
+         ;; itself, because the backend returns the same rows for the same
+         ;; request and the daily recommendation is one batch per day.
+         (refresh-label (if (eq (etaf-ncm--read model :section) :fm) "换一批" "刷新"))
          (title-min (list 'ch etaf-ncm-layout-title-min-columns))
          (search-min (list 'ch etaf-ncm-layout-search-min-columns))
          (search-width (list 'ch etaf-ncm-layout-search-columns))
@@ -429,7 +435,7 @@ instead of the whole application."
            :color (etaf-ncm-color :muted) :font-size etaf-ncm-font-meta
         (text (expr (or (etaf-value subtitle) ""))))
       (etaf-ncm--view-header-action
-       :label "换一批" :help-echo "换一批" :on-press on-refresh))
+       :label refresh-label :help-echo refresh-label :on-press on-refresh))
     (flex :if compact :width 'stretch :height '(lh 2) :gap '((lh 0) (ch 1))
           :align-items 'center
       (flex :flex-grow 1 :flex-shrink 1 :flex-basis '(px 0) :min-width search-min
@@ -460,7 +466,7 @@ instead of the whole application."
          :primary t :label "播放全部" :help-echo "播放整个列表"
          :hidden (not (etaf-value playable)) :on-press on-play-library)
         (etaf-ncm--view-header-action
-         :label "换一批" :help-echo "换一批" :on-press on-refresh))
+         :label refresh-label :help-echo refresh-label :on-press on-refresh))
       (box :flex-grow 1 :flex-basis '(lh 0)))))))
 
 (defun etaf-ncm--pane-tab-source (key pane-list lyrics queue)

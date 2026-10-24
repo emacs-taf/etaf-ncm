@@ -77,7 +77,7 @@
     (:id "queue.wheel-down" :wheel down :setup queue :queue-scroll t)
     (:id "queue.wheel-up" :wheel up :setup queue-scrolled :queue-scroll t)
     (:id "refresh.key" :key "g" :op :browse)
-    (:id "refresh.button" :help "换一批" :op :browse)
+    (:id "refresh.button" :help "刷新" :op :browse)
     (:id "search.submit" :key "/" :text "晨雾" :op :search)
     (:id "search.alias" :key "s" :text "晨雾" :op :search)
     (:id "search.field" :aria "搜索" :text "晨雾" :op :search)

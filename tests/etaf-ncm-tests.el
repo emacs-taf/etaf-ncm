@@ -2813,6 +2813,21 @@ the player's own switch are one appearance state."
         (when (buffer-live-p buffer) (kill-buffer buffer))
         (etaf-set-value (etaf-surface-mode surface) 'auto)))))
 
+(ert-deftest etaf-ncm-tests-reload-action-names-what-it-can-do ()
+  "The header reload reads 刷新 on a fixed library and 换一批 on private FM.
+A daily reload returns the same rows, so the action must not promise a new
+batch there; private FM answers with new songs, so it keeps the word."
+  (let ((app (etaf-ncm-tests--session)))
+    (etaf-ncm-tests--with-player app
+      (etaf-ncm-refresh app)
+      (let ((text (etaf-ncm-tests--rendered-text)))
+        (should (string-match-p "刷新" text))
+        (should-not (string-match-p "换一批" text)))
+      (etaf-ncm-locate app :fm)
+      (let ((text (etaf-ncm-tests--rendered-text)))
+        (should (string-match-p "换一批" text))
+        (should-not (string-match-p "刷新" text))))))
+
 (provide 'etaf-ncm-tests)
 
 ;;; etaf-ncm-tests.el ends here

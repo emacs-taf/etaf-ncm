@@ -4,6 +4,11 @@ All notable user-visible changes to ETAF NCM.
 
 ## Unreleased
 
+- The header reload action is named for what it can do: `换一批` only on
+  private FM, which answers a reload with new songs, and `刷新` on every other
+  library, where the same request returns the same rows.  The daily
+  recommendation is one batch per day, so its old `换一批` label promised a
+  change the backend cannot deliver.
 - The player and a panel framing it share one appearance state: `T` and the
   panel's title-bar switch write the same mode cell, the panel paints the
   player's palette, and either switch repaints both.  `etaf-ncm-theme-mode` now

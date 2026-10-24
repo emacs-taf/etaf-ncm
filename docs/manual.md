@@ -255,7 +255,10 @@ only in those libraries, where whole-list playback is supported.
 Songs in search results or recent plays still play directly. A playlist, album,
 artist, chart, podcast or episode row is resolved by the backend into its
 playable songs. `r` controls list repeat (`列表循环`), the backend's mpv
-`loop-playlist` setting.
+`loop-playlist` setting. The header's reload action names what it can do:
+`换一批` on private FM, where the backend answers with a new batch, and `刷新`
+elsewhere, because the same library request returns the same rows -- the daily
+recommendation is one batch per day.
 
 The queue panel opens around the playing position and shows
 `第 X-Y 首 / 共 N 首` using the loaded window and backend count. Roll the wheel

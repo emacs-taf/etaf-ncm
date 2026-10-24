@@ -108,8 +108,9 @@ It is the placeholder's width; a narrower pane shrinks the field toward
 \"播放全部\" is eight columns of label and one column of padding per side.")
 
 (defconst etaf-ncm-layout-refresh-columns 8
-  "Width of the refresh action including its padding.
-\"换一批\" is six columns of label and one column of padding per side.")
+  "Width of the reload action including its padding.
+It reads `换一批` on private FM and `刷新` elsewhere, so the reserve covers the
+wider six-column label plus one column of padding per side.")
 
 (defconst etaf-ncm-layout-gap-columns 3
   "Total gap columns between the header's title, search and actions.")
