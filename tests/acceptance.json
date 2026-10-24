@@ -490,6 +490,11 @@
       "name": "etaf-ncm-tests-small-frames-use-the-card-family",
       "file": "tests/etaf-ncm-tests.el",
       "purpose": "A small frame uses the card family: the card keeps the cover band, one pane, the switch and the transport, the tile keeps only the track, the lyric and the transport, and neither draws the header, chip strip or player bar."
+    },
+    {
+      "name": "etaf-ncm-tests-card-tabs-open-a-library",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "A card names 收藏 and 推荐 in its switch, opens either library in the list pane, returns to the panel through 歌词 and still reaches the queue with i."
     }
   ]
 }

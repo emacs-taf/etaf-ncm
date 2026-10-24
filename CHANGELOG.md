@@ -4,6 +4,11 @@ All notable user-visible changes to ETAF NCM.
 
 ## Unreleased
 
+- A card names the two libraries a small frame is read for instead of a
+  generic list tab: `收藏`, `歌词` and `推荐`.  Pressing a library tab loads it
+  into the list pane, the queue keeps `i` as its way in, and a card never
+  shows a page counter: a page is a window, the wheel and the arrows walk the
+  whole library.
 - The play/pause pill keeps a white glyph on its red block in both palettes. It
   used the body ink, which is near black in the light palette and left the glyph
   reading as a dark smear; the pill is also one cell narrower, so the block reads

@@ -1171,47 +1171,54 @@ Pressing the cover shows the lyric pane, as the player bar's cover does."
                              :help "喜欢 / 取消喜欢 (f / F)" :on-press on-like))))
 
 (etaf-define-component etaf-ncm--view-card-tabs
-    (&key pane-list lyrics queue on-pane on-aside)
-  "Render the one-row pane switch of the card.
-The three tabs name the card's content panes.  Each reads its own source
-inside the Host binding, so a switch repaints the tabs rather than the card."
-  :view
-  (flex :ref 'ncm-card-tabs :width 'stretch :height '(lh 1)
-        :gap '((lh 0) (ch 2))
-        :align-items 'center :justify-content 'center
-        :flex-shrink 0 :overflow 'hidden
-        :focus-group 'horizontal
-    (box :for (tab (list (list 'list "列表") (list 'lyrics "歌词") (list 'queue "队列")))
-         :key (car tab)
-         :height '(lh 1) :padding '((lh 0) (ch 1))
-         :role 'tab :tab-index 0
-         :aria-selected (etaf-value (etaf-ncm--pane-tab-source (car tab) pane-list lyrics queue))
-         :hover-style (unless (etaf-value (etaf-ncm--pane-tab-source
-                                           (car tab) pane-list lyrics queue))
-                        (etaf-ncm--hover-surface))
-         :help-echo (nth 1 tab)
-         :background-color (if (etaf-value (etaf-ncm--pane-tab-source
-                                            (car tab) pane-list lyrics queue))
-                               (etaf-ncm-color :accent-soft)
-                             (etaf-ncm-color :panel))
-         :color (if (etaf-value (etaf-ncm--pane-tab-source
-                                 (car tab) pane-list lyrics queue))
-                    (etaf-ncm-color :accent)
-                  (etaf-ncm-color :muted))
-         :font-weight (if (etaf-value (etaf-ncm--pane-tab-source
-                                       (car tab) pane-list lyrics queue))
-                          'bold 'normal)
-         :on-press (if (eq (car tab) 'list)
-                       (lambda () (funcall on-pane 'list))
-                     (lambda () (funcall on-aside (car tab))))
-      (text (expr (nth 1 tab))))))
+    (&key pane-list section on-library on-aside)
+  "Render the one-row switch of the card: two libraries and the panel.
+A compact frame shows one pane at a time and is read for two libraries, so
+the strip names them instead of a generic list: 收藏 opens the liked songs and
+推荐 the daily recommendation, and 歌词 brings the panel.  The panel still
+switches between the lyrics and the queue through `i', so the queue keeps its
+place without a tab of its own.  Every other library stays its digit key
+away; while one of those is in front no tab is marked, because none of the
+three names it.  Each tab reads its sources here, and the player re-renders
+on a library or pane write, so the mark follows the pane in front."
+  :render
+  (let* ((list-p (etaf-value pane-list))
+         (liked-p (and list-p (eq (etaf-value section) :liked)))
+         (daily-p (and list-p (eq (etaf-value section) :daily)))
+         (panel-p (not list-p))
+         (tabs (list (list :liked "收藏" liked-p)
+                     (list :panel "歌词" panel-p)
+                     (list :daily "推荐" daily-p))))
+    (etaf-view
+     (flex :ref 'ncm-card-tabs :width 'stretch :height '(lh 1)
+           :gap '((lh 0) (ch 2))
+           :align-items 'center :justify-content 'center
+           :flex-shrink 0 :overflow 'hidden
+           :focus-group 'horizontal
+       (box :for (tab tabs)
+            :key (car tab)
+            :height '(lh 1) :padding '((lh 0) (ch 1))
+            :role 'tab :tab-index 0
+            :aria-selected (nth 2 tab)
+            :hover-style (unless (nth 2 tab) (etaf-ncm--hover-surface))
+            :help-echo (nth 1 tab)
+            :background-color (if (nth 2 tab)
+                                  (etaf-ncm-color :accent-soft)
+                                (etaf-ncm-color :panel))
+            :color (if (nth 2 tab) (etaf-ncm-color :accent) (etaf-ncm-color :muted))
+            :font-weight (if (nth 2 tab) 'bold 'normal)
+            :on-press (lambda ()
+                        (pcase (car tab)
+                          (:panel (funcall on-aside 'lyrics))
+                          (library (funcall on-library library))))
+         (text (expr (nth 1 tab))))))))
 
 (etaf-define-component etaf-ncm--view-card
     (&key model tile title artist album cover liked projection rows queue-projection
-          pane-list lyrics queue playing elapsed duration error message
+          pane-list lyrics queue section playing elapsed duration error message
           selection list-keys list-direction on-list-focus on-press on-action
           queue-keys queue-direction on-jump
-          on-toggle on-next on-previous on-like on-seek on-pane on-aside)
+          on-toggle on-next on-previous on-like on-seek on-library on-aside)
   "Render the small-size player: identity, one content pane, switch, transport.
 The card replaces the header, chip strip, panel and player bar a stacked
 layout would draw, and keeps only what a small frame is read for: the track,
@@ -1221,8 +1228,10 @@ reads as one dense block.  TILE drops the cover, the album line and the
 progress line: at that size the track, the lyric and the three transport
 controls are the whole interface.  PANE-LIST, LYRICS and QUEUE are reactive
 sources; the three content panes stay mounted and only their visibility
-changes, so a switch keeps their retained hosts.  ERROR reveals MESSAGE over
-the content, because the card has no banner row."
+changes, so a switch keeps their retained hosts.  SECTION is the library in
+front, which decides whether the switch marks 收藏 or 推荐, and ON-LIBRARY
+opens one of those libraries in this pane.  ERROR reveals MESSAGE over the
+content, because the card has no banner row."
   :render
   (let ((content-rows (or rows 1)))
     (etaf-view
@@ -1273,8 +1282,8 @@ the content, because the card has no banner row."
          (box :width 'stretch :height '(lh 1) :flex-shrink 0)
          (etaf-ncm--view-card-tabs
           :if (not tile)
-          :pane-list pane-list :lyrics lyrics :queue queue
-          :on-pane on-pane :on-aside on-aside)
+          :pane-list pane-list :section section
+          :on-library on-library :on-aside on-aside)
          (box :if (not tile) :width 'stretch :height '(lh 1) :flex-shrink 0)
          (etaf-ncm--view-progress :if (not tile) :elapsed elapsed :duration duration
                                   :on-seek on-seek)

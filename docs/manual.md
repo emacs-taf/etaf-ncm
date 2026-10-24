@@ -151,12 +151,17 @@ widget instead of squeezing three columns into either:
 
 The card family is the small-size player: it draws no header, no library
 strip and no player bar.  A card keeps the cover band, the track, one content
-pane, the `列表` / `歌词` / `队列` switch and the transport, with one clear row
+pane, the `收藏` / `歌词` / `推荐` switch and the transport, with one clear row
 between the bands; it opens on the lyric when the window shrinks from a larger
-layout.  A tile drops the cover, the progress line and the switch row, so every
-row it has left belongs to the lyric; `v` and `i` still switch panes there.
-Growing the window restores the larger layout, and neither size keeps hidden
-state of its own.
+layout.  The switch names the two libraries a small frame is read for, so a
+press on `收藏` or `推荐` loads that library into the list pane, and `歌词`
+brings the panel back; the queue keeps its own way in through `i`, and every
+other library stays one digit key away.  A small frame shows a page, not the
+library: the wheel and the arrows walk the whole loaded list, and the card
+draws no counter, so nothing suggests the page is the end of it.  A tile drops
+the cover, the progress line and the switch row, so every row it has left
+belongs to the lyric; `v` and `i` still switch panes there.  Growing the window
+restores the larger layout, and neither size keeps hidden state of its own.
 
 The thresholds are derived from what the panes are made of, not from a screen
 size: the header and a full row declare the columns their labels and actions

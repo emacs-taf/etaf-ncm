@@ -2751,6 +2751,35 @@ the lyric.  Neither draws the header, the chip strip or the player bar."
             (should-not (string-match-p "列表" text))
             (should (string-match-p "曲目 1 - 歌手 1" text))))))))
 
+(ert-deftest etaf-ncm-tests-card-tabs-open-a-library ()
+  "A card switches libraries from its strip instead of naming a generic list.
+The two library tabs load 收藏 and 推荐 into the same pane, the lyric tab
+brings the panel back, and the queue keeps `i' as its way in at that size."
+  (let ((app (etaf-ncm-tests--session)))
+    (etaf-ncm-tests--with-player app
+      (etaf-ncm-refresh app)
+      (set-frame-size (selected-frame) 46 18)
+      (etaf-refit)
+      (etaf-ncm-refresh app)
+      (let ((text (etaf-ncm-tests--rendered-text)))
+        (should (string-match-p "收藏" text))
+        (should (string-match-p "歌词" text))
+        (should (string-match-p "推荐" text))
+        (should-not (string-match-p "列表" text))
+        (should-not (string-match-p "队列" text)))
+      (etaf-ncm-tests--press-help "推荐")
+      (should (eq (plist-get (etaf-ncm-state app) :pane) 'list))
+      (should (eq (plist-get (etaf-ncm-state app) :section) :daily))
+      (etaf-ncm-tests--press-help "收藏")
+      (should (eq (plist-get (etaf-ncm-state app) :pane) 'list))
+      (should (eq (plist-get (etaf-ncm-state app) :section) :liked))
+      (should (string-match-p "曲目 1" (etaf-ncm-tests--rendered-text)))
+      (etaf-ncm-tests--press-help "歌词")
+      (should (eq (plist-get (etaf-ncm-state app) :pane) 'aside))
+      (should (eq (plist-get (etaf-ncm-state app) :aside) 'lyrics))
+      (execute-kbd-macro (kbd "i"))
+      (should (eq (plist-get (etaf-ncm-state app) :aside) 'queue)))))
+
 (provide 'etaf-ncm-tests)
 
 ;;; etaf-ncm-tests.el ends here

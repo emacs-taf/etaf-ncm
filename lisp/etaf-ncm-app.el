@@ -606,6 +606,11 @@ releases the polling timer and the session's pending backend requests."
              (on-list-focus (lambda () (etaf-ncm--reveal-selection session)))
              (on-jump-queue (lambda (index) (etaf-ncm-jump-queue session index)))
              (on-show-pane (lambda (target) (etaf-ncm-show-pane session target)))
+             ;; A card names two libraries instead of a generic list tab, so a
+             ;; press both loads that library and brings the list into front.
+             (on-open-library (lambda (section)
+                                (etaf-ncm-locate session section)
+                                (etaf-ncm-show-pane session 'list)))
              (on-show-aside (lambda (target)
                               (etaf-ncm--write session :aside target)
                               (etaf-ncm-show-pane session 'aside)))
@@ -746,7 +751,8 @@ releases the polling timer and the session's pending backend requests."
      :queue-keys queue-keys :queue-direction queue-direction :on-jump on-jump-queue
      :on-toggle on-toggle :on-next on-next :on-previous on-previous
      :on-like on-like :on-seek on-seek
-     :on-pane on-show-pane :on-aside on-show-aside
+     :section (etaf-ncm--ref session :section)
+     :on-library on-open-library :on-aside on-show-aside
      :error (etaf-ncm--read session :error)
      :message (etaf-ncm--ref session :message))
     (box :width 'stretch :flex-grow 1 :flex-basis '(lh 0) :min-height '(lh 0))

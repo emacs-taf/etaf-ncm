@@ -205,6 +205,20 @@ background input-to-paint sample."
       (etaf-dispatch-event runtime ref 'press)
       (redisplay t))))
 
+(defun etaf-ncm-gui--press-help (context help)
+  "Activate the control whose help text is HELP in CONTEXT's player.
+A click or RET ends in the same `press' dispatch; the card's tab strip has no
+stable ref per tab, so the scenario resolves the tab by the name it shows."
+  (with-current-buffer (etaf-ncm-gui--target context)
+    (let* ((runtime (etaf-runtime-for-buffer (current-buffer)))
+           (entry (cl-find-if
+                   (lambda (entry) (equal (plist-get (cdr entry) :help-echo) help))
+                   (etaf-runtime-host-props-entries runtime))))
+      (unless entry
+        (error "No control with help text %S in the player" help))
+      (etaf-dispatch-event runtime (car entry) 'press)
+      (redisplay t))))
+
 (defun etaf-ncm-gui--control-action (id ref op)
   "Build an action pressing bar control REF and asserting backend OP."
   (etaf-ncm-gui--action
@@ -675,8 +689,49 @@ closed."
       (lambda (context)
         (list (etaf-ncm-gui--assert "v brings the library into the card"
                                     (etaf-ncm-gui--shows context "曲目 1"))
-              (etaf-ncm-gui--assert "the library keeps the card chrome"
-                                    (etaf-ncm-gui--shows context "列表"))))
+              (etaf-ncm-gui--assert "the card switch names the two libraries"
+                                    (and (etaf-ncm-gui--shows context "收藏")
+                                         (etaf-ncm-gui--shows context "推荐")))
+              (etaf-ncm-gui--assert "the card switch drops the generic list tab"
+                                    (not (etaf-ncm-gui--shows context "列表")))))
+      screenshots)
+     (etaf-ncm-gui--action
+      "card-opens-the-liked-library"
+      (lambda (context) (etaf-ncm-gui--press-help context "收藏"))
+      (lambda (context)
+        (let ((state (etaf-ncm-gui--state context)))
+          (list (etaf-ncm-gui--assert "the 收藏 tab loads the liked library"
+                                      (eq (plist-get state :section) :liked))
+                (etaf-ncm-gui--assert "the liked library lands in the list pane"
+                                      (eq (plist-get state :pane) 'list)))))
+      screenshots)
+     (etaf-ncm-gui--action
+      "card-opens-the-recommendation"
+      (lambda (context) (etaf-ncm-gui--press-help context "推荐"))
+      (lambda (context)
+        (list (etaf-ncm-gui--assert "the 推荐 tab loads the daily library"
+                                    (eq (plist-get (etaf-ncm-gui--state context) :section)
+                                        :daily))))
+      screenshots)
+     ;; A small frame shows a page, not the library: the wheel and the arrows
+     ;; must still reach the rows behind it.
+     (etaf-ncm-gui--action
+      "card-scrolls-past-the-page"
+      (lambda (context)
+        (with-current-buffer (etaf-ncm-gui--target context)
+          (etaf-focus (etaf-runtime-for-buffer (current-buffer)) 'ncm-list))
+        (etaf-gui-verifier-context-put
+         context 'card-page (plist-get (etaf-ncm-gui--state context) :page-size))
+        (etaf-ncm-gui--key context (mapconcat #'identity (make-list 12 "<down>") " ")))
+      (lambda (context)
+        (let ((state (etaf-ncm-gui--state context))
+              (page (etaf-gui-verifier-context-get context 'card-page)))
+          (list (etaf-ncm-gui--assert
+                 (format "arrows walk past the %s-row page (selection %s)"
+                         page (plist-get state :selection))
+                 (> (plist-get state :selection) page))
+                (etaf-ncm-gui--assert "the page follows the selection"
+                                      (> (plist-get state :window-start) 0)))))
       screenshots)
      (etaf-ncm-gui--resize 34 14 'tile screenshots)
      (etaf-ncm-gui--action
