@@ -730,8 +730,14 @@ closed."
                  (format "arrows walk past the %s-row page (selection %s)"
                          page (plist-get state :selection))
                  (> (plist-get state :selection) page))
-                (etaf-ncm-gui--assert "the page follows the selection"
-                                      (> (plist-get state :window-start) 0)))))
+                (etaf-ncm-gui--assert
+                 "the scrolling canvas follows the selection"
+                 (with-current-buffer (etaf-ncm-gui--target context)
+                   (> (or (etaf-scroll-offset
+                           (etaf-runtime-for-buffer (current-buffer))
+                           'ncm-list-scroll)
+                          0)
+                      0))))))
       screenshots)
      (etaf-ncm-gui--resize 34 14 'tile screenshots)
      (etaf-ncm-gui--action
