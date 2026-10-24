@@ -241,6 +241,11 @@
 ;; Library rows shown at once.  A mounted player replaces it with the count
 ;; that fits its viewport, so the default only applies to a headless session.
 ;;
+;; Variable: etaf-ncm-wheel-rows
+;; Library and queue rows one wheel tick scrolls, default 3.  It matches the
+;; step the rest of the canvas uses, so a small card does not need one notch per
+;; song.
+;;
 ;; Variable: etaf-ncm-wide-columns
 ;; Region width, in columns, that fits the library sidebar, the song list and the
 ;; side panel at the same time.  At or above this width the player uses the

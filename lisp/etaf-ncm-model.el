@@ -63,6 +63,14 @@ model created by `etaf-ncm-create'."
   :type 'integer
   :group 'etaf-ncm)
 
+(defcustom etaf-ncm-wheel-rows 3
+  "Library and queue rows one wheel tick scrolls.
+The canvas scrolls `ebox-scroll-step' lines per tick, so a player that moved
+one row would feel stuck beside every other ETAF surface; three rows also keep
+a small card page from needing one notch per song."
+  :type 'integer
+  :group 'etaf-ncm)
+
 (defcustom etaf-ncm-fetch-limit 100
   "Lower bound on rows requested from the backend for one library load.
 The request also respects `etaf-ncm-list-limit' and three visible pages."

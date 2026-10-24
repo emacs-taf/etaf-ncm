@@ -4,6 +4,9 @@ All notable user-visible changes to ETAF NCM.
 
 ## Unreleased
 
+- One wheel tick scrolls three library or queue rows instead of one
+  (`etaf-ncm-wheel-rows`), matching the step the rest of the canvas uses.  A
+  small card needed one notch per song before, so a flick looked stuck.
 - The header reload action is named for what it can do: `换一批` only on
   private FM, which answers a reload with new songs, and `刷新` on every other
   library, where the same request returns the same rows.  The daily

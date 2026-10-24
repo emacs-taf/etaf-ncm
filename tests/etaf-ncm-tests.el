@@ -1346,13 +1346,16 @@ the page is not capped below the rows the window can show."
         (should (= 120 (plist-get (etaf-ncm-state app) :rows-total)))
         (should (string-match-p (format "第 1-%d 首 / 共 120 首" size)
                                 (etaf-ncm-tests--rendered-text)))
-        ;; One tick moves the window one row and keeps the selection on row 1.
+        ;; One tick moves the window by `etaf-ncm-wheel-rows' rows, the step
+        ;; the rest of the canvas scrolls by, and keeps the selection on row 1.
         (etaf-ncm-tests--wheel window 'wheel-down column 8)
-        (let ((state (etaf-ncm-state app)))
+        (let ((state (etaf-ncm-state app))
+              (step etaf-ncm-wheel-rows))
           (should (= (plist-get state :selection) 0))
-          (should (= (plist-get state :window-start) 1))
-          (should (= (plist-get (car (plist-get state :visible)) :id) 2))
-          (should (string-match-p (format "第 2-%d 首 / 共 120 首" (1+ size))
+          (should (= (plist-get state :window-start) step))
+          (should (= (plist-get (car (plist-get state :visible)) :id) (1+ step)))
+          (should (string-match-p (format "第 %d-%d 首 / 共 120 首"
+                                          (1+ step) (+ step size))
                                   (etaf-ncm-tests--rendered-text))))
         ;; The whole loaded list is reachable and the window clamps at the end.
         (etaf-batch
@@ -1371,7 +1374,8 @@ the page is not capped below the rows the window can show."
         ;; Scrolling away and then arrowing still brings the selection back.
         (etaf-batch
           (dotimes (_ 10) (etaf-ncm-tests--wheel window 'wheel-down column 8)))
-        (should (= (plist-get (etaf-ncm-state app) :window-start) 10))
+        (should (= (plist-get (etaf-ncm-state app) :window-start)
+                   (* 10 etaf-ncm-wheel-rows)))
         (etaf-ncm-move-selection app 1)
         (let ((state (etaf-ncm-state app)))
           (should (= (plist-get state :selection) 1))

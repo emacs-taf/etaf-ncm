@@ -442,12 +442,13 @@ or the library list keeps them; `?' opens the read-only ETAF key help."
    ;; The renderer scrolls the buffer on the wheel; the player scrolls the
    ;; queue or library window under the pointer instead.
    (mapcar (lambda (entry)
-             (let ((delta (cdr entry)))
+             (let ((direction (cdr entry)))
                (list (car entry)
                      (lambda (event)
                        (interactive "e")
                        (let ((etaf-ncm--model session))
-                         (etaf-ncm--wheel event delta))))))
+                         (etaf-ncm--wheel event
+                                          (* direction etaf-ncm-wheel-rows)))))))
            '(("<wheel-up>" . -1) ("<wheel-down>" . 1)))
    (cl-loop for entry in (apply #'append (mapcar #'cdr etaf-ncm-sections))
             for index from 1 to 9

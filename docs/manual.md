@@ -176,7 +176,8 @@ In `medium` and `narrow` the header gains pane tabs and the player bar stacks
 into three lines, dropping its cover and quality badge while keeping the track,
 transport, pane controls, progress and volume. The page fills every row the
 window budget leaves after the header, chip strip, pane switch and player bar;
-the wheel scrolls the window through all loaded rows, and the footer labels the
+the wheel scrolls the window through all loaded rows (`etaf-ncm-wheel-rows`
+rows per tick, the same step the canvas uses), and the footer labels the
 visible range and the loaded total. `v` switches between the list and the side
 panel there, `i` shows the lyric or queue panel, and `etaf-ncm-show-pane` does
 the same from Lisp. `etaf-ncm-state` reports the current `:layout` and `:pane`.
