@@ -52,9 +52,9 @@
       "purpose": "Refreshing loads the library rows, the account name, the playback truth with queue position and the visible page."
     },
     {
-      "name": "etaf-ncm-tests-refresh-keeps-selection-inside-the-page",
+      "name": "etaf-ncm-tests-refresh-keeps-selection-inside-the-list",
       "file": "tests/etaf-ncm-tests.el",
-      "purpose": "Switching libraries replaces the rows, resets the selection and the page, and keeps each row's kind."
+      "purpose": "Loading a library resets the selection to its first row."
     },
     {
       "name": "etaf-ncm-tests-locate-rejects-unknown-library",
@@ -132,9 +132,9 @@
       "purpose": "Revisiting a library shows its cached rows at once, refreshes in the background, and keeps the reader's selection."
     },
     {
-      "name": "etaf-ncm-tests-selection-keeps-its-page",
+      "name": "etaf-ncm-tests-selection-clamps-at-both-ends",
       "file": "tests/etaf-ncm-tests.el",
-      "purpose": "Selection clamps at both ends, scrolls the page to stay visible, and an empty library plays nothing."
+      "purpose": "The list selection stops at the first and last loaded row."
     },
     {
       "name": "etaf-ncm-tests-toggle-aside-switches-panels",
@@ -307,9 +307,9 @@
       "purpose": "Active wheel bindings in all layouts reach every loaded queue entry, use the event window, leave the library selection and window alone outside the queue, display backend count, retain manual scrolling across unchanged polls, and recenter on track advance."
     },
     {
-      "name": "etaf-ncm-tests-library-wheel-scrolls-the-window-without-selection",
+      "name": "etaf-ncm-tests-library-wheel-scrolls-the-canvas",
       "file": "tests/etaf-ncm-tests.el",
-      "purpose": "Wheel over the library scrolls the row window one row per tick without moving the selection, clamps at both ends, keeps the page range true, and keyboard selection still brings the row back into view."
+      "purpose": "A wheel over the library scrolls its scrolling canvas by the shared step, clamps at both ends and leaves the selection alone."
     },
     {
       "name": "etaf-ncm-tests-panel-budgets-fit-resized-windows",

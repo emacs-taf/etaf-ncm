@@ -177,8 +177,11 @@ into three lines, dropping its cover and quality badge while keeping the track,
 transport, pane controls, progress and volume. The page fills every row the
 window budget leaves after the header, chip strip, pane switch and player bar;
 the wheel scrolls the window through all loaded rows (`etaf-ncm-wheel-rows`
-rows per tick, the same step the canvas uses), and the footer labels the
-visible range and the loaded total. `v` switches between the list and the side
+rows per tick, the same step the canvas uses), and the footer names the loaded
+count and the backend total.
+The library list itself is one scrolling canvas: rows are laid out once and
+Ebox scrolls them natively, so a wheel or trackpad gesture runs continuously
+instead of stepping a painted page. `v` switches between the list and the side
 panel there, `i` shows the lyric or queue panel, and `etaf-ncm-show-pane` does
 the same from Lisp. `etaf-ncm-state` reports the current `:layout` and `:pane`.
 

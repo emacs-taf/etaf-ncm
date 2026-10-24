@@ -241,6 +241,10 @@
 ;; Library rows shown at once.  A mounted player replaces it with the count
 ;; that fits its viewport, so the default only applies to a headless session.
 ;;
+;; Variable: etaf-ncm-render-limit
+;; Rows the library list keeps in its scrolling canvas, default 1000.  The
+;; canvas lays every rendered row out once, so the cap bounds the mount cost.
+;;
 ;; Variable: etaf-ncm-wheel-rows
 ;; Library and queue rows one wheel tick scrolls, default 3.  It matches the
 ;; step the rest of the canvas uses, so a small card does not need one notch per

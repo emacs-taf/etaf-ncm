@@ -4,6 +4,11 @@ All notable user-visible changes to ETAF NCM.
 
 ## Unreleased
 
+- The library list is one scrolling canvas instead of a painted page.  Ebox
+  scrolls it natively, so a wheel or trackpad gesture keeps running instead of
+  needing a pause and a pointer move between ticks, and every loaded row is
+  reachable.  The selection still clamps at both ends and the canvas follows
+  it; the footer now names the loaded count and the total.
 - One wheel tick scrolls three library or queue rows instead of one
   (`etaf-ncm-wheel-rows`), matching the step the rest of the canvas uses.  A
   small card needed one notch per song before, so a flick looked stuck.

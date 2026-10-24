@@ -549,7 +549,7 @@ are its `:keys', and ON-FOCUS runs when focus enters it."
   (let* ((slots (plist-get model :row-slots))
          (playing (plist-get model :row-playing))
          (visible (etaf-ncm--ref model :visible-count))
-         (count (max 1 (min (etaf-ncm--read model :page-size) (length slots))))
+         (count (max 1 (min (etaf-ncm--render-rows model) (length slots))))
          (offsets (number-sequence 0 (1- count)))
          (page-label (etaf-ncm--ref model :page-label))
          (loaded-label (etaf-ncm--ref model :loaded-label))
@@ -572,7 +572,9 @@ are its `:keys', and ON-FOCUS runs when focus enters it."
                      ((and (<= 44 columns) (not short)) "↑↓ 选择 · Tab 切换 · ? 命令")
                      (t nil)))
          (height (cond
-                  (widget count)
+                  ;; A card gives the list a flexible region, not a row count:
+                  ;; the canvas must fill it and scroll inside it.
+                  (widget '(% 100))
                   ((and window-rows (> window-rows 0))
                    ;; The panel inset converts the window-level budget into
                    ;; this view's coordinate: page rows plus the footer
@@ -589,7 +591,7 @@ are its `:keys', and ON-FOCUS runs when focus enters it."
            :flex-direction 'column
            :width (if widget 'stretch
                     (list 'ch (etaf-ncm-layout-list-columns layout columns)))
-           :height (list 'lh height)
+           :height (if (consp height) height (list 'lh height))
            :min-height '(lh 0) :gap '((lh 0) (px 0)) :overflow 'hidden
            :ref 'ncm-list :role 'listbox :aria-label "歌曲列表" :tab-index 0
            :keys keys :on-direction direction :on-focus-enter on-focus
@@ -597,31 +599,37 @@ are its `:keys', and ON-FOCUS runs when focus enters it."
             :width 'stretch :height '(lh 6)
             :visibility (if (zerop (etaf-value visible)) 'visible 'hidden)
          (etaf-ncm--view-note :text empty-note))
-       (box :position 'absolute :z-index 0 :left '(ch 0) :top '(lh 0)
-            :width 'stretch :height (list 'lh count) :overflow 'hidden
-         ;; Two static bars behind the rows: selection first, playing on top.
-         ;; The app moves them through retained host geometry (`:top' is
-         ;; their only change), so a highlight move never repaints the plane.
-         (box :position 'absolute :z-index 0 :left '(ch 0) :top '(lh -1)
-              :width 'stretch :height '(lh 1)
-              :ref 'ncm-list-selection :id "ncm-list-selection"
-              :background-color (etaf-ncm-color :panel2))
-         (box :position 'absolute :z-index 0 :left '(ch 0) :top '(lh -1)
-              :width 'stretch :height '(lh 1)
-              :ref 'ncm-list-playing :id "ncm-list-playing"
-              :background-color (etaf-ncm-color :accent-soft))
-         (column :position 'relative :z-index 1 :left '(ch 0) :top '(lh 0)
-                 :width 'stretch :item-gap '(lh 0)
-           (etaf-ncm--view-row :for (offset offsets) :key offset
-             :offset offset
-             :row (aref slots offset)
-             :playing (aref playing offset)
-             :selection selection
-             :variant variant
-             :press on-press
-             :on-action on-action)))
-       (flex :if (not widget) :position 'absolute :z-index 0 :left '(ch 0)
-             :top (list 'lh (max 0 (- height footer-rows)))
+       ;; The rows live in one scrolling canvas, so Ebox scrolls them
+       ;; natively: a wheel or trackpad gesture runs continuously and keeps its
+       ;; momentum instead of being translated into a page move here.
+       (box :ref 'ncm-list-scroll :id "ncm-list-scroll"
+            :width 'stretch
+            :height (if widget '(% 100) (list 'lh (max 1 (- height footer-rows))))
+            :min-height '(lh 0) :flex-shrink 0 :overflow 'scroll
+         (box :position 'relative :width 'stretch :height (list 'lh count)
+           ;; Two static bars behind the rows: selection first, playing on top.
+           ;; The app moves them through retained host geometry (`:top' is
+           ;; their only change), so a highlight move never repaints the plane.
+           (box :position 'absolute :z-index 0 :left '(ch 0) :top '(lh -1)
+                :width 'stretch :height '(lh 1)
+                :ref 'ncm-list-selection :id "ncm-list-selection"
+                :background-color (etaf-ncm-color :panel2))
+           (box :position 'absolute :z-index 0 :left '(ch 0) :top '(lh -1)
+                :width 'stretch :height '(lh 1)
+                :ref 'ncm-list-playing :id "ncm-list-playing"
+                :background-color (etaf-ncm-color :accent-soft))
+           (column :position 'relative :z-index 1 :left '(ch 0) :top '(lh 0)
+                   :width 'stretch :item-gap '(lh 0)
+             (etaf-ncm--view-row :for (offset offsets) :key offset
+               :ref (intern (format "ncm-row-%d" offset))
+               :offset offset
+               :row (aref slots offset)
+               :playing (aref playing offset)
+               :selection selection
+               :variant variant
+               :press on-press
+               :on-action on-action))))
+       (flex :if (not widget) :position 'relative :z-index 0 :left '(ch 0)
              :flex-direction 'column
              :width 'stretch :height (list 'lh footer-rows)
              :flex-shrink 0 :gap '((lh 0) (px 0))

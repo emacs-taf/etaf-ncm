@@ -176,10 +176,11 @@ the player.  This geometry is independent of point and the selected window."
        (< (cdr xy) (etaf-ncm-layout-aside-rows layout rows))))
 
 (defun etaf-ncm--wheel (event delta)
-  "Scroll the queue or library window by DELTA at EVENT's position.
-A wheel over the visible queue panel moves that window; elsewhere a visible
-library window scrolls while its selection stays where it is, so a gesture can
-browse rows without losing the row arrows and presses still act on."
+  "Scroll the pane under EVENT by DELTA rows.
+The queue is a windowed list, so its window moves through the model.  The
+library list is one scrolling canvas, so its scroll goes through the same
+ETAF scroll the renderer uses, which keeps a gesture continuous instead of
+turning each tick into a page move."
   (let* ((position (event-start event))
          (window (posn-window position)))
     (when (window-live-p window)
@@ -188,16 +189,19 @@ browse rows without losing the row arrows and presses still act on."
                (pixels (posn-x-y position))
                (xy (and (consp pixels)
                         (cons (/ (float (car pixels)) (window-font-width window))
-                              (/ (float (cdr pixels)) (window-font-height window))))))
+                              (/ (float (cdr pixels)) (window-font-height window)))))
+               (queue-p (and (null (posn-area position))
+                             (etaf-ncm--queue-hit-p
+                              xy (window-body-width window) (window-body-height window)
+                              (etaf-ncm--read model :layout) (etaf-ncm--read model :pane)
+                              (etaf-ncm--read model :aside)))))
           (cond
-           ((and (null (posn-area position))
-                 (etaf-ncm--queue-hit-p
-                  xy (window-body-width window) (window-body-height window)
-                  (etaf-ncm--read model :layout) (etaf-ncm--read model :pane)
-                  (etaf-ncm--read model :aside)))
-            (etaf-ncm--scroll-queue model delta))
+           (queue-p (etaf-ncm--scroll-queue model delta))
            ((etaf-ncm--list-shown-p model)
-            (etaf-ncm--scroll-list model delta))))))))
+            (when-let* ((runtime (etaf-runtime-for-buffer (current-buffer)))
+                        ((etaf-runtime-mounted-p runtime)))
+              (ignore-errors
+                (etaf-scroll-by runtime 'ncm-list-scroll delta))))))))))
 
 (defun etaf-ncm--first-item ()
   "Select the first row of the library."
@@ -439,8 +443,8 @@ or the library list keeps them; `?' opens the read-only ETAF key help."
       ("T" etaf-ncm--toggle-theme "切换深浅色")
       ("q" etaf-ncm-close "关闭窗口（音乐继续）")
       ("Q" etaf-ncm-quit "退出客户端（停止音乐）")))
-   ;; The renderer scrolls the buffer on the wheel; the player scrolls the
-   ;; queue or library window under the pointer instead.
+   ;; The wheel scrolls the pane under the pointer: the queue moves its
+   ;; window, the library moves its scrolling canvas.
    (mapcar (lambda (entry)
              (let ((direction (cdr entry)))
                (list (car entry)
@@ -504,17 +508,22 @@ The queue is one focus group whose directions move the selection through its
           (list "<prior>" (funcall page -1) "队列上一页"))))
 
 (defun etaf-ncm--reveal-selection (session)
-  "Put point on SESSION's selection bar while the library list has focus.
-The list is one focus stop, so the cursor follows the selection bar."
+  "Put point on SESSION's selection bar and scroll its canvas to it.
+The list is one focus stop, so the cursor follows the selection bar; the
+scrolling canvas follows the bar so arrow keys never select an off-screen row."
   (when-let* ((buffer (plist-get session :buffer))
               ((buffer-live-p buffer))
               (runtime (etaf-runtime-for-buffer buffer))
-              ((eq (etaf-focused-host-ref runtime) 'ncm-list))
+              ((etaf-runtime-mounted-p runtime))
               (bounds (etaf-host-ref-bounds runtime 'ncm-list-selection)))
-    (with-current-buffer buffer
-      (goto-char (car bounds))
-      (dolist (window (get-buffer-window-list buffer nil t))
-        (set-window-point window (car bounds))))))
+    (when (eq (etaf-focused-host-ref runtime) 'ncm-list)
+      (with-current-buffer buffer
+        (goto-char (car bounds))
+        (dolist (window (get-buffer-window-list buffer nil t))
+          (set-window-point window (car bounds)))))
+    (ignore-errors
+      (etaf-scroll-into-view runtime (intern (format "ncm-row-%d"
+                                                     (etaf-ncm--read session :selection)))))))
 
 (defun etaf-ncm--settle-focus (session)
   "Keep keyboard focus inside a visible region of SESSION.
@@ -912,9 +921,8 @@ session from `etaf-ncm-create' to embed the player in your own mount."
   "Return APP's (SELECTION-LINE . PLAYING-LINE) inside the visible page.
 Lines count from zero; -1 keeps that bar clipped off the page."
   (let* ((slots (plist-get app :row-slots))
-         (size (min (max 1 (etaf-ncm--read app :page-size)) (length slots)))
-         (selection (- (etaf-ncm--read app :selection)
-                       (etaf-ncm--read app :window-start)))
+         (size (min (max 1 (etaf-ncm--render-rows app)) (length slots)))
+         (selection (etaf-ncm--read app :selection))
          (played (plist-get (etaf-ncm--read app :status) :song-id))
          (playing -1))
     (dotimes (index size)

@@ -63,6 +63,14 @@ model created by `etaf-ncm-create'."
   :type 'integer
   :group 'etaf-ncm)
 
+(defcustom etaf-ncm-render-limit 1000
+  "Rows the library list keeps in its scrolling canvas.
+The list scrolls natively, so every rendered row is laid out once: a few
+hundred rows mount in a fraction of a second and scrolling stays flat, while
+the cap keeps a pathological library from building an unbounded canvas."
+  :type 'integer
+  :group 'etaf-ncm)
+
 (defcustom etaf-ncm-wheel-rows 3
   "Library and queue rows one wheel tick scrolls.
 The canvas scrolls `ebox-scroll-step' lines per tick, so a player that moved
@@ -207,7 +215,6 @@ client persists in its state directory; function clients default to memory."
           :rows (etaf-ref nil :name 'etaf-ncm-rows)
           :list-total (etaf-ref 0 :name 'etaf-ncm-list-total)
           :selection (etaf-ref 0 :name 'etaf-ncm-selection)
-          :window-start (etaf-ref 0 :name 'etaf-ncm-window-start)
           :status (etaf-ref nil :name 'etaf-ncm-status)
           ;; Per-interaction display state has its own retained reactive source.
           ;; The player bar's Hosts read these refs, so a toggle publishes a
@@ -520,30 +527,23 @@ SCOPE is `song' (default) or `playlist'.  An empty KEYWORD signals
 (defun etaf-ncm--list-position (app)
   "Capture APP's selection and viewport by song/resource identity."
   (let* ((rows (etaf-ncm--read app :rows))
-         (selected (etaf-ncm--read app :selection))
-         (start (etaf-ncm--read app :window-start)))
-    (list :selection selected :start start
+         (selected (etaf-ncm--read app :selection)))
+    (list :selection selected
           :selected (list (plist-get (nth selected rows) :kind)
-                          (plist-get (nth selected rows) :id))
-          :top (list (plist-get (nth start rows) :kind) (plist-get (nth start rows) :id)))))
+                          (plist-get (nth selected rows) :id)))))
 
 (defun etaf-ncm--restore-position (app position)
   "Restore POSITION in APP, following identities through inserted/reordered rows."
   (let* ((rows (etaf-ncm--read app :rows))
-         (size (max 1 (etaf-ncm--read app :page-size)))
          (locate (lambda (key fallback)
                    (or (and (cadr key)
                             (cl-position-if
                              (lambda (row) (equal key (list (plist-get row :kind) (plist-get row :id)))) rows))
                        fallback 0)))
          (selection (max 0 (min (max 0 (1- (length rows)))
-                                (funcall locate (plist-get position :selected) (plist-get position :selection)))))
-         (start (max 0 (min (max 0 (- (length rows) size))
-                            (funcall locate (plist-get position :top) (plist-get position :start))))))
-    (when (< selection start) (setq start selection))
-    (when (>= selection (+ start size)) (setq start (- (1+ selection) size)))
-    (etaf-ncm--write app :selection selection)
-    (etaf-ncm--write app :window-start start)))
+                                (funcall locate (plist-get position :selected)
+                                         (plist-get position :selection))))))
+    (etaf-ncm--write app :selection selection)))
 
 (defun etaf-ncm--show-cached-list (app key keep-position-p)
   "Show APP's cached rows for KEY when one exists, without a loading state.
@@ -561,14 +561,10 @@ they are already looking at."
 
 (defun etaf-ncm--clamp-list-position (app)
   "Keep APP's selection and page inside its current rows."
-  (let* ((total (length (etaf-ncm--read app :rows)))
-         (size (max 1 (etaf-ncm--read app :page-size))))
+  (let ((total (length (etaf-ncm--read app :rows))))
     (etaf-ncm--write app :selection
                      (max 0 (min (max 0 (1- total))
                                  (etaf-ncm--read app :selection))))
-    (etaf-ncm--write app :window-start
-                     (max 0 (min (etaf-ncm--read app :window-start)
-                                 (max 0 (- total size)))))
     (etaf-ncm--refresh-slots app)))
 
 (defun etaf-ncm--load (app key request &optional background keep-position-p)
@@ -1778,14 +1774,17 @@ and a standalone player lay out by the same rule."
   (or (not (etaf-ncm--compact-layout-p app))
       (eq (etaf-ncm--read app :pane) 'aside)))
 
+(defun etaf-ncm--render-rows (app)
+  "Return how many of APP's loaded rows its scrolling canvas holds."
+  (min (length (etaf-ncm--read app :rows))
+       (max 1 etaf-ncm-render-limit)))
+
 (defun etaf-ncm--page-rows (app)
-  "Return the visible slice of APP's rows as (ROWS START TOTAL)."
+  "Return the rendered rows of APP as (ROWS 0 TOTAL)."
   (let* ((rows (etaf-ncm--read app :rows))
          (total (length rows))
-         (size (max 1 (etaf-ncm--read app :page-size)))
-         (start (max 0 (min (etaf-ncm--read app :window-start)
-                            (max 0 (- total size))))))
-    (list (seq-subseq rows start (min total (+ start size))) start total)))
+         (size (etaf-ncm--render-rows app)))
+    (list (seq-take rows size) 0 total)))
 
 (defun etaf-ncm--ensure-row-slots (app size)
   "Grow APP's retained row slots so at least SIZE rows have one."
@@ -1821,11 +1820,12 @@ change must reach it even when no list reply follows."
       (etaf-set-value (plist-get app :playing-id) song-id))))
 
 (defun etaf-ncm--refresh-slots (app)
-  "Publish APP's visible row window through its retained slot sources.
-Clearing a slot for an absent row keeps the slot identity, so the list view
-never rebuilds for a reply that changes which songs are on the page."
+  "Publish APP's rendered rows through its retained slot sources.
+The canvas scrolls natively, so every slot holds the row at its own index and
+a cleared slot keeps its identity, which lets a reply update prepared text
+without rebuilding the list."
   (pcase-let* ((`(,rows ,start ,_loaded) (etaf-ncm--page-rows app))
-               (size (max 1 (etaf-ncm--read app :page-size))))
+               (size (max 1 (length rows))))
     (etaf-ncm--ensure-row-slots app size)
     (let ((slots (plist-get app :row-slots)))
       (dotimes (index (length slots))
@@ -1837,10 +1837,7 @@ never rebuilds for a reply that changes which songs are on the page."
     (etaf-ncm--sync-playing app)
     (let* ((loaded (length (etaf-ncm--read app :rows)))
            (total (etaf-ncm--read app :list-total))
-           (page-label (format "第 %s-%s 首 / 共 %s 首"
-                               (if rows (1+ start) 0)
-                               (if rows (+ start (length rows)) 0)
-                               total))
+           (page-label (format "共 %s 首" total))
            (loaded-label (format "已加载 %s / 共 %s 首" loaded total))
            (empty-note (if (etaf-ncm--read app :loading)
                            "正在加载…"
@@ -1879,36 +1876,14 @@ A nil scroll position centres the window on the playing entry."
                      (max 0 (min (+ (etaf-ncm--queue-window-start app) delta)
                                  (max 0 (- total size)))))))
 
-(defun etaf-ncm--scroll-list (app delta)
-  "Scroll APP's library window by DELTA rows without moving the selection.
-The rows on the page shift under a fixed selection, so a wheel gesture browses
-the loaded library while arrow keys and presses still choose rows.  The
-window stays clamped to the loaded rows and a gesture at either end changes
-nothing."
-  (let* ((total (length (etaf-ncm--read app :rows)))
-         (size (max 1 (etaf-ncm--read app :page-size)))
-         (start (etaf-ncm--read app :window-start))
-         (target (max 0 (min (+ start delta) (max 0 (- total size))))))
-    (when (/= target start)
-      (etaf-batch
-        (etaf-ncm--write app :window-start target)
-        (etaf-ncm--refresh-slots app)))))
-
 (defun etaf-ncm-move-selection (app delta)
-  "Move APP's list selection by DELTA rows and keep it inside the page."
+  "Move APP's list selection by DELTA rows and keep it inside the list."
   (let* ((rows (etaf-ncm--read app :rows))
-         (total (length rows))
-         (size (max 1 (etaf-ncm--read app :page-size))))
+         (total (length rows)))
     (when (> total 0)
-      (let ((selection (max 0 (min (1- total)
-                                   (+ (etaf-ncm--read app :selection) delta))))
-            (start (etaf-ncm--read app :window-start)))
-        (cond ((< selection start) (setq start selection))
-              ((>= selection (+ start size)) (setq start (- (1+ selection) size))))
-        (etaf-batch
-          (etaf-ncm--write app :selection selection)
-          (etaf-ncm--write app :window-start (max 0 start))
-          (etaf-ncm--refresh-slots app))))))
+      (etaf-ncm--write app :selection
+                       (max 0 (min (1- total)
+                                   (+ (etaf-ncm--read app :selection) delta)))))))
 
 (defun etaf-ncm--selected-row (app)
   "Return the row APP's selection points at, or nil."
@@ -1955,9 +1930,10 @@ not remove anything from the frame."
   "Return APP's session state as a detached plist.
 The snapshot is a copy: mutating it never changes the player.  Keys are
 `:section', `:title', `:subtitle', `:mode', `:query', `:items' (the library
-rows), `:visible' (the rows on the current page), `:selection', `:window-start',
-`:page-size', `:rows-total' (loaded count), `:list-total' (backend total or the
-loaded count), `:queue-rows', `:queue-start' (zero-based loaded window start),
+rows), `:visible' (the rows the scrolling canvas holds), `:selection',
+`:page-size' (row budget, not a painted page), `:rows-total' (loaded count),
+`:list-total' (backend total or the loaded count), `:queue-rows',
+`:queue-start' (zero-based loaded window start),
 `:lyric-rows' (display lines including translations), `:status', `:queue',
 `:lyric', `:lyric-line', `:aside',
 `:layout', `:pane', `:viewport-width' (the pixel canvas the player paints),
@@ -1985,7 +1961,6 @@ present), `:loading', `:error' and `:message'."
           :query (etaf-ncm--read app :query)
           :items (mapcar (lambda (row) (etaf-ncm--decorate-row app row)) rows)
           :visible (mapcar (lambda (row) (etaf-ncm--decorate-row app row)) (nth 0 page))
-          :window-start (nth 1 page)
           :selection (etaf-ncm--read app :selection)
           :page-size (etaf-ncm--read app :page-size)
           :viewport-width
