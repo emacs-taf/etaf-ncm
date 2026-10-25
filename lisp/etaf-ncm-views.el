@@ -981,19 +981,22 @@ pictures.  LABEL appends a small count or state next to the icon."
   "Render the centred transport with an accent play control.
 PLAYING is the reactive boolean that selects the play/pause glyph, and REPEAT
 the reactive flag that paints the repeat control; both publish through
-retained Host text, so a toggle never rebuilds the bar.  The play control is a
-one-line accent pill: a bigger glyph would paint outside its row and clip,
-which a terminal-cell layout cannot round away.  The pill is three cells wide
-and takes its glyph from `:accent-fg', so a light palette keeps a white glyph
-on the red block instead of a dark one that reads as a smear.  REPEAT-CONTROL
-nil drops the repeat control, which a small-size card leaves to its keyboard
-shortcut."
+retained Host text, so a toggle never rebuilds the bar.  A graphical frame
+keeps one artwork icon per button and a three-cell accent pill for the play
+control.  A text terminal cannot draw those icons, and its fonts render the
+media glyphs at uneven sizes, so it shows the same controls as words: `上一首',
+`播放' / `暂停' in the accent colour, `下一首'.  Those name the action instead
+of leaning on a font-dependent glyph, and every control stays one line high.
+REPEAT-CONTROL nil drops the repeat control, which a small-size card leaves to
+its keyboard shortcut."
   :view
   (flex :height (if compact '(lh 1) '(lh 2))
-        :gap (if compact '((lh 0) (ch 1)) '((lh 0) (ch 3)))
+        :gap (if compact '((lh 0) (ch 2)) '((lh 0) (ch 3)))
         :align-items 'center :justify-content 'center :focus-group 'horizontal
-    (etaf-ncm--view-control :ref 'ncm-previous :icon 'previous :help "上一首 (p)" :on-press on-previous)
-    (box :id "ncm-play" :ref 'ncm-play :width '(ch 3)
+    ;; A graphical frame: artwork icons and the accent play pill.
+    (etaf-ncm--view-control :if (display-graphic-p) :ref 'ncm-previous
+                            :icon 'previous :help "上一首 (p)" :on-press on-previous)
+    (box :if (display-graphic-p) :id "ncm-play" :ref 'ncm-play :width '(ch 3)
          :height '(lh 1) :flex-shrink 0
          :role 'button :tab-index 0 :aria-label "播放 / 暂停"
          :help-echo "播放 / 暂停 (SPC)" :on-press on-toggle
@@ -1006,7 +1009,20 @@ shortcut."
                            :min-width 3
                            :help-echo "播放 / 暂停 (SPC)" :tab-index -1
                            :on-press on-toggle))
-    (etaf-ncm--view-control :ref 'ncm-next :icon 'next :help "下一首 (n)" :on-press on-next)
+    (etaf-ncm--view-control :if (display-graphic-p) :ref 'ncm-next
+                            :icon 'next :help "下一首 (n)" :on-press on-next)
+    ;; A text terminal: the words name the action.
+    (etaf-ncm--view-control :if (not (display-graphic-p)) :ref 'ncm-previous
+                            :glyph "上一首" :help "上一首 (p)" :on-press on-previous)
+    (box :if (not (display-graphic-p)) :id "ncm-play" :ref 'ncm-play
+         :height '(lh 1) :flex-shrink 0
+         :role 'button :tab-index 0 :aria-label "播放 / 暂停"
+         :color (etaf-ncm-color :accent)
+         :hover-style (etaf-ncm--hover-surface)
+         :help-echo "播放 / 暂停 (SPC)" :on-press on-toggle
+      (text (expr (if (etaf-ncm--active-value playing) "暂停" "播放"))))
+    (etaf-ncm--view-control :if (not (display-graphic-p)) :ref 'ncm-next
+                            :glyph "下一首" :help "下一首 (n)" :on-press on-next)
     (etaf-ncm--view-control :if repeat-control :ref 'ncm-repeat
                             :icons '(repeat . repeat) :value repeat
                             :help "列表循环 (r)" :on-press on-repeat)))

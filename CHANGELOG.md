@@ -4,6 +4,15 @@ All notable user-visible changes to ETAF NCM.
 
 ## Unreleased
 
+### Fixed
+
+- A text terminal draws the player transport as words (`上一首`, `播放` /
+  `暂停` in the accent colour, `下一首`) instead of the artwork icons and the
+  accent pill.  Terminal fonts render the transport glyphs at uneven sizes, and
+  the pill's fixed three cells left the pause glyph off centre.  The words name
+  the action, keep every control one line high and match the card's other text
+  controls.  A graphical frame keeps its icons and the accent pill.
+
 - The library list is one scrolling canvas instead of a painted page.  Ebox
   scrolls it natively, so a wheel or trackpad gesture keeps running instead of
   needing a pause and a pointer move between ticks, and every loaded row is
