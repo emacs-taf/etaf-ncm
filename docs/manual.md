@@ -89,6 +89,8 @@ is revived by its next mount.
 | `L` | Sign in with an SMS verification code (a minibuffer prompt for the phone number and then the code) |
 | `g` | Refresh the library, playback status, queue and account |
 | `i` | Switch the side panel between the lyric and the queue |
+| `o` | Open the full-page view of the playing song; `Esc` or `← 返回` returns |
+| `m` | Cycle the full-page view between the auto, split and poster designs |
 | `v` | Switch between the library list and the side panel in a compact layout |
 | `r` | Toggle list repeat (`列表循环`) |
 | `z` | Toggle shuffle |
@@ -199,6 +201,54 @@ line visible. Translations share the lyric's line budget.
 Both width thresholds are defcustoms, so a font or a display scale that makes
 the text wider only needs a different pair of numbers. A session without a
 window, as in a headless batch run, keeps the `wide` layout.
+
+### The playing page
+
+`o` — or a press on the cover in the player bar or the card — opens one page
+for the playing song, the way a phone player does.  It reads the same retained
+sources as the bar, so playback, the lyric and the spectrum keep moving behind
+it; `Esc`, the back control or a dismiss returns to the player without
+touching the library, the selection or the open panel.
+
+The page is one picture.  `etaf-ncm-hero-file` bakes it with ffmpeg: the whole
+cover, scaled to fit the page and padded with its own average colour, blurred
+hard so the page takes the artwork's colour outward instead of cutting the
+artwork away; then a sharp copy of the same cover over the part the text does
+not cover, fading into the panel colour on the edge where the text begins.  The
+picture is cached per cover, size and design under `etaf-ncm-state-directory`,
+drawn at the frame's scale factor so the sharp copy stays crisp on a Retina
+frame, and rendered synchronously — a resize rebuilds it once, and a failed
+render is visible instead of silently leaving a blank page.  Without ffmpeg or
+without a cover the page is the panel colour and everything else keeps working.
+
+Three designs share the same content, chosen by `:now-mode`:
+
+- `auto` (the default) splits a wide page and turns a narrow or short one into
+  a poster: a side column would squeeze the text on a narrow frame, while two
+  halves each read well on a wide one.
+- `split` gives the picture one pane and the text the other — half and half on
+  a wide frame, stacked on a narrow or short one.
+- `immersive` is the poster: the picture across the whole page, the
+  information under it in a band across the bottom.
+
+`m` cycles the design; `etaf-ncm-state` reports `:now-mode`.  The text carries
+the track, the artist, the lyric pool, the spectrum, the progress line and the
+transport, each centred in its column.  Nothing in it paints a background of
+its own, and the progress line tracks the panel colour instead of drawing a
+rail.
+
+The parts appear by height, so a small page stays a poster with its controls
+instead of squeezing everything in: the header at 16 rows, the artist at 20,
+the spectrum at 24, and the lyric only when the fixed parts leave at least five
+rows for it.  Whatever the lyric does not take is an elastic gap that pushes
+the progress and the transport to the bottom.
+
+The spectrum follows the audio.  `etaf-ncm-meter-start` decodes the same source
+mpv reports (`status`'s `path`) with a second, rate-paced ffmpeg, and
+`etaf-ncm-meter-levels` turns the newest block into one Goertzel band per
+column, with a fast rise and a slow fall.  A paused player, a missing ffmpeg or
+an ended track leaves the bars at silence, and a seek restarts the decoder from
+the new position.
 
 ## Libraries and search
 

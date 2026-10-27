@@ -4,6 +4,30 @@ All notable user-visible changes to ETAF NCM.
 
 ## Unreleased
 
+### Added
+
+- A playing page for the whole window.  `o` — or a press on the cover in the
+  player bar or the card — opens the playing song as one page: the cover
+  blurred across it, a sharp copy of the same cover over the blur, and the
+  track, the lyric pool, the progress line, the transport and a spectrum that
+  follows the audio.  `Esc` or the back control returns to the player without
+  touching the library or the open panel.  Every layout has the key, including
+  the card and tile that draw no cover.
+- The page has three designs, cycled with `m`: `auto` (the default) splits a
+  wide window in half and turns a narrow or short one into a poster, `split`
+  keeps two panes, `immersive` is the poster with the information band across
+  the bottom.  `etaf-ncm-state` reports `:now-mode`.
+- The backdrop is one picture baked by ffmpeg: the whole cover fitted to the
+  page and padded with its own average colour, blurred, with a sharp copy over
+  the free area and a fade into the panel colour.  Nothing is cropped or
+  stretched, so the page shows the whole artwork at every window shape.  It is
+  cached per cover, size and design, rendered at the frame's scale factor for a
+  crisp sharp copy, and rebuilt once per resize.
+- The spectrum is decoded from the source mpv is playing by a second,
+  rate-paced ffmpeg, analysed with a Goertzel band per column.  It rises at
+  once and falls slowly, restarts after a seek, and sits at silence when there
+  is no source or no ffmpeg.
+
 ### Fixed
 
 - A text terminal draws the player transport as words (`上一首`, `播放` /

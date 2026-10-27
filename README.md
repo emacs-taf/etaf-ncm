@@ -30,6 +30,17 @@ lyric and the transport:
 
 ![The player as a tile](examples/etaf-ncm-tile.png)
 
+`o` opens the playing page: the whole cover as one picture with a sharp copy
+over it, and the track, the centred lyric, the spectrum and the transport.  A
+wide window splits it in half; `m` cycles the designs:
+
+![The playing page, split](examples/etaf-ncm-now-split.png)
+
+`m` switches to the poster: the picture across the whole page with the text on
+a block floating over it.
+
+![The playing page, poster](examples/etaf-ncm-now-poster.png)
+
 ## Capabilities
 
 - Libraries: daily recommendation, private FM, liked songs, playlists, saved
@@ -46,6 +57,11 @@ lyric and the transport:
   shown next to it when the backend has one.
 - Two palettes (dark and light) with one key, published as `:ui-*` theme tokens
   so the shared ETAF UI controls follow the same colours.
+- A playing page for the whole window (`o`).  A wide window splits it in half —
+  the picture on one side, the track, the centred lyric, the spectrum and the
+  transport on the other; a narrow or short one turns it into a poster with the
+  controls under it.  `m` cycles the designs.  It opens from every layout,
+  including the card and tile where no cover is drawn.
 - Headless sessions for scripts and tests: no buffer, no timer and a scripted
   client are all supported.
 - Window layouts: three columns on a wide frame, a glyph-only rail with one pane

@@ -703,6 +703,10 @@ if st['duration'] is not None: print(f"duration\t{st['duration']}")
 print(f"volume\t{st['volume']}"); print("repeat\t" + str(st['repeat']).lower()); print("shuffle\t" + str(st['shuffle']).lower())
 print("repeat_mode\t" + st['repeat_mode'])
 print("source\tmpv")
+# The page's spectrum decodes the same stream, so it needs mpv's real path.
+path = st.get('path') or ''
+if path:
+    print("path\t" + path)
 PY
   local head; head="${1:-$(head -1 "${TMPDIR:-/tmp}/nm_status.$$" | cut -f2-)}"
   while IFS=$'\t' read -r k v; do [ "$k" = HEAD ] || kv "$k" "$v"; done < "${TMPDIR:-/tmp}/nm_status.$$"

@@ -1753,6 +1753,120 @@ guard alone would accept as settled."
           (should (eq (and (etaf-host-ref-bounds runtime 'ncm-quality) t)
                       (eq (cadr sample) 'wide))))))))
 
+(ert-deftest etaf-ncm-tests-now-page-geometry-keeps-a-square-cover ()
+  "Both page designs keep the sharp cover square and the text column roomy."
+  (dolist (mode '(auto immersive split))
+    (dolist (sample '((200 50) (118 39) (80 24) (60 16)))
+      (pcase-let* ((`(,columns ,rows) sample)
+                   (wide (and (>= columns 96) (>= rows 22)))
+                   (geometry (etaf-ncm-now-geometry columns rows 8 18 mode))
+                   (art (* (plist-get geometry :art-columns) 8))
+                   (art-rows (* (plist-get geometry :art-rows) 18))
+                   (sections (etaf-ncm-now-sections
+                              (plist-get geometry :panel-rows))))
+        (should (eq (plist-get geometry :mode) mode))
+        (should (eq (plist-get geometry :stacked) (not wide)))
+        ;; `auto' splits a wide page and turns a narrow one into a poster.
+        (when (eq mode 'auto)
+          (should (eq (plist-get geometry :stacked) (not wide))))
+        ;; The sharp copy stays square in pixels: a cell is wider than a row is
+        ;; tall, so equal cell counts would stretch the artwork.
+        (should (<= (abs (- art art-rows)) (* 2 18)))
+        (should (>= (plist-get geometry :panel-columns) 16))
+        (should (>= (plist-get geometry :content-columns) 16))
+        (should (<= (plist-get geometry :content-columns)
+                    (plist-get geometry :panel-columns)))
+        ;; A stacked page keeps exactly the rows its parts need under the
+        ;; poster: budgeting more left a dark band under the transport.
+        (when (plist-get geometry :stacked)
+          (should (>= (plist-get geometry :panel-rows)
+                      (plist-get sections :rows)))
+          (should (>= (plist-get geometry :panel-rows) 3)))
+        (should (>= (plist-get sections :lyrics) 0))))))
+
+(ert-deftest etaf-ncm-tests-now-page-sections-spend-the-panel ()
+  "The parts appear as the window grows and never claim rows it lacks."
+  (let ((previous-parts 0))
+    (dolist (rows '(10 12 14 16 18 22 28 34 44 52))
+      (let* ((sections (etaf-ncm-now-sections rows))
+             (parts (+ (if (plist-get sections :header) 1 0)
+                       (plist-get sections :title)
+                       (if (plist-get sections :artist) 1 0)
+                       (if (plist-get sections :progress) 2 0)
+                       1
+                       (if (plist-get sections :bars)
+                           (1+ (plist-get sections :bars))
+                         0)
+                       (plist-get sections :lyrics))))
+        ;; The block never asks for more rows than the window has.
+        (should (<= (plist-get sections :rows) rows))
+        ;; Its row count covers every part it shows.
+        (should (<= parts (plist-get sections :rows)))
+        ;; A taller window never shows fewer parts.
+        (should (>= parts previous-parts))
+        (setq previous-parts parts)))))
+
+(ert-deftest etaf-ncm-tests-now-page-opens-from-every-layout ()
+  "`o' opens the page in every layout, and a dismiss returns to the player."
+  (let ((app (etaf-ncm-tests--session)))
+    (etaf-ncm-tests--with-player app
+      (dolist (sample '((180 48) (90 30) (64 30) (46 20) (34 14)))
+        (pcase-let ((`(,width ,height) sample))
+          (set-frame-size (selected-frame) width height)
+          (etaf-refit)
+          (etaf-ncm-refresh app)
+          (etaf-ncm-tests--rendered-text)
+          (should (eq (plist-get (etaf-ncm-state app) :screen) 'library))
+          (etaf-ncm-tests--key "o")
+          (should (eq (plist-get (etaf-ncm-state app) :screen) 'now))
+          (etaf-ncm-tests--rendered-text)
+          (should (etaf-host-ref-bounds
+                   (etaf-runtime-for-buffer (current-buffer)) 'ncm-now))
+          (etaf-dispatch-event (etaf-runtime-for-buffer (current-buffer))
+                               'ncm-now 'dismiss)
+          (should (eq (plist-get (etaf-ncm-state app) :screen) 'library)))))))
+
+(ert-deftest etaf-ncm-tests-now-page-shows-track-lyric-and-spectrum ()
+  "The page carries the track, the lyric, the spectrum and the transport."
+  (let ((app (etaf-ncm-tests--session)))
+    (etaf-ncm-tests--with-player app
+      (etaf-ncm-tests--key "o")
+      (etaf-ncm-tests--rendered-text)
+      (let ((runtime (etaf-runtime-for-buffer (current-buffer)))
+            (text (buffer-substring-no-properties (point-min) (point-max))))
+        (should (string-match-p "曲目 1" text))
+        (should (string-match-p "第一行歌词" text))
+        (should (etaf-host-ref-bounds runtime 'ncm-now-bars))
+        (should (etaf-host-ref-bounds runtime 'ncm-now-seek))
+        (should (etaf-host-ref-bounds runtime 'ncm-now-back))
+        (should (plist-get (etaf-ncm-state app) :screen))))))
+
+(ert-deftest etaf-ncm-tests-now-page-switches-its-design ()
+  "`m' swaps the page design without leaving the page."
+  (let ((app (etaf-ncm-tests--session)))
+    (etaf-ncm-tests--with-player app
+      (etaf-ncm-tests--key "o")
+      (should (eq (plist-get (etaf-ncm-state app) :now-mode) 'auto))
+      (etaf-ncm-tests--key "m")
+      (should (memq (plist-get (etaf-ncm-state app) :now-mode)
+                    '(immersive split)))
+      (should (eq (plist-get (etaf-ncm-state app) :screen) 'now))
+      (etaf-ncm-tests--rendered-text)
+      (should (etaf-host-ref-bounds
+               (etaf-runtime-for-buffer (current-buffer)) 'ncm-now))
+      (etaf-ncm-tests--key "m")
+      (should (memq (plist-get (etaf-ncm-state app) :now-mode)
+                    '(immersive split))))))
+
+(ert-deftest etaf-ncm-tests-spectrum-is-quiet-without-a-source ()
+  "Without a playing source the meter reports silence and never stalls."
+  (etaf-ncm-meter-stop)
+  (should-not (etaf-ncm-meter-live-p))
+  (should-not (etaf-ncm-meter-start nil 0))
+  (should-not (etaf-ncm-meter-start "" 12))
+  (should (equal (etaf-ncm-meter-levels 22) (make-list 22 0.0)))
+  (should-not (etaf-ncm-meter-live-p)))
+
 (ert-deftest etaf-ncm-tests-player-pane-buttons-preserve-state ()
   "Cover, lyric and queue controls reveal their pane without resetting selection."
   (let ((app (etaf-ncm-tests--session)))
@@ -1763,8 +1877,14 @@ guard alone would accept as settled."
         (should (= selected 3))
         (etaf-ncm-tests--press-help "显示播放列表")
         (should (eq (plist-get (etaf-ncm-state app) :aside) 'queue))
+        ;; The cover opens the full-page view; Escape (a dismiss on the page
+        ;; root) returns to the player without touching the open pane.
         (etaf-dispatch-event (etaf-runtime-for-buffer (current-buffer)) 'ncm-cover 'press)
-        (should (eq (plist-get (etaf-ncm-state app) :aside) 'lyrics))
+        (should (eq (plist-get (etaf-ncm-state app) :screen) 'now))
+        (should (eq (plist-get (etaf-ncm-state app) :aside) 'queue))
+        (etaf-ncm-tests--rendered-text)
+        (etaf-dispatch-event (etaf-runtime-for-buffer (current-buffer)) 'ncm-now 'dismiss)
+        (should (eq (plist-get (etaf-ncm-state app) :screen) 'library))
         (set-frame-size (selected-frame) 64 48)
         (etaf-refit)
         (etaf-ncm-refresh app)

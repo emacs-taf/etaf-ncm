@@ -27,6 +27,8 @@
 (require 'etaf-ncm-theme)
 (require 'etaf-ncm-service)
 (require 'etaf-ncm-model)
+(require 'etaf-ncm-hero)
+(require 'etaf-ncm-meter)
 (require 'etaf-ncm-views)
 
 ;;; ---------------------------------------------------------------------------
@@ -77,14 +79,17 @@ buffer-free commands; other commands use the opened player's state.")
   (etaf-computed (lambda () (plist-get (etaf-ncm--read model :status) key))
                  :test #'equal :name (intern (format "ncm-status-%s" key))))
 
-(defun etaf-ncm--lyric-panel (model)
+;;;###autoload
+(defun etaf-ncm--lyric-panel (model &optional budget)
   "Return MODEL's lyric window as props for the lyrics View.
+BUDGET is how many rows to show; it defaults to the aside panel's lyric rows,
+so the full-page view can ask for its own taller window.
 Each visible line is (SECONDS TEXT ORDINAL); the ordinal is its position in
 the parsed lyric, so the View keeps one stable key per line even when a real
 LRC repeats a timestamp."
   (let* ((lyric (etaf-ncm--read model :lyric))
          (lines (plist-get lyric :lines))
-         (budget (etaf-ncm--read model :lyric-rows))
+         (budget (or budget (etaf-ncm--read model :lyric-rows)))
          (trans (and (> budget 1) (plist-get lyric :trans)))
          (size (if trans (/ budget 2) budget))
          (elapsed (etaf-ncm--read model :position-ref))
@@ -102,11 +107,11 @@ LRC repeats a timestamp."
                                             (when-let* ((translation (cl-assoc (car line) trans :test #'=)))
                                               (list (list :text (cdr translation) :translation t)))))
                   (list (list :text (if (plist-get lyric :loading) "正在取歌词..." "这首歌没有歌词")))))
-         ;; A card shows the lyric as one centred block.  Padding the pool here
-         ;; keeps the view a fixed number of retained cells: it never has to
-         ;; read the projection to decide where the block starts.
-         (pad (if (and (etaf-ncm-layout-widget-p (etaf-ncm--read model :layout))
-                       (> budget (length cells)))
+         ;; Pad the window to its full budget so a short lyric sits as one
+         ;; centred block: a card, a short page and a tall page all paint the
+         ;; same retained number of cells and never see the block pinned to the
+         ;; top of its slot.
+         (pad (if (> budget (length cells))
                   (truncate (/ (- budget (length cells)) 2))
                 0)))
     (list :lines visible
@@ -317,6 +322,149 @@ its account and libraries."
   (interactive)
   (etaf-ncm-refresh (etaf-ncm--current-model)))
 
+(defun etaf-ncm--sync-now-art (app cover columns rows panel metrics mode)
+  "Publish APP's page backdrop and spectrum colour for COVER.
+COLUMNS and ROWS size the page in cells and METRICS give the cell in pixels, so
+the picture is built at the size the page will draw it.  PANEL is the colour it
+fades into; a cover that cannot be turned into a picture leaves the page on the
+plain cover.  The picture is built in the background and published when it
+lands, so a resize never waits for ffmpeg."
+  (let* ((char-width (or (plist-get metrics :char-width) (frame-char-width)))
+         (line-height (or (plist-get metrics :line-height) (frame-char-height)))
+         (geometry (etaf-ncm-now-geometry columns rows char-width line-height mode))
+         (direction (plist-get geometry :fade))
+         (window (and (plist-get app :buffer)
+                      (get-buffer-window (plist-get app :buffer) t)))
+         (frame (if window (window-frame window) (selected-frame)))
+         (scale (max 1 (round (frame-scale-factor frame))))
+         ;; A huge window is expensive to blur and the extra pixels are not
+         ;; visible through the blur, so the picture stops growing there.
+         (scale (if (> (* (or columns 0) char-width scale) 2400) 1 scale))
+         (area (list (* (plist-get geometry :art-left) char-width)
+                     (* (plist-get geometry :art-top) line-height)
+                     (* (plist-get geometry :art-columns) char-width)
+                     (* (plist-get geometry :art-rows) line-height)))
+         (hero (and cover (> (or columns 0) 0) (> (or rows 0) 0)
+                    (etaf-ncm-hero-file
+                     cover
+                     (* (plist-get geometry :hero-columns) char-width)
+                     (* (plist-get geometry :hero-rows) line-height)
+                     panel direction area scale
+                     (lambda (file)
+                       (when (and (eq (etaf-ncm--read app :screen) 'now)
+                                  (equal (etaf-ncm--read app :cover-file) cover))
+                         (etaf-ncm--write app :hero file)))))))
+    ;; Publish nil while the new size renders: a picture built for another
+    ;; size would be stretched into this band, which is exactly the squash a
+    ;; resize must not show.  The page falls back to the panel colour for the
+    ;; moment the build takes.
+    ;; A render that failed, or one still running for a new size, leaves the
+    ;; picture that is already there: writing nil is what turned the page black.
+    (when hero (etaf-ncm--write app :hero hero))
+    (etaf-ncm--write app :hero-accent (and cover (etaf-ncm-hero-accent cover)))))
+
+(defun etaf-ncm--display-metrics (app)
+  "Return the cell Ebox paints with in APP's buffer.
+One source for every backdrop build: `etaf-display-metrics' measures the box the
+renderer actually draws into, while window pixels over the column count carried
+the line spacing into the cell and made the picture a different shape than the
+box it filled."
+  (let ((buffer (plist-get app :buffer)))
+    (or (and (buffer-live-p buffer)
+             (with-current-buffer buffer
+               (ignore-errors (etaf-display-metrics))))
+        (list :char-width (frame-char-width (selected-frame))
+              :line-height (frame-char-height (selected-frame))))))
+
+(defun etaf-ncm--ensure-now-art (app)
+  "Build APP's page backdrop for the page's current cell geometry.
+The page frame already runs while the page is open, so the backdrop is built
+here too: the effect that used to start it could run with another buffer
+current and skip the build, which is why a resize only sometimes showed a
+picture."
+  (let* ((columns (or (etaf-ncm--read app :columns) 0))
+         (rows (or (etaf-ncm--read app :window-rows) 0))
+         (mode (etaf-ncm--read app :now-mode))
+         (cover (etaf-ncm--read app :cover-file))
+         (panel (plist-get (etaf-ncm--read app :theme) :ui-bg))
+         (metrics (etaf-ncm--display-metrics app))
+         ;; The cell is part of the key: a window that keeps its column count but
+         ;; changes its pixel size (a font change, a scroll bar appearing) would
+         ;; otherwise keep a picture built for the old shape.  It is a whole
+         ;; number of pixels per cell, so an unchanged window keeps it stable.
+         (key (list columns rows
+                    (plist-get metrics :char-width)
+                    (plist-get metrics :line-height)
+                    mode panel cover)))
+    (unless (equal key (plist-get app :now-art-key))
+      (setf (plist-get app :now-art-key) key)
+      (etaf-ncm--sync-now-art app cover columns rows panel metrics mode))))
+
+(defun etaf-ncm--visual-tick (app)
+  "Advance APP's page spectrum from the audio the player is decoding.
+The meter follows the source mpv reports, so the bars move with the music; a
+paused player, a missing ffmpeg or an ended track leaves them at silence and
+the page keeps rendering."
+  (when (eq (etaf-ncm--read app :screen) 'now)
+    (let ((source (plist-get (etaf-ncm--read app :status) :source)))
+      (if (etaf-ncm--playing-p app)
+          (etaf-ncm-meter-start source (etaf-ncm--clock app))
+        (etaf-ncm-meter-stop))
+      (etaf-ncm--write app :spectrum
+                       (etaf-ncm--now-bars-text
+                        (etaf-ncm-meter-levels etaf-ncm-now-bars)
+                        etaf-ncm-now-bar-rows)))))
+
+(defun etaf-ncm--start-visual (app)
+  "Start APP's page frames: twelve spectrum samples a second."
+  (unless (plist-get app :visual-timer)
+    (setf (plist-get app :visual-timer)
+          (run-with-timer 0 (/ 1.0 12)
+                          (lambda () (etaf-ncm--visual-tick app))))))
+
+(defun etaf-ncm--stop-visual (app)
+  "Stop APP's page frames and the decoder behind them."
+  (when-let* ((timer (plist-get app :visual-timer)))
+    (cancel-timer timer)
+    (setf (plist-get app :visual-timer) nil))
+  (etaf-ncm-meter-stop))
+
+(defun etaf-ncm--open-now ()
+  "Show the full-page view of the playing song."
+  (interactive)
+  (etaf-ncm--write (etaf-ncm--current-model) :screen 'now))
+
+(defun etaf-ncm--toggle-now ()
+  "Open the playing page, or leave it when it is already open.
+The same key does both, so a small window that hides the back control still
+has a way out."
+  (interactive)
+  (let ((model (etaf-ncm--current-model)))
+    (if (eq (etaf-ncm--read model :screen) 'now)
+        (etaf-ncm--write model :screen 'library)
+      (etaf-ncm--write model :screen 'now))))
+
+(defun etaf-ncm--toggle-now-mode ()
+  "Switch the full-page view between the one-picture and the split design."
+  (interactive)
+  (let* ((model (etaf-ncm--current-model))
+         (mode (etaf-ncm--read model :now-mode)))
+    ;; From `auto', the first press shows the other design than the one on
+    ;; screen, so one key always changes what the page looks like.
+    (etaf-ncm--write model :now-mode
+                     (cond ((eq mode 'split) 'immersive)
+                           ((eq mode 'immersive) 'split)
+                           (t (if (< (or (etaf-ncm--read model :columns) 0) 96)
+                                  'split 'immersive))))))
+
+(defun etaf-ncm--back ()
+  "Leave the full-page view and return to the player.
+In the player itself this does nothing, so Esc stays free for the other panes."
+  (interactive)
+  (let ((model (etaf-ncm--current-model)))
+    (when (eq (etaf-ncm--read model :screen) 'now)
+      (etaf-ncm--write model :screen 'library))))
+
 (defun etaf-ncm--toggle-aside ()
   "Switch the side panel between the lyrics and the queue."
   (interactive)
@@ -428,7 +576,9 @@ or the library list keeps them; `?' opens the read-only ETAF key help."
       ("/" etaf-ncm--search "搜索")
       ("g" etaf-ncm--refresh "刷新")
       ("i" etaf-ncm--toggle-aside "切换歌词 / 队列")
+      ("o" etaf-ncm--toggle-now "播放页：进入 / 返回")
       ("v" etaf-ncm--toggle-pane "切换列表 / 面板")
+      ("m" etaf-ncm--toggle-now-mode "播放页：沉浸 / 分栏")
       ("r" etaf-ncm--toggle-repeat "列表循环")
       ("z" etaf-ncm--toggle-shuffle "随机播放")
       ("c" etaf-ncm-open-cover "在系统查看器打开封面")
@@ -649,8 +799,7 @@ releases the polling timer and the session's pending backend requests."
              (on-queue (lambda ()
                          (etaf-batch
                            (etaf-ncm--write session :aside 'queue)
-                           (etaf-ncm-show-pane session 'aside))))
-             (on-volume (lambda (percent) (etaf-ncm-set-volume session percent)))
+                           (etaf-ncm-show-pane session 'aside))))             (on-volume (lambda (percent) (etaf-ncm-set-volume session percent)))
              (on-seek (lambda (seconds) (etaf-ncm-seek-to session seconds)))
              (on-shuffle (lambda ()
                            (etaf-ncm-set-shuffle
@@ -680,11 +829,56 @@ releases the polling timer and the session's pending backend requests."
              ;; retained source the model writes, so a row move repaints only
              ;; that text instead of re-rendering the aside.
              (selected-album (etaf-ncm--ref session :selected-album))
+             ;; The full-page view: a press on the playing cover opens it and
+             ;; its own controls close it.  The page reads the same retained
+             ;; sources as the bar, so playback keeps painting behind it.
+             (screen (etaf-ncm--ref session :screen))
+             (hero (etaf-ncm--ref session :hero))
+             (hero-accent (etaf-ncm--ref session :hero-accent))
+             (now-visible (etaf-computed
+                           (lambda ()
+                             (eq (etaf-value (etaf-ncm--ref session :screen)) 'now))))
+             ;; The page sizes itself from the region it covers: the same
+             ;; geometry drives the picture builder and the layout.
+             (now-geometry
+              (etaf-computed
+               (lambda ()
+                 (let ((metrics (etaf-display-metrics)))
+                   (etaf-ncm-now-geometry
+                    (or (etaf-value (etaf-ncm--ref session :columns)) 0)
+                    (or (etaf-value (etaf-ncm--ref session :window-rows)) 0)
+                    (plist-get metrics :char-width)
+                    (plist-get metrics :line-height)
+                    (etaf-value (etaf-ncm--ref session :now-mode)))))
+               :test #'equal))
+             (now-sections
+              (etaf-computed
+               (lambda ()
+                 (etaf-ncm-now-sections
+                  (plist-get (etaf-value now-geometry) :panel-rows)))
+               :test #'equal))
+             ;; The page asks for a lyric window as tall as its own slot, so
+             ;; the block is centred in the panel instead of clipped at the top.
+             (now-lyric (etaf-computed
+                         (lambda ()
+                           (etaf-ncm--lyric-panel
+                            session
+                            (plist-get (etaf-value now-sections) :lyrics)))
+                         :test #'equal))
+             (on-cover (lambda () (etaf-ncm--write session :screen 'now)))
+             (on-back (lambda () (etaf-ncm--write session :screen 'library)))
              (on-login (lambda ()
                          (unless (etaf-ncm--read session :account)
                            (etaf-ncm-login session)))))
   :setup
   (progn
+    ;; Every page that reads the session's buffer — the page backdrop, the
+    ;; focus hand-off, the highlight geometry — needs to know which buffer the
+    ;; session is drawn in.  Only `etaf-ncm-open' used to record it, so a player
+    ;; embedded in a posframe panel had none, and the first read asked
+    ;; `get-buffer' about nil: `Wrong type argument: stringp, nil' the moment
+    ;; the page opened.  `:setup' runs inside the mount, so this is that buffer.
+    (setf (plist-get session :buffer) (current-buffer))
     (etaf-theme-provide palette)
     ;; One appearance state: the palette follows the player's mode cell and
     ;; the appearance its host provides, and the host paints from the same
@@ -702,12 +896,70 @@ releases the polling timer and the session's pending backend requests."
     ;; A watcher, not an effect: the sync reads the values it writes, and
     ;; an effect would rerun on its own writes and undo a pane chosen in a
     ;; wide layout.
+    ;; `etaf-viewport' is the region the Runtime is mounted in, and inside a
+    ;; posframe that is the posframe's own box.  Trust it: reading the window
+    ;; instead picked up whichever window happened to show the buffer (the main
+    ;; frame, a pop-up, the one behind the posframe) and laid the page out for
+    ;; that, so the artwork was built for a size it was never drawn at — one
+    ;; picture in a corner, a block of panel colour beside it.
     (etaf-watch #'etaf-viewport
                 (lambda (viewport _old)
                   (when viewport
                     (etaf-ncm--sync-viewport session viewport))
                   nil)
                 :immediate t)
+    ;; The page's backdrop is a file, not a live picture: build it when the
+    ;; page opens, when the playing song changes and when the window resizes.
+    ;; The Builder reads only its inputs, so the refs it publishes cannot wake
+    ;; it again; a cover that cannot be turned into a picture leaves the page
+    ;; on the plain cover.
+    ;; Escape is framework-owned: it dismisses the innermost Host with an
+    ;; `:on-dismiss' handler, so the page must own the focus when it opens; the
+    ;; same switch starts and stops the frames and the decoder behind them.
+    ;; The backdrop follows the page's own inputs: opening it, resizing the
+    ;; window, changing the design or the playing cover rebuilds it once.
+    ;; Nothing on the frame clock touches it.
+    (etaf-watch (lambda ()
+                  (list (etaf-value (etaf-ncm--ref session :screen))
+                        (etaf-value (etaf-ncm--ref session :columns))
+                        (etaf-value (etaf-ncm--ref session :window-rows))
+                        (etaf-value (etaf-ncm--ref session :now-mode))
+                        (etaf-value (etaf-ncm--ref session :cover-file))))
+                (lambda (_value _old)
+                  (when (eq (etaf-ncm--read session :screen) 'now)
+                    (ignore-errors (etaf-ncm--ensure-now-art session)))
+                  nil))
+    (etaf-watch (lambda () (etaf-value (etaf-ncm--ref session :screen)))
+                (lambda (value _old)
+                  (if (eq value 'now)
+                      (progn
+                        (etaf-ncm--start-visual session)
+                        (etaf-next-tick
+                         (lambda ()
+                           (when-let* ((runtime (etaf-runtime-for-buffer
+                                                 (plist-get session :buffer))))
+                             (ignore-errors
+                               (etaf-focus-within runtime 'ncm-now-back))))))
+                    (etaf-ncm--stop-visual session))
+                  nil)
+                :name 'ncm-screen-focus)
+    (etaf-watch-effect
+     (lambda ()
+       (when (eq (etaf-value (etaf-ncm--ref session :screen)) 'now)
+         (let ((cover (etaf-value (etaf-ncm--ref session :cover-file)))
+               (columns (etaf-value (etaf-ncm--ref session :columns)))
+               (rows (etaf-value (etaf-ncm--ref session :window-rows)))
+               (panel (plist-get (etaf-value (etaf-ncm--ref session :theme)) :ui-bg))
+               (mode (etaf-value (etaf-ncm--ref session :now-mode)))
+               ;; One place decides the cell, so a build started from here and
+               ;; one started from a resize cannot disagree about the picture.
+               (metrics (etaf-ncm--display-metrics session)))
+           (etaf-next-tick
+            (lambda ()
+              (etaf-ncm--sync-now-art session cover columns rows panel metrics
+                                      mode)))))
+       nil)
+     :name 'ncm-now-art)
     ;; The two overlay bars follow line targets through `etaf-transition':
     ;; a selection or playback move slides each bar on the shared clock, so
     ;; only the damaged rows repaint.  The Scope owns both runs and stops
@@ -750,6 +1002,7 @@ releases the polling timer and the session's pending backend requests."
        (etaf-next-tick (lambda () (etaf-ncm--settle-focus session)))))
     (etaf-on-unmounted
      (lambda ()
+       (etaf-ncm--stop-visual session)
        (etaf-ncm--dispose session))))
   :view
   (flex :position 'relative :flex-direction 'column :width 'stretch :height 'stretch
@@ -777,7 +1030,7 @@ releases the polling timer and the session's pending backend requests."
      :on-toggle on-toggle :on-next on-next :on-previous on-previous
      :on-like on-like :on-seek on-seek
      :section (etaf-ncm--ref session :section)
-     :on-library on-open-library :on-aside on-show-aside
+     :on-library on-open-library :on-aside on-show-aside :on-cover on-cover
      :error (etaf-ncm--read session :error)
      :message (etaf-ncm--ref session :message))
     (box :width 'stretch :flex-grow 1 :flex-basis '(lh 0) :min-height '(lh 0))
@@ -906,10 +1159,31 @@ releases the polling timer and the session's pending backend requests."
        :on-add on-add
        :on-lyrics on-lyrics
        :on-queue on-queue
+       :on-cover on-cover
        :on-volume on-volume
        :on-seek on-seek
        :on-shuffle on-shuffle
-       :on-repeat on-repeat))))
+       :on-repeat on-repeat))
+    ;; The full-page view of the playing song: one picture and one panel over
+    ;; the whole window.  It paints every cell itself, so the player beneath
+    ;; stays mounted and closing the page damages nothing but this layer.
+    (box :if (etaf-ncm--active-value now-visible)
+         :position 'absolute :left '(px 0) :top '(lh 0)
+         :width '(% 100) :height '(% 100) :z-index 5
+      (etaf-ncm--view-now
+       :title track-title :artist track-artist :album selected-album
+       :cover (etaf-value cover-file) :hero (etaf-value hero)
+       :spectrum (etaf-ncm--ref session :spectrum)
+       :accent (or (etaf-value hero-accent) (etaf-ncm-color :accent))
+       :panel (etaf-ncm-color :bg)
+       :playing playing
+       :elapsed position :duration track-duration
+       :projection now-lyric
+       :geometry (etaf-value now-geometry)
+       :sections (etaf-value now-sections)
+       :on-back on-back :on-toggle on-toggle
+       :on-next on-next :on-previous on-previous
+       :on-like on-like :on-seek on-seek))))
 
 (defun etaf-ncm-view (&optional model)
   "Return the player View for MODEL.

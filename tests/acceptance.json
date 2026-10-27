@@ -505,6 +505,36 @@
       "name": "etaf-ncm-tests-reload-action-names-what-it-can-do",
       "file": "tests/etaf-ncm-tests.el",
       "purpose": "The header reload reads 刷新 where the backend returns the same rows and 换一批 only on private FM, which answers with a new batch."
+    },
+    {
+      "name": "etaf-ncm-tests-now-page-geometry-keeps-a-square-cover",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "Both page designs keep the sharp cover square in pixels, leave the text column room, and never let a part claim rows the panel does not have."
+    },
+    {
+      "name": "etaf-ncm-tests-now-page-sections-spend-the-panel",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "The lyric takes every row the fixed parts leave at each panel height, so no part of the page is clipped."
+    },
+    {
+      "name": "etaf-ncm-tests-now-page-opens-from-every-layout",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "The o key opens the full-page view from wide, medium, narrow, card and tile layouts, and a dismiss returns to the player."
+    },
+    {
+      "name": "etaf-ncm-tests-now-page-shows-track-lyric-and-spectrum",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "The page paints the playing track, its lyric, the spectrum, the progress and the back control."
+    },
+    {
+      "name": "etaf-ncm-tests-now-page-switches-its-design",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "m swaps the immersive page for the split one and back without leaving the page."
+    },
+    {
+      "name": "etaf-ncm-tests-spectrum-is-quiet-without-a-source",
+      "file": "tests/etaf-ncm-tests.el",
+      "purpose": "Without a playing source the meter reports silence, starts no decoder and never blocks the page."
     }
   ]
 }

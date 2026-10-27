@@ -207,6 +207,14 @@ client persists in its state directory; function clients default to memory."
           :downloads-loaded nil
           :downloads-at 0
           :cover-requested-id nil
+          ;; Holds the page's frame clock once the page opens.  It is present
+          ;; from the start because `plist-put' can only update a key that is
+          ;; already in the list in place; a new key would be dropped with the
+          ;; local binding.
+          :visual-timer nil
+          ;; Cell geometry the current page backdrop was built for, so a
+          ;; resize rebuilds it once instead of on every frame.
+          :now-art-key nil
           :media-cache media-cache
           :section (etaf-ref :daily :name 'etaf-ncm-section)
           :title (etaf-ref "每日推荐" :name 'etaf-ncm-title)
@@ -239,6 +247,18 @@ client persists in its state directory; function clients default to memory."
           ;; Playing song's downloaded cover art path; nil is the placeholder.
           :cover-file (etaf-ref nil :name 'etaf-ncm-cover-file)
           :aside (etaf-ref 'lyrics :name 'etaf-ncm-aside)
+          ;; Which screen the window shows: the library player, or the
+          ;; full-page view of the playing song.
+          :screen (etaf-ref 'library :name 'etaf-ncm-screen)
+          ;; Which page design the full-page view uses: `immersive' paints one
+          ;; picture across the window, `split' gives the picture one pane.
+          :now-mode (etaf-ref 'auto :name 'etaf-ncm-now-mode)
+          ;; The page's backdrop and spectrum colour, both derived from the
+          ;; playing cover by `etaf-ncm-hero-file' and `etaf-ncm-hero-accent'.
+          :hero (etaf-ref nil :name 'etaf-ncm-hero)
+          :hero-accent (etaf-ref nil :name 'etaf-ncm-hero-accent)
+          ;; The page's spectrum, written by the audio meter once per frame.
+          :spectrum (etaf-ref " " :name 'etaf-ncm-spectrum)
           :theme (etaf-ref (etaf-ncm-theme-defaults) :name 'etaf-ncm-theme)
           :account (etaf-ref nil :name 'etaf-ncm-account)
           :query (etaf-ref "" :name 'etaf-ncm-query)
@@ -1537,6 +1557,9 @@ still-unsettled command published when that request was sent."
           :queue-count (or (etaf-ncm--parse-number (cadr parts)) 0)
           :shuffle (etaf-ncm--truthy-string-p (plist-get data :shuffle))
           :repeat (etaf-ncm--truthy-string-p (plist-get data :repeat))
+          ;; The source mpv plays: the meter decodes the same file or stream
+          ;; so the page's spectrum follows the audio, not a canned loop.
+          :source (etaf-ncm--string (plist-get data :path))
           :as-of (etaf-ncm--string (plist-get data :as_of)))))
 
 (defun etaf-ncm--cover-file (id)
@@ -1936,7 +1959,9 @@ rows), `:visible' (the rows the scrolling canvas holds), `:selection',
 `:queue-start' (zero-based loaded window start),
 `:lyric-rows' (display lines including translations), `:status', `:queue',
 `:lyric', `:lyric-line', `:aside',
-`:layout', `:pane', `:viewport-width' (the pixel canvas the player paints),
+`:layout', `:pane', `:screen' (`library' or the full-page `now'),
+`:now-mode' (`immersive' or `split'),
+`:viewport-width' (the pixel canvas the player paints),
 `:theme', `:account', `:downloads' (the local download registry; song rows in
 `:items' and `:visible' carry `:downloaded'/`:download-level' when the file is
 present), `:loading', `:error' and `:message'."
@@ -1992,6 +2017,8 @@ present), `:loading', `:error' and `:message'."
           :aside (etaf-ncm--read app :aside)
           :layout (etaf-ncm--read app :layout)
           :pane (etaf-ncm--read app :pane)
+          :screen (etaf-ncm--read app :screen)
+          :now-mode (etaf-ncm--read app :now-mode)
           :theme (etaf-ncm--read app :theme)
           :account (let ((account (etaf-ncm--read app :account)))
                      (and account (copy-sequence account)))

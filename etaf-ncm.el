@@ -99,6 +99,38 @@
 ;; function clients stay in memory unless CACHE-FILE is supplied. Snapshots are
 ;; credential-scoped, size-bounded, atomically replaced and never evaluated.
 ;;
+;; Function: etaf-ncm-now-geometry (columns rows char-width line-height &optional mode)
+;; Return the playing page's cell geometry for a COLUMNS by ROWS region.
+;; CHAR-WIDTH and LINE-HEIGHT are the frame's cell size in pixels.  MODE is
+;; `immersive' — one picture across the page, with the text column over its
+;; faded edge — or `split' — the picture in one pane and the text in the other.
+;; The plist carries `:mode', `:stacked', the picture band (`:hero-columns',
+;; `:hero-rows'), the text column (`:panel-left', `:panel-top',
+;; `:panel-columns', `:panel-rows', `:content-columns'), the square the sharp
+;; cover keeps (`:art-columns', `:art-rows', `:art-left', `:art-top') and the
+;; `:fade' edge.  The cover stays square in pixels, not in cells.
+;;
+;; Function: etaf-ncm-now-sections (panel-rows)
+;; Return the playing page's parts for PANEL-ROWS.
+;; The plist carries `:header', `:artist', `:bars', `:title' and `:lyrics': the
+;; page drops the spectrum, the artist line and finally the header as the panel
+;; shrinks, and the lyric takes every row the fixed parts leave.
+;;
+;; Function: etaf-ncm-meter-start (source position)
+;; Start decoding SOURCE from POSITION seconds for the page's spectrum (nil when
+;; it already reads that source).  SOURCE is the file or stream the backend is
+;; playing; a seek restarts the decoder, and a missing ffmpeg is not an error.
+;;
+;; Function: etaf-ncm-meter-stop ()
+;; Stop the spectrum decoder and forget its samples.
+;;
+;; Function: etaf-ncm-meter-live-p ()
+;; Return non-nil while a decoder feeds the spectrum.
+;;
+;; Function: etaf-ncm-meter-levels (bars)
+;; Return BARS audio levels in 0..1 for the newest decoded samples, each rising
+;; at once and falling slowly.  Without a live decoder every level is silence.
+;;
 ;; Function: etaf-ncm-state (app)
 ;; Return APP's session state as a detached plist snapshot.
 ;; Keys are `:section', `:title', `:subtitle', `:mode', `:query', `:items',
