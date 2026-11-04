@@ -1019,7 +1019,8 @@ Pressing the cover opens the full-page view of the playing song."
         (text (expr (or (etaf-ncm--reactive-text message) "")))))))
 
 (etaf-define-component etaf-ncm--view-transport
-    (&key playing repeat compact (repeat-control t) on-like on-previous on-toggle on-next on-repeat)
+    (&key playing repeat liked compact (repeat-control t)
+          on-like on-previous on-toggle on-next on-repeat)
   "Render the centred transport with an accent play control.
 PLAYING is the reactive boolean that selects the play/pause glyph, and REPEAT
 the reactive flag that paints the repeat control; both publish through
@@ -1035,7 +1036,12 @@ its keyboard shortcut."
   (flex :height (if compact '(lh 1) '(lh 2))
         :gap (if compact '((lh 0) (ch 2)) '((lh 0) (ch 3)))
         :align-items 'center :justify-content 'center :focus-group 'horizontal
-    ;; A graphical frame: artwork icons and the accent play pill.
+    ;; A graphical frame: artwork icons and the accent play pill.  The like
+    ;; control sits on the left so the bar balances: previous on one side,
+    ;; repeat on the other, and one control beside each of them.
+    (etaf-ncm--view-control :if (and (display-graphic-p) on-like) :ref 'ncm-like
+                            :icons '(heart . heart-filled) :value liked
+                            :help "喜欢 / 取消喜欢 (f / F)" :on-press on-like)
     (etaf-ncm--view-control :if (display-graphic-p) :ref 'ncm-previous
                             :icon 'previous :help "上一首 (p)" :on-press on-previous)
     (box :if (display-graphic-p) :id "ncm-play" :ref 'ncm-play :width '(ch 3)
@@ -1067,7 +1073,12 @@ its keyboard shortcut."
                             :glyph "下一首" :help "下一首 (n)" :on-press on-next)
     (etaf-ncm--view-control :if repeat-control :ref 'ncm-repeat
                             :icons '(repeat . repeat) :value repeat
-                            :help "列表循环 (r)" :on-press on-repeat)))
+                            :help "列表循环 (r)" :on-press on-repeat)
+    ;; The text terminal names the action instead of drawing it, and the like
+    ;; control keeps the same place on the left.
+    (etaf-ncm--view-control :if (and (not (display-graphic-p)) on-like)
+                            :glyph "喜欢" :help "喜欢 / 取消喜欢 (f / F)"
+                            :on-press on-like)))
 
 (etaf-define-component etaf-ncm--view-progress
     (&key elapsed duration on-seek (prefix "ncm") track-color (visible t))
@@ -1428,6 +1439,28 @@ paints nothing instead of a full bar."
   "The page designs: `auto' picks one per window, `immersive' is a poster with
 the controls under it, `split' gives the picture and the text one half each.")
 
+(defconst etaf-ncm-now-min-hero 8
+  "Fewest rows the picture keeps on a stacked page.
+The artwork is the page's subject; a block of words that grew until the picture
+was a sliver read as a list with a picture behind it.  Eight rows is where the
+cover still reads as a picture.")
+
+(defconst etaf-ncm-now-lyric-rows 12
+  "Most rows the lyric block takes.
+Words run out; the picture is what fills a tall page, so the lyric stops here
+and the artwork takes the rest instead of a column of empty lines.")
+
+(defconst etaf-ncm-now-poster-rows 14
+  "Most rows the poster's text block takes on a wide window.
+The block floats over the artwork, so it may never cover it: fourteen rows keeps
+the picture showing above and below.")
+
+(defconst etaf-ncm-now-bottom-margin 1
+  "Rows kept clear under the page's content.
+The list page keeps the same margin, so the two pages end the same way at any
+size.  It is a margin, not a size: the parts decide how tall the page is and
+this stays free under them.")
+
 (defun etaf-ncm-now-geometry (columns rows char-width line-height &optional mode)
   "Return the page's cell geometry for a COLUMNS by ROWS region.
 MODE is `auto', `immersive' or `split' (see `etaf-ncm-now-modes').  A wide
@@ -1456,8 +1489,12 @@ the text block (`:panel-left', `:panel-top', `:panel-columns', `:panel-rows',
          (panel-columns (cond ((not wide) columns)
                               ;; The poster's block is only as wide as its text,
                               ;; so the artwork stays visible around it.
-                              (immersive (max 34 (min (+ etaf-ncm--now-content-max 8)
-                                                      (round (* columns 0.44)))))
+                              ;; The poster's block floats over the picture, so
+                              ;; it takes a little over half the page: pressed to
+                              ;; one edge it read as a pane with a picture behind
+                              ;; it instead of a poster.
+                              (immersive (max 26 (min (- columns 8)
+                                                      (+ etaf-ncm--now-content-max 8))))
                               (t (- columns half))))
          (hero-columns (cond (immersive columns)
                              (wide half)
@@ -1478,21 +1515,28 @@ the text block (`:panel-left', `:panel-top', `:panel-columns', `:panel-rows',
          ;; gets exactly the rows its own parts need: budgeting the text and
          ;; letting the layout round it off is what left a band of empty
          ;; surface under the transport.
-         ;; The text block gets a share of the window, and the picture the rest.
-         ;; Budgeting the picture first — ten rows and a third of whatever was
-         ;; left — left a 19-row window nine rows of text, which is under what
-         ;; its own parts need, so the page showed a picture and one row of
-         ;; transport.  Six rows is the least the block can say anything with,
-         ;; and the picture keeps at least six rows of its own.
-         (text-budget (max 6 (min (- rows 6) (round (* rows 0.45)))))
+         ;; The picture keeps its floor and the block takes the rest up to what
+         ;; its own parts need: no share of the window, no percentage, so every
+         ;; size gets the same rule and a tall window grows the words only until
+         ;; the lyric cap instead of starving the artwork.
+         (panel-max (- rows etaf-ncm-now-min-hero etaf-ncm-now-bottom-margin))
+         (text-budget (max 6 (min panel-max (plist-get (etaf-ncm-now-sections
+                                                         panel-max etaf-ncm-now-lyric-rows)
+                                                        :rows))))
          ;; The block takes the share the text was budgeted, and its parts
          ;; centre inside it.  Sizing the block by the parts instead made a
          ;; short block disagree with itself: five rows reported that it held a
          ;; track, then refused to draw it, because a track asks for six.
-         (panel-rows (cond (wide rows)
+         ;; Whatever the design, the content ends the same margin above the
+         ;; bottom edge: the wide page gives that row up from its pane, the
+         ;; stacked one from the picture.
+         (panel-rows (cond (wide (- rows etaf-ncm-now-bottom-margin))
                            (tiny 1)
                            (t text-budget)))
-         (hero-rows (if (or immersive wide tiny) rows (- rows panel-rows)))
+         ;; One clear row under the block, the same bottom margin the list page
+         ;; keeps: two rows read as leftover space.
+         (hero-rows (if (or immersive wide tiny) rows
+                      (- rows panel-rows etaf-ncm-now-bottom-margin)))
          (panel-top (cond (wide 0)
                           (tiny (1- rows))
                           (t (- rows panel-rows))))
@@ -1502,23 +1546,38 @@ the text block (`:panel-left', `:panel-top', `:panel-columns', `:panel-rows',
          ;; The poster's text block floats over the picture, so it may only be
          ;; as tall as its parts need and never taller than fourteen rows: a
          ;; block that grew with the window covered the artwork and read as a
-         ;; pane with a picture behind it instead of a poster.
-         (immersive-rows (max 6 (min 14 (- rows 4)
-                                     (plist-get (etaf-ncm-now-sections (- rows 4)) :rows))))
+         ;; pane with a picture behind it instead of a poster.  On a small window
+         ;; it drops the lyric: the picture is the page there, and words crowded
+         ;; into the middle of it read as neither.
+         (poster-small (or (< rows 26) (< columns 60)))
+         (immersive-rows (max 6 (min etaf-ncm-now-poster-rows (- rows 4)
+                                     (or (plist-get (etaf-ncm-now-sections
+                                                     (- rows 4) (if poster-small 0 nil))
+                                                    :rows)
+                                         6))))
          (art-width (if immersive (- hero-columns panel-columns 8) hero-columns))
          (art-height (if (and immersive (not wide)) panel-top hero-rows))
-         (art-pixels (round (min (* art-width char-width (if tiny 0.9 0.82))
-                                 (* art-height line-height 0.86))))
-         (art-columns (max 6 (min (- art-width 4) (round (/ art-pixels char-width)))))
-         (art-rows (max 4 (min (- art-height 2) (round (/ art-pixels line-height))))))
+         ;; Whole cells, one in from every edge of the band: the cover keeps a
+         ;; margin that stays the same at any size, instead of a share of it.
+         (art-pixels (round (* (min (- art-width 2)
+                                    (/ (* (- art-height 2) line-height) char-width))
+                             char-width)))
+         ;; A poster on a small window leaves the rectangle empty so the cover
+         ;; centres on the whole picture instead of landing in a corner.
+         (art-columns (if poster-small 0
+                        (max 6 (min (- art-width 4) (round (/ art-pixels char-width))))))
+         (art-rows (if poster-small 0
+                     (max 4 (min (- art-height 2) (round (/ art-pixels line-height)))))))
     (list :mode mode
+          :sections (etaf-ncm-now-sections (if immersive immersive-rows panel-rows)
+                                           (if (and immersive poster-small) 0 nil))
           :floating (or immersive tiny)
           :stacked (not (or wide tiny))
           :hero-columns hero-columns :hero-rows (max 8 hero-rows)
           ;; The poster's block keeps a margin on the right: pressed against
           ;; the edge it reads as a panel bolted on rather than floating over
           ;; the picture.
-          :panel-left (cond (immersive (- columns panel-columns 7))
+          :panel-left (cond (immersive (max 1 (round (/ (- columns panel-columns) 2))))
                             (wide (- columns half))
                             (t 0))
           :panel-top (if immersive
@@ -1533,8 +1592,11 @@ the text block (`:panel-left', `:panel-top', `:panel-columns', `:panel-rows',
           :art-top (max 0 (round (/ (- art-height art-rows) 2)))
           :fade (if (and wide (not immersive)) 'right 'right))))
 
-(defun etaf-ncm-now-sections (rows)
+(defun etaf-ncm-now-sections (rows &optional max-lyrics)
   "Return the playing page's parts for a window ROWS tall.
+MAX-LYRICS caps the lyric block; zero drops it, which is what a poster on a
+small window wants: the picture, the track and the controls, without words
+crowded into the middle.
 The page adds a part only at the height where it reads: a short window is the
 poster and one row of transport buttons, and each further part — the track, the
 artist, the progress line, the spectrum and the lyric — appears at its own
@@ -1550,31 +1612,38 @@ the window does not have."
          ;; song is, which the words alone cannot.  A block of seven rows holds
          ;; the track, the progress and the transport.
          (progress (>= rows 7))
+         ;; The transport is one row in a compact bar and two in a full one, and
+         ;; the page budgets what it draws.  Counting one row for a two-row bar
+         ;; left a row of empty surface under the buttons.
+         (transport-rows (if (>= rows 22) 2 1))
          (bars (and (>= rows 28) etaf-ncm-now-bar-rows))
          ;; One clear row above the block, then each part.  The row carrying the
          ;; way back to the player is always drawn, so it is always budgeted;
          ;; only the "正在播放" label beside it waits for a taller page.  A second
          ;; row below the block only spent a line the lyric could have used.
-         (fixed (+ 2 title
+         (fixed (+ 1                    ;; the clear row above the block
+                    (if header 2 0)     ;; the way back, and a clear row under it
+                    title
                     (if artist 1 0)
                     ;; The progress line, its spacer and the transport.
-                    (if progress 3 1)
+                    (if progress (+ 2 transport-rows) 1)
                     (if bars (+ bars 1) 0)))
          ;; ROWS is what the block may use, so the parts must never claim more
-         ;; than that.  The lyric block takes one row of air plus its lines.  Two
-         ;; lines — the one being sung and the one before it — already read as a
-         ;; lyric; asking for three kept the words off a window that had room for
-         ;; them, which is why a small page showed a picture and a title only.
-         ;; Asking for four spare rows once made this disagree with its own
-         ;; `:rows': nine rows said "no lyric" while twelve claimed to fit three.
-         (spare (- rows fixed 1))
-         (lyrics (if (>= spare 2) spare 0)))
+         ;; than that — and `:rows' is exactly what they claim, which is what
+         ;; lets the page end one clear row above the bottom edge instead of
+         ;; leaving rows it never fills.  Two lines already read as a lyric: the
+         ;; one being sung and the one before it.
+         (spare (- rows fixed))
+         (room (if (and max-lyrics (<= max-lyrics 0)) 0 spare))
+         (lyrics (cond ((< room 2) 0)
+                       (max-lyrics (min room max-lyrics))
+                       (t room))))
     (list :header header :title title :artist artist :progress progress
           :bars bars :lyrics lyrics
-          :rows (+ fixed (if (> lyrics 0) (1+ lyrics) 0)))))
+          :rows (+ fixed lyrics))))
 
 (etaf-define-component etaf-ncm--view-now
-    (&key title artist album cover hero spectrum accent panel playing
+    (&key title artist album cover hero spectrum accent panel playing liked
           elapsed duration projection geometry sections
           on-back on-toggle on-next on-previous on-like on-seek)
   "Render the whole window as the playing song.
@@ -1613,18 +1682,24 @@ from `etaf-ncm-now-sections'."
                  :height 'stretch :overflow 'hidden
              ;; The way back sits on the title row, so a short page that drops
              ;; the header still has it.
-             (flex :height '(lh 1) :width 'stretch :align-items 'center
-                    :justify-content 'center :flex-shrink 0
-               (box :height '(lh 1) :width '(ch 7) :flex-shrink 0
+             ;; The label centres on the whole row and the way back sits over
+             ;; its left end.  Laying the two out side by side pushed the label
+             ;; half a control to the right, so it never lined up with the track
+             ;; under it.
+             (box :position 'relative :height '(lh 1) :width 'stretch
+                  :flex-shrink 0
+               (box :position 'absolute :left '(ch 0) :top '(lh 0)
+                    :width '(ch 7) :height '(lh 1)
                     :color (etaf-ncm-color :dim)
                     :ref 'ncm-now-back :role 'button :tab-index 0
                     :aria-label "返回播放器" :help-echo "返回播放器 (Esc / o)"
                     :on-press on-back :on-dismiss on-back
                  (text (expr "← 返回")))
                (box :if (plist-get sections :header)
-                    :height '(lh 1) :flex-grow 1 :text-align 'center
+                    :height '(lh 1) :width 'stretch :text-align 'center
                     :color (etaf-ncm-color :muted)
                  (text (expr "正在播放"))))
+             (flex :if (plist-get sections :header) :height '(lh 1) :flex-shrink 0)
              (box :if (plist-get sections :title)
                   :height (list 'lh (plist-get sections :title))
                   :flex-shrink 0
@@ -1641,23 +1716,25 @@ from `etaf-ncm-now-sections'."
                                     " · "
                                     (or (etaf-ncm--reactive-text album) ""))
                             " ·"))))
-             (flex :height '(lh 1))
              (flex :if (> lyrics 1) :height (list 'lh lyrics) :flex-grow 1
                    :width 'stretch :overflow 'hidden
                (etaf-ncm--view-lyric-list :projection projection :rows lyrics
                                           :columns content))
-             (flex :height '(lh 1))
              (flex :if bars :height (list 'lh bars) :width 'stretch :flex-shrink 0
                    :color accent :overflow 'hidden
                (text :ref 'ncm-now-bars
                      (expr (or (etaf-ncm--reactive-text spectrum) " "))))
              (flex :if bars :height '(lh 1))
+             ;; The progress line keeps a clear row above it: the bar reads as a
+             ;; separate line from the words, and `etaf-ncm-now-sections' counts
+             ;; that row in the three it budgets for progress and transport.
+             (flex :if (plist-get sections :progress) :height '(lh 1) :flex-shrink 0)
              (etaf-ncm--view-progress :visible (plist-get sections :progress)
                                       :prefix "ncm-now" :track-color panel-color
                                       :elapsed elapsed :duration duration
                                       :on-seek on-seek)
              (etaf-ncm--view-transport :compact (plist-get sections :compact)
-                                       :playing playing :repeat nil
+                                       :playing playing :repeat nil :liked liked
                                        :on-previous on-previous :on-toggle on-toggle
                                        :on-next on-next :on-repeat #'ignore
                                        :on-like on-like))))
@@ -1685,7 +1762,8 @@ from `etaf-ncm-now-sections'."
                  :overflow 'hidden :align-items 'center
                  ;; One clear row above the block and one under the transport:
                  ;; a second row below it reads as leftover space.
-                 :padding '((lh 1) (ch 0) (lh 1) (ch 0))
+                 :gap '((lh 0) (px 3))
+                 :padding '((lh 1) (ch 0) (lh 0) (ch 0))
                  ;; The immersive page lets the picture show under the text:
                  ;; no panel colour, only a darker filter over what is already
                  ;; there, so the text sits on the artwork instead of on a
@@ -1705,8 +1783,13 @@ from `etaf-ncm-now-sections'."
             ;; `immersive' lays the band over the whole page and the panel on
             ;; top of it, so the page is exactly the window; only a stacked
             ;; `split' page stacks two bands.
-            :height (list 'lh (if stacked (+ hero-rows panel-rows)
-                             (max hero-rows panel-rows)))
+            ;; The page fills the window: the picture, the block and the margin
+            ;; under it add up to every row.  A page one row short left that row
+            ;; on the frame's own background, which reads as a black band above
+            ;; the minibuffer.
+            :height (list 'lh (if stacked
+                                  (+ hero-rows panel-rows etaf-ncm-now-bottom-margin)
+                                (max hero-rows panel-rows)))
             ;; The page floor is the text block's colour: a row the layout
             ;; rounds off then shows the same surface instead of a dark cell in
             ;; the bottom corner.

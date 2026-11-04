@@ -340,10 +340,16 @@ lands, so a resize never waits for ffmpeg."
          ;; A huge window is expensive to blur and the extra pixels are not
          ;; visible through the blur, so the picture stops growing there.
          (scale (if (> (* (or columns 0) char-width scale) 2400) 1 scale))
-         (area (list (* (plist-get geometry :art-left) char-width)
-                     (* (plist-get geometry :art-top) line-height)
-                     (* (plist-get geometry :art-columns) char-width)
-                     (* (plist-get geometry :art-rows) line-height)))
+         ;; An empty rectangle means "centre the cover on the whole picture".
+         ;; The poster on a small window asks for that: its text block floats
+         ;; over the middle, so the artwork belongs behind it and not in a
+         ;; corner, which is where a rectangle of zero cells put it.
+         (area (let ((width (* (plist-get geometry :art-columns) char-width))
+                     (height (* (plist-get geometry :art-rows) line-height)))
+                 (and (> width 0) (> height 0)
+                      (list (* (plist-get geometry :art-left) char-width)
+                            (* (plist-get geometry :art-top) line-height)
+                            width height))))
          (hero (and cover (> (or columns 0) 0) (> (or rows 0) 0)
                     (etaf-ncm-hero-file
                      cover
@@ -851,12 +857,11 @@ releases the polling timer and the session's pending backend requests."
                     (plist-get metrics :line-height)
                     (etaf-value (etaf-ncm--ref session :now-mode)))))
                :test #'equal))
-             (now-sections
-              (etaf-computed
-               (lambda ()
-                 (etaf-ncm-now-sections
-                  (plist-get (etaf-value now-geometry) :panel-rows)))
-               :test #'equal))
+             ;; The geometry already decided which parts fit, so the page draws
+             ;; that list instead of asking again with a different row count.
+             (now-sections (etaf-computed
+                            (lambda () (plist-get (etaf-value now-geometry) :sections))
+                            :test #'equal))
              ;; The page asks for a lyric window as tall as its own slot, so
              ;; the block is centred in the panel instead of clipped at the top.
              (now-lyric (etaf-computed
@@ -1177,6 +1182,7 @@ releases the polling timer and the session's pending backend requests."
        :accent (or (etaf-value hero-accent) (etaf-ncm-color :accent))
        :panel (etaf-ncm-color :bg)
        :playing playing
+       :liked (etaf-ncm--ref session :liked-ref)
        :elapsed position :duration track-duration
        :projection now-lyric
        :geometry (etaf-value now-geometry)
@@ -1259,7 +1265,18 @@ the backend.  A caller-provided MODEL keeps its library, queue and selection."
                   :state model
                   :background (lambda () (plist-get (etaf-ncm--read model :theme) :ui-bg))
                   ;; Mount-time focus and highlight work reads the buffer.
+                  ;; Mount-time focus and highlight work reads the buffer.
                   :on-fit (lambda (_window) (plist-put model :buffer (current-buffer))))))
+    ;; The canvas paints whole character cells, so a window whose pixel width is
+    ;; not a multiple of the cell keeps a one-pixel column Ebox never covers and
+    ;; the frame background shows through: a dark square in the bottom corner on
+    ;; a dark theme.  A one-pixel right fringe takes that column instead.  Set
+    ;; once here, not from a window hook: changing a window from inside a
+    ;; configuration hook re-enters it and leaves the page and the pointer on
+    ;; different coordinates.
+    (when (display-graphic-p)
+      (ignore-errors
+        (set-window-fringes (get-buffer-window buffer) 0 1 nil t)))
     (etaf-runtime-flush (etaf-runtime-for-buffer buffer))
     (etaf-ncm--apply-list-highlights model (etaf-ncm--list-highlights model))
     buffer))
