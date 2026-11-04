@@ -334,8 +334,12 @@ lands, so a resize never waits for ffmpeg."
          ;; The picture is sized from the same parts the page draws, so it has to
          ;; know whether the bars take rows; otherwise the bands disagree by the
          ;; height of the spectrum.
+         ;; The picture is sized from the same parts the page draws, so it needs
+         ;; the same two answers the page has: whether there are bars, and
+         ;; whether the song has a lyric at all.
          (geometry (etaf-ncm-now-geometry columns rows char-width line-height mode
-                                          (etaf-ncm--read app :spectrum)))
+                                          (etaf-ncm--read app :spectrum)
+                                          (length (etaf-ncm--read app :lyric))))
          (direction (plist-get geometry :fade))
          (window (and (plist-get app :buffer)
                       (get-buffer-window (plist-get app :buffer) t)))
@@ -860,7 +864,8 @@ releases the polling timer and the session's pending backend requests."
                     (plist-get metrics :char-width)
                     (plist-get metrics :line-height)
                     (etaf-value (etaf-ncm--ref session :now-mode))
-                    (etaf-value (etaf-ncm--ref session :spectrum)))))
+                    (etaf-value (etaf-ncm--ref session :spectrum))
+                    (length (etaf-value (etaf-ncm--ref session :lyric))))))
                :test #'equal))
              ;; The geometry already decided which parts fit, so the page draws
              ;; that list instead of asking again with a different row count.

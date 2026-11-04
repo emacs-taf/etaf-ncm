@@ -1461,7 +1461,7 @@ The list page keeps the same margin, so the two pages end the same way at any
 size.  It is a margin, not a size: the parts decide how tall the page is and
 this stays free under them.")
 
-(defun etaf-ncm-now-geometry (columns rows char-width line-height &optional mode spectrum)
+(defun etaf-ncm-now-geometry (columns rows char-width line-height &optional mode spectrum lyric-lines)
   "Return the page's cell geometry for a COLUMNS by ROWS region.
 MODE is `auto', `immersive' or `split' (see `etaf-ncm-now-modes') and SPECTRUM,
 when non-nil, is the bar text the page has to draw; without it the bars take no
@@ -1523,11 +1523,13 @@ the text block (`:panel-left', `:panel-top', `:panel-columns', `:panel-rows',
          ;; size gets the same rule and a tall window grows the words only until
          ;; the lyric cap instead of starving the artwork.
          (panel-max (- rows etaf-ncm-now-min-hero etaf-ncm-now-bottom-margin))
-         (text-budget (max 6 (min panel-max (plist-get (etaf-ncm-now-sections
-                                                         panel-max
-                                                         etaf-ncm-now-lyric-rows
-                                                         spectrum)
-                                                        :rows))))
+         ;; One query decides both the height and the parts.  Asking twice with
+         ;; different row counts made them disagree: the budget was measured with
+         ;; the bars in, then the parts were measured without them, so the block
+         ;; kept five rows it never drew — blank lines that grew with the window.
+         (text-parts (etaf-ncm-now-sections panel-max etaf-ncm-now-lyric-rows
+                                            spectrum lyric-lines))
+         (text-budget (max 6 (min panel-max (plist-get text-parts :rows))))
          ;; The block takes the share the text was budgeted, and its parts
          ;; centre inside it.  Sizing the block by the parts instead made a
          ;; short block disagree with itself: five rows reported that it held a
@@ -1536,12 +1538,15 @@ the text block (`:panel-left', `:panel-top', `:panel-columns', `:panel-rows',
          ;; bottom edge: the wide page gives that row up from its pane, the
          ;; stacked one from the picture.
          (panel-rows (cond (wide (- rows etaf-ncm-now-bottom-margin))
-                           (tiny 1)
+                           ;; A floating bar still needs the clear row above it
+                           ;; and the transport under it.
+                           (tiny 2)
                            (t text-budget)))
          ;; One clear row under the block, the same bottom margin the list page
          ;; keeps: two rows read as leftover space.
-         (hero-rows (if (or immersive wide tiny) rows
-                      (- rows panel-rows etaf-ncm-now-bottom-margin)))
+         (hero-rows (cond (tiny (- rows panel-rows))
+                          ((or immersive wide) rows)
+                          (t (- rows panel-rows etaf-ncm-now-bottom-margin))))
          (panel-top (cond (wide 0)
                           (tiny (1- rows))
                           (t (- rows panel-rows))))
@@ -1559,7 +1564,7 @@ the text block (`:panel-left', `:panel-top', `:panel-columns', `:panel-rows',
                                      (or (plist-get (etaf-ncm-now-sections
                                                      (- rows 4)
                                                      (if poster-small 0 nil)
-                                                     spectrum)
+                                                     spectrum lyric-lines)
                                                     :rows)
                                          6))))
          (art-width (if immersive (- hero-columns panel-columns 8) hero-columns))
@@ -1576,9 +1581,15 @@ the text block (`:panel-left', `:panel-top', `:panel-columns', `:panel-rows',
          (art-rows (if poster-small 0
                      (max 4 (min (- art-height 2) (round (/ art-pixels line-height)))))))
     (list :mode mode
-          :sections (etaf-ncm-now-sections (if immersive immersive-rows panel-rows)
-                                           (if (and immersive poster-small) 0 nil)
-                                           spectrum)
+          ;; The block is as tall as the window allows and its parts centre
+          ;; inside it.  A short lyric or a silent spectrum leaves the rest as
+          ;; air split above and below, instead of a slab of empty surface under
+          ;; the transport that grows with the window.
+          :sections (if immersive
+                        (etaf-ncm-now-sections immersive-rows
+                                               (if poster-small 0 nil)
+                                               spectrum lyric-lines)
+                      (etaf-ncm-now-sections panel-rows nil spectrum lyric-lines))
           :floating (or immersive tiny)
           :stacked (not (or wide tiny))
           :hero-columns hero-columns :hero-rows (max 8 hero-rows)
@@ -1604,7 +1615,7 @@ the text block (`:panel-left', `:panel-top', `:panel-columns', `:panel-rows',
           :art-top (max 0 (round (/ (- art-height art-rows) 2)))
           :fade (if (and wide (not immersive)) 'right 'right))))
 
-(defun etaf-ncm-now-sections (rows &optional max-lyrics spectrum)
+(defun etaf-ncm-now-sections (rows &optional max-lyrics spectrum lyric-lines)
   "Return the playing page's parts for a window ROWS tall.
 MAX-LYRICS caps the lyric block; zero drops it, which is what a poster on a
 small window wants: the picture, the track and the controls, without words
@@ -1630,8 +1641,13 @@ the window does not have."
          (transport-rows (if (>= rows 22) 2 1))
          ;; The bars claim rows only when there is a spectrum to draw into them;
          ;; the value stays the row count, because the block adds it up.
+         ;; Bars claim rows only when the text has a bar in it.  A meter that
+         ;; has not sampled yet still returns a full block of spaces, and
+         ;; `string-empty-p' calls that non-empty: five rows of nothing under the
+         ;; lyric, growing with the window.
          (bars (when (and (>= rows 28) etaf-ncm-now-bar-rows
-                          (stringp spectrum) (not (string-empty-p spectrum)))
+                          (stringp spectrum)
+                          (string-match-p "[^[:space:]]" spectrum))
                  etaf-ncm-now-bar-rows))
          ;; One clear row above the block, then each part.  The row carrying the
          ;; way back to the player is always drawn, so it is always budgeted;
@@ -1651,8 +1667,15 @@ the window does not have."
          ;; one being sung and the one before it.
          (spare (- rows fixed))
          (room (if (and max-lyrics (<= max-lyrics 0)) 0 spare))
+         ;; A lyric block with no words is an empty hole that grows with the
+         ;; window, which is what "more blank rows the taller it gets" was: the
+         ;; block took its budget whether or not the song had a lyric.
+         (room (if (and lyric-lines (<= lyric-lines 0)) 0 room))
          (lyrics (cond ((< room 2) 0)
+                       ((and lyric-lines max-lyrics)
+                        (min room max-lyrics lyric-lines))
                        (max-lyrics (min room max-lyrics))
+                       (lyric-lines (min room lyric-lines))
                        (t room))))
     (list :header header :title title :artist artist :progress progress
           :bars bars :lyrics lyrics
@@ -1775,7 +1798,7 @@ from `etaf-ncm-now-sections'."
                  :flex-grow (if (or immersive (plist-get geometry :floating)) 0 1)
                  :flex-basis '(px 0)
                  :flex-shrink 0 :min-width '(px 0)
-                 :overflow 'hidden :align-items 'center
+                 :overflow 'hidden :align-items 'center :justify-content 'center
                  ;; One clear row above the block and one under the transport:
                  ;; a second row below it reads as leftover space.
                  :gap '((lh 0) (px 3))

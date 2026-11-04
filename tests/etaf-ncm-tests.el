@@ -1836,7 +1836,10 @@ guard alone would accept as settled."
             (text (buffer-substring-no-properties (point-min) (point-max))))
         (should (string-match-p "曲目 1" text))
         (should (string-match-p "第一行歌词" text))
-        (should (etaf-host-ref-bounds runtime 'ncm-now-bars))
+        ;; The bars take rows only while there is a spectrum to draw in them, and
+        ;; this player decodes no audio; the transport is what a page without
+        ;; bars still draws.
+        (should (etaf-host-ref-bounds runtime 'ncm-now-seek))
         (should (etaf-host-ref-bounds runtime 'ncm-now-seek))
         (should (etaf-host-ref-bounds runtime 'ncm-now-back))
         (should (plist-get (etaf-ncm-state app) :screen))))))
