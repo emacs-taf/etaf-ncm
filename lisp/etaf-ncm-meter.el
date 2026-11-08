@@ -344,7 +344,7 @@ audio at the position being played; otherwise from the decoder's pipe."
   (let* ((n (length samples))
          (out (make-vector n 0.0)))
     (dotimes (index n)
-      (let ((scale (* 0.5 (- 1 (cos (/ (* 2 pi index) (max 1 (1- n))))))))
+      (let ((scale (* 0.5 (- 1 (cos (/ (* 2 float-pi index) (max 1 (1- n))))))))
         (aset out index (* scale (aref samples index)))))
     out))
 
