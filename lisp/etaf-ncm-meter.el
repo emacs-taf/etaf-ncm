@@ -88,7 +88,7 @@ drift during that moment would restart it forever.")
 Opening a stream and filling the pipe costs about this long; seeking past it
 means the first samples that come out belong to the moment being heard.")
 
-(defconst etaf-ncm-meter--startup-grace 3.0
+(defconst etaf-ncm-meter--startup-grace 4.0
   "Seconds a fresh decoder may take before the meter calls it stuck.
 A seek into a stream can open the pipe and then sit downloading without writing
 a sample; the process is alive, so nothing restarted it, and the bars stayed at
@@ -169,7 +169,13 @@ from would otherwise keep driving the bars."
                (executable-find etaf-ncm-meter-program))
       (if (and live (not (and moved behind)))
           (setq etaf-ncm-meter--seen position)
-        (etaf-ncm-meter-stop)
+        ;; Kill the pipe but keep the samples it already produced: clearing
+        ;; them dropped every bar to silence for the length of the new start,
+        ;; which is what a stutter looks and feels like.  The new decoder
+        ;; appends behind them and the newest window takes over as it fills.
+        (when (process-live-p etaf-ncm-meter--process)
+          (delete-process etaf-ncm-meter--process))
+        (setq etaf-ncm-meter--process nil)
         ;; Starting a decoder on a stream costs about this long, and the
         ;; decoder then reads at playback speed, so beginning that much further
         ;; on puts the samples on the beat.  Measuring it instead fought with
@@ -178,9 +184,7 @@ from would otherwise keep driving the bars."
         (setq etaf-ncm-meter--source source
               etaf-ncm-meter--position position
               etaf-ncm-meter--seen position
-              etaf-ncm-meter--started-at (float-time)
-              etaf-ncm-meter--pending nil
-              etaf-ncm-meter--levels nil)
+              etaf-ncm-meter--started-at (float-time))
         (condition-case nil
             (setq etaf-ncm-meter--process
                   (make-process
@@ -277,18 +281,22 @@ near silence, which lets the page keep one drawing path."
          (window (and enough (etaf-ncm-meter--window samples)))
          (previous (or etaf-ncm-meter--levels (make-list bars 0.0)))
          (levels
-          (cl-loop for centre in (etaf-ncm-meter--band-centres bars)
-                   for index from 0
-                   for previous-level = (or (nth index previous) 0.0)
-                   for magnitude = (and window (etaf-ncm-meter--goertzel window centre))
-                   for decibels = (if magnitude
-                                      (etaf-ncm-meter--decibels magnitude window)
-                                    -120.0)
-                   for raw = (expt (max 0.0 (min 1.0
-                                              (/ (+ decibels (- etaf-ncm-meter--floor))
-                                                 (- etaf-ncm-meter--floor))))
-                                   etaf-ncm-meter--curve)
-                   collect (max raw (* previous-level etaf-ncm-meter--decay)))))
+          ;; A seek leaves the pipe silent for a moment while the new decoder
+          ;; reaches the spot.  Holding the last shape keeps the meter standing
+          ;; instead of sinking to nothing and growing back, which is what read
+          ;; as a stutter.
+          (if (not enough)
+              previous
+            (cl-loop for centre in (etaf-ncm-meter--band-centres bars)
+                     for index from 0
+                     for previous-level = (or (nth index previous) 0.0)
+                     for magnitude = (etaf-ncm-meter--goertzel window centre)
+                     for decibels = (etaf-ncm-meter--decibels magnitude window)
+                     for raw = (expt (max 0.0 (min 1.0
+                                                (/ (+ decibels (- etaf-ncm-meter--floor))
+                                                   (- etaf-ncm-meter--floor))))
+                                     etaf-ncm-meter--curve)
+                     collect (max raw (* previous-level etaf-ncm-meter--decay))))))
     (setq etaf-ncm-meter--levels levels)
     levels))
 
