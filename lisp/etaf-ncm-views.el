@@ -1445,16 +1445,6 @@ The artwork is the page's subject; a block of words that grew until the picture
 was a sliver read as a list with a picture behind it.  Eight rows is where the
 cover still reads as a picture.")
 
-(defconst etaf-ncm-now-lyric-rows 12
-  "Most rows the lyric block takes.
-Words run out; the picture is what fills a tall page, so the lyric stops here
-and the artwork takes the rest instead of a column of empty lines.")
-
-(defconst etaf-ncm-now-poster-rows 14
-  "Most rows the poster's text block takes on a wide window.
-The block floats over the artwork, so it may never cover it: fourteen rows keeps
-the picture showing above and below.")
-
 (defconst etaf-ncm-now-bottom-margin 1
   "Rows kept clear under the page's content.
 The list page keeps the same margin, so the two pages end the same way at any
@@ -1527,8 +1517,7 @@ the text block (`:panel-left', `:panel-top', `:panel-columns', `:panel-rows',
          ;; different row counts made them disagree: the budget was measured with
          ;; the bars in, then the parts were measured without them, so the block
          ;; kept five rows it never drew — blank lines that grew with the window.
-         (text-parts (etaf-ncm-now-sections panel-max etaf-ncm-now-lyric-rows
-                                            spectrum lyric-lines))
+         (text-parts (etaf-ncm-now-sections panel-max nil spectrum lyric-lines))
          (text-budget (max 6 (min panel-max (plist-get text-parts :rows))))
          ;; The block takes the share the text was budgeted, and its parts
          ;; centre inside it.  Sizing the block by the parts instead made a
@@ -1560,7 +1549,7 @@ the text block (`:panel-left', `:panel-top', `:panel-columns', `:panel-rows',
          ;; it drops the lyric: the picture is the page there, and words crowded
          ;; into the middle of it read as neither.
          (poster-small (or (< rows 26) (< columns 60)))
-         (immersive-rows (max 6 (min etaf-ncm-now-poster-rows (- rows 4)
+         (immersive-rows (max 6 (min (- rows 8) (- rows 4)
                                      (or (plist-get (etaf-ncm-now-sections
                                                      (- rows 4)
                                                      (if poster-small 0 nil)
@@ -1581,10 +1570,8 @@ the text block (`:panel-left', `:panel-top', `:panel-columns', `:panel-rows',
          (art-rows (if poster-small 0
                      (max 4 (min (- art-height 2) (round (/ art-pixels line-height)))))))
     (list :mode mode
-          ;; The block is as tall as the window allows and its parts centre
-          ;; inside it.  A short lyric or a silent spectrum leaves the rest as
-          ;; air split above and below, instead of a slab of empty surface under
-          ;; the transport that grows with the window.
+          ;; The parts are measured from the block's own height, so the two can
+          ;; never disagree about how many rows exist.
           :sections (if immersive
                         (etaf-ncm-now-sections immersive-rows
                                                (if poster-small 0 nil)
@@ -1596,15 +1583,14 @@ the text block (`:panel-left', `:panel-top', `:panel-columns', `:panel-rows',
           ;; The poster's block keeps a margin on the right: pressed against
           ;; the edge it reads as a panel bolted on rather than floating over
           ;; the picture.
-          :panel-left (cond (immersive (max 1 (round (/ (- columns panel-columns) 2))))
+          :panel-left (cond (immersive (- columns panel-columns 7))
                             (wide (- columns half))
                             (t 0))
-          ;; The poster's block sits on the bottom edge, where the artwork is
-          ;; whole above it.  Centred, it cut the cover in half and the page read
-          ;; as a pane with a picture behind it instead of a poster.
+          ;; The poster's block floats on the right, over the faded side, and
+          ;; centres vertically: the cover keeps the left of the page whole, the
+          ;; way a poster lays its title beside the artwork instead of over it.
           :panel-top (if immersive
-                          (max etaf-ncm-now-bottom-margin
-                               (- rows immersive-rows etaf-ncm-now-bottom-margin))
+                          (max 1 (round (/ (- rows immersive-rows) 2)))
                         panel-top)
           :panel-columns panel-columns
           :panel-rows (max 1 (if immersive immersive-rows panel-rows))
@@ -1667,15 +1653,13 @@ the window does not have."
          ;; one being sung and the one before it.
          (spare (- rows fixed))
          (room (if (and max-lyrics (<= max-lyrics 0)) 0 spare))
-         ;; A lyric block with no words is an empty hole that grows with the
-         ;; window, which is what "more blank rows the taller it gets" was: the
-         ;; block took its budget whether or not the song had a lyric.
+         ;; A song with no words leaves no block; a song with words takes every
+         ;; row the page has for them.  LYRIC-LINES only answers "are there
+         ;; words": it is the projection of the visible window, not the length of
+         ;; the song, so using it as a cap showed ten lines in a fifty-row page.
          (room (if (and lyric-lines (<= lyric-lines 0)) 0 room))
          (lyrics (cond ((< room 2) 0)
-                       ((and lyric-lines max-lyrics)
-                        (min room max-lyrics lyric-lines))
                        (max-lyrics (min room max-lyrics))
-                       (lyric-lines (min room lyric-lines))
                        (t room))))
     (list :header header :title title :artist artist :progress progress
           :bars bars :lyrics lyrics
@@ -1798,7 +1782,7 @@ from `etaf-ncm-now-sections'."
                  :flex-grow (if (or immersive (plist-get geometry :floating)) 0 1)
                  :flex-basis '(px 0)
                  :flex-shrink 0 :min-width '(px 0)
-                 :overflow 'hidden :align-items 'center :justify-content 'center
+                 :overflow 'hidden :align-items 'center
                  ;; One clear row above the block and one under the transport:
                  ;; a second row below it reads as leftover space.
                  :gap '((lh 0) (px 3))
