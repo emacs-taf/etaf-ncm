@@ -71,6 +71,12 @@ Bars drop smoothly and rise at once, which is how a level meter reads." )
 (defvar etaf-ncm-meter--cache-file nil
   "Decoded copy the meter reads instead of a decoder, or nil.")
 
+(defvar etaf-ncm-meter--cache-anchor nil
+  "Cons of the position the copy was placed at and the time it was placed.
+The backend reports whole seconds, so reading its clock directly would hold the
+bars still for a second and then jump.  The meter advances from this anchor on
+its own clock between reports.")
+
 (defvar etaf-ncm-meter--process nil
   "Decoder process feeding the meter, or nil.")
 
@@ -128,6 +134,7 @@ That is a decoder feeding it, or the decoded copy of the track."
     (delete-process etaf-ncm-meter--process))
   (setq etaf-ncm-meter--process nil
         etaf-ncm-meter--cache-file nil
+        etaf-ncm-meter--cache-anchor nil
         etaf-ncm-meter--pending nil
         etaf-ncm-meter--levels nil
         etaf-ncm-meter--source nil
@@ -241,10 +248,19 @@ what the bars showed as a freeze."
      (cached
       (when (process-live-p etaf-ncm-meter--process)
         (delete-process etaf-ncm-meter--process))
+      ;; A seek is the only time the reported position is the truth; between
+      ;; reports the meter runs on its own clock.  Without this the bars read
+      ;; the same whole second twelve times and then stepped, which reads as a
+      ;; stutter.
+      (let ((anchor etaf-ncm-meter--cache-anchor))
+        (if (and anchor (not moved))
+            (setq etaf-ncm-meter--position
+                  (+ (car anchor) (- (float-time) (cdr anchor))))
+          (setq etaf-ncm-meter--cache-anchor (cons position (float-time))
+                etaf-ncm-meter--position position)))
       (setq etaf-ncm-meter--process nil
             etaf-ncm-meter--cache-file cached
             etaf-ncm-meter--source source
-            etaf-ncm-meter--position position
             etaf-ncm-meter--seen position)
       t)
      ((and (stringp source) (not (string-empty-p source))
