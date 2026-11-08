@@ -477,7 +477,15 @@ SCOPE is `song' (default) or `playlist'.  An empty KEYWORD signals
     (let ((key (list :search keyword scope))
           (request (list :op :search :keyword keyword
                          :scope scope
-                         :limit (etaf-ncm--read app :page-size)
+                         ;; The same depth a library browse loads: a page
+                         ;; sized to the window leaves nothing to scroll, so a
+                         ;; search showing every match in the first frame has
+                         ;; no way to reach the rest of them.  The search API
+                         ;; answers nothing past a hundred, so that is the cap:
+                         ;; asking for more returned an empty list.
+                         :limit (min 100
+                                     (max etaf-ncm-list-limit etaf-ncm-fetch-limit
+                                          (* 3 (etaf-ncm--read app :page-size))))
                          :resource (if (eq scope 'playlist) :playlists :songs)))
           (same-p (equal (list :search keyword scope)
                          (plist-get app :list-key))))
