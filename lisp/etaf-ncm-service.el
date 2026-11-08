@@ -258,20 +258,18 @@ A second app's newer entries win over this app's older snapshot."
             (setq temporary nil))
         (when (and temporary (file-exists-p temporary)) (delete-file temporary))))))
 
-(defun etaf-ncm-parse-lyric (text)
+(defun etaf-ncm-parse-lyric (text &optional translation)
   "Parse LRC TEXT into a list of (SECONDS . LINE) ordered by SECONDS.
 Lines without a timestamp are dropped, empty ones are kept so pauses in the
-song stay visible.  TEXT may be nil."
-  (let (entries)
+song stay visible.  TRANSLATION folds the underscores NetEase joins a
+multi-line translation with into spaces; a lyric line keeps its underscores,
+which are part of a name there (a producer, an address)."
+  (let ((joiner (if translation "[_\uFF3F\u0332\u2017]+" nil))
+        entries)
     (dolist (line (split-string (or text "") "\n"))
       (when (string-match
              "\\`\\(?:\\[[0-9]+:[0-9]+\\(?:[.:][0-9]+\\)?\\]\\)+\\(.*\\)\\'" line)
-        (let ((body (string-trim
-                     ;; NetEase joins the lines of a multi-line translation
-                     ;; with an underscore, and some of them are the full-width
-                     ;; one; drawn as-is they read as stray underlines in the
-                     ;; middle of a sentence.
-                     (replace-regexp-in-string "[_＿]+" " " (match-string 1 line))))
+        (let ((body (string-trim (match-string 1 line)))
               (start 0))
           (while (string-match "\\[\\([0-9]+\\):\\([0-9]+\\)\\(?:[.:]\\([0-9]+\\)\\)?\\]" line start)
             (setq start (match-end 0))
@@ -282,7 +280,9 @@ song stay visible.  TEXT may be nil."
                                (/ (string-to-number fraction)
                                   (expt 10.0 (length fraction)))
                              0)))
-              (push (cons (+ (* minutes 60) seconds millis) body) entries))))))
+              (push (cons (+ (* minutes 60) seconds millis)
+                          (if joiner (replace-regexp-in-string joiner " " body) body))
+                    entries))))))
     (sort (nreverse entries) (lambda (a b) (< (car a) (car b))))))
 
 ;;; ---------------------------------------------------------------------------

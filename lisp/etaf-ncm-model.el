@@ -1651,7 +1651,7 @@ backend request; a miss fetches and stores the text for the next session."
         (etaf-ncm--write app :lyric
                          (list :id song-id
                                :lines (etaf-ncm-parse-lyric (plist-get cached :lyric))
-                               :trans (etaf-ncm-parse-lyric (plist-get cached :trans))
+                               :trans (etaf-ncm-parse-lyric (plist-get cached :trans) t)
                                :loading nil))
       (etaf-ncm--write app :lyric (list :id song-id :lines nil :trans nil :loading t))
       (etaf-ncm--call
@@ -1666,7 +1666,7 @@ backend request; a miss fetches and stores the text for the next session."
                     (etaf-ncm--write app :lyric
                                      (list :id song-id
                                            :lines (etaf-ncm-parse-lyric lyric)
-                                           :trans (etaf-ncm-parse-lyric trans)
+                                           :trans (etaf-ncm-parse-lyric trans t)
                                            :loading nil)))))
        :on-error (lambda (_message _hint _code)
                    (when (equal song-id (plist-get (etaf-ncm--read app :lyric) :id))
