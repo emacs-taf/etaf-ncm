@@ -268,9 +268,10 @@ song stay visible.  TEXT may be nil."
              "\\`\\(?:\\[[0-9]+:[0-9]+\\(?:[.:][0-9]+\\)?\\]\\)+\\(.*\\)\\'" line)
         (let ((body (string-trim
                      ;; NetEase joins the lines of a multi-line translation
-                     ;; with an underscore; drawn as-is it reads as stray
-                     ;; underlines in the middle of a sentence.
-                     (replace-regexp-in-string "_+" " " (match-string 1 line))))
+                     ;; with an underscore, and some of them are the full-width
+                     ;; one; drawn as-is they read as stray underlines in the
+                     ;; middle of a sentence.
+                     (replace-regexp-in-string "[_＿]+" " " (match-string 1 line))))
               (start 0))
           (while (string-match "\\[\\([0-9]+\\):\\([0-9]+\\)\\(?:[.:]\\([0-9]+\\)\\)?\\]" line start)
             (setq start (match-end 0))
