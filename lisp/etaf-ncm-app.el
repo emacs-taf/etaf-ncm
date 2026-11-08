@@ -420,9 +420,21 @@ The meter follows the source mpv reports, so the bars move with the music; a
 paused player, a missing ffmpeg or an ended track leaves them at silence and
 the page keeps rendering."
   (when (eq (etaf-ncm--read app :screen) 'now)
-    (let ((source (plist-get (etaf-ncm--read app :status) :source)))
+    (let* ((status (etaf-ncm--read app :status))
+           (source (plist-get status :source))
+           ;; The track, not its URL, is the cache key: the URL carries a fresh
+           ;; signed query on every request, so the same song would never hit the
+           ;; copy the meter already decoded for it.
+           (key (let ((title (plist-get status :title))
+                      (artist (plist-get status :artist)))
+                  (and (stringp title) (not (string-empty-p title))
+                       (format "%s\t%s\t%s"
+                               title (or artist "")
+                               (or (plist-get status :album) ""))))))
       (if (etaf-ncm--playing-p app)
-          (etaf-ncm-meter-start source (etaf-ncm--clock app))
+          (progn
+            (when key (etaf-ncm-meter--ensure-cache source key))
+            (etaf-ncm-meter-start source (etaf-ncm--clock app) key))
         (etaf-ncm-meter-stop))
       ;; The levels travel to the page, not a string: the page decides how many
       ;; bars fit the band it has.

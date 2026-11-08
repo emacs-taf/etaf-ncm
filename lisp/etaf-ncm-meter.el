@@ -39,6 +39,17 @@ the beat it belongs to, long enough for the low bands to resolve."
   :type 'integer
   :group 'etaf-ncm)
 
+(defcustom etaf-ncm-meter-cache-directory
+  (expand-file-name "etaf-ncm/meter"
+                    (or (getenv "XDG_CACHE_HOME")
+                        (expand-file-name "~/.cache")))
+  "Directory holding a decoded copy of each track.
+A decoded copy is what makes a seek instant: the meter then reads its window
+from a file instead of asking a streaming server to jump, which takes seconds
+on the network and is what made the bars freeze after a drag."
+  :type 'directory
+  :group 'etaf-ncm)
+
 (defconst etaf-ncm-meter--bands '(60 3600)
   "Lowest and highest band centre the spectrum covers, in hertz.")
 
@@ -56,6 +67,9 @@ spectrum reads at a glance instead of as a wall of equal columns.")
 (defconst etaf-ncm-meter--decay 0.80
   "Share of the previous level a falling bar keeps.
 Bars drop smoothly and rise at once, which is how a level meter reads." )
+
+(defvar etaf-ncm-meter--cache-file nil
+  "Decoded copy the meter reads instead of a decoder, or nil.")
 
 (defvar etaf-ncm-meter--process nil
   "Decoder process feeding the meter, or nil.")
@@ -102,14 +116,18 @@ playback speed, so the bars would trail the music by that moment forever.  A
 difference larger than this restarts it from where the music is now.")
 
 (defun etaf-ncm-meter-live-p ()
-  "Return non-nil when a decoder is feeding the meter."
-  (and etaf-ncm-meter--process (process-live-p etaf-ncm-meter--process)))
+  "Return non-nil when the meter has audio to read.
+That is a decoder feeding it, or the decoded copy of the track."
+  (or (and etaf-ncm-meter--cache-file
+           (file-exists-p etaf-ncm-meter--cache-file))
+      (and etaf-ncm-meter--process (process-live-p etaf-ncm-meter--process))))
 
 (defun etaf-ncm-meter-stop ()
   "Stop the decoder and forget its samples."
   (when (process-live-p etaf-ncm-meter--process)
     (delete-process etaf-ncm-meter--process))
   (setq etaf-ncm-meter--process nil
+        etaf-ncm-meter--cache-file nil
         etaf-ncm-meter--pending nil
         etaf-ncm-meter--levels nil
         etaf-ncm-meter--source nil
@@ -139,13 +157,67 @@ difference larger than this restarts it from where the music is now.")
   (and (stringp source)
        (string-match-p "\\`\\(https?\\|rtmp\\|rtsp\\):" source)))
 
-(defun etaf-ncm-meter-start (source position)
+(defun etaf-ncm-meter--cache-paths (key)
+  "Return (PCM . DONE) for cache KEY, or nil without a key."
+  (when (and (stringp key) (not (string-empty-p key)))
+    (let ((name (md5 key)))
+      (cons (expand-file-name (concat name ".pcm") etaf-ncm-meter-cache-directory)
+            (expand-file-name (concat name ".done") etaf-ncm-meter-cache-directory)))))
+
+(defun etaf-ncm-meter--cache-ready (key)
+  "Return the decoded file for KEY when it is complete, else nil."
+  (when-let* ((paths (etaf-ncm-meter--cache-paths key))
+              (pcm (car paths))
+              (done (cdr paths)))
+    (and (file-exists-p done) (file-exists-p pcm)
+         (> (file-attribute-size (file-attributes pcm)) 0)
+         pcm)))
+
+(defun etaf-ncm-meter--ensure-cache (source key)
+  "Decode SOURCE into a cached file for KEY, once, in the background."
+  (when-let* ((paths (etaf-ncm-meter--cache-paths key))
+              (pcm (car paths))
+              (done (cdr paths))
+              ((not (file-exists-p done)))
+              ((not (file-exists-p pcm))))
+    (make-directory (file-name-directory pcm) t)
+    (make-process
+     :name "etaf-ncm-meter-cache"
+     :command (list etaf-ncm-meter-program "-v" "error" "-i" source
+                    "-vn" "-ac" "1"
+                    "-ar" (number-to-string etaf-ncm-meter-rate)
+                    "-f" "s16le" pcm)
+     :noquery t
+     :sentinel (lambda (process _event)
+                 (when (and (memq (process-status process) '(exit signal))
+                            (eq 0 (process-exit-status process)))
+                   (ignore-errors (write-region "" nil done)))))))
+
+(defun etaf-ncm-meter--cached-samples (file position)
+  "Return one analysis window of samples from FILE at POSITION seconds."
+  (let* ((size (file-attribute-size (file-attributes file)))
+         (offset (* (round (* position etaf-ncm-meter-rate)) 2))
+         (want (* etaf-ncm-meter-window 2))
+         (bytes (min want (max 0 (- size offset)))))
+    (when (> bytes 0)
+      (with-temp-buffer
+        (set-buffer-multibyte nil)
+        (insert-file-contents-literally file nil offset (+ offset bytes))
+        (buffer-string)))))
+
+(defun etaf-ncm-meter-start (source position &optional cache-key)
   "Decode SOURCE from POSITION seconds and feed the meter; return non-nil.
 SOURCE is the file or stream URL the backend is playing.  A request for what is
 already decoding keeps it running, so a status tick never restarts the pipe; a
 seek restarts it from the new position, because audio the listener jumped away
-from would otherwise keep driving the bars."
+from would otherwise keep driving the bars.
+
+CACHE-KEY names a decoded copy of SOURCE.  Once that copy is complete the meter
+stops using a decoder altogether and reads its window from the file, so a seek
+costs nothing: asking a streaming server to jump takes seconds, and that wait is
+what the bars showed as a freeze."
   (let* ((position (float (max 0 (or position 0))))
+         (cached (etaf-ncm-meter--cache-ready cache-key))
          ;; A live process is not a working decoder: after a seek into a stream
          ;; the pipe can sit downloading with no samples.  Anything that has not
          ;; written a byte within the grace period counts as failed, so the next
@@ -165,8 +237,19 @@ from would otherwise keep driving the bars."
          ;; Restart only for a real jump: a decoder trails by the lead-in for a
          ;; moment and that is not a seek.
          (behind (> (abs trail) etaf-ncm-meter--drift)))
-    (when (and (stringp source) (not (string-empty-p source))
-               (executable-find etaf-ncm-meter-program))
+    (cond
+     (cached
+      (when (process-live-p etaf-ncm-meter--process)
+        (delete-process etaf-ncm-meter--process))
+      (setq etaf-ncm-meter--process nil
+            etaf-ncm-meter--cache-file cached
+            etaf-ncm-meter--source source
+            etaf-ncm-meter--position position
+            etaf-ncm-meter--seen position)
+      t)
+     ((and (stringp source) (not (string-empty-p source))
+           (executable-find etaf-ncm-meter-program))
+      (setq etaf-ncm-meter--cache-file nil)
       (if (and live (not (and moved behind)))
           (setq etaf-ncm-meter--seen position)
         ;; Kill the pipe but keep the samples it already produced: clearing
@@ -216,12 +299,18 @@ from would otherwise keep driving the bars."
                    :stderr (generate-new-buffer " *etaf-ncm meter*")
                    :filter #'etaf-ncm-meter--collect))
           (error (message "etaf-ncm meter: %s" error))))
-      (etaf-ncm-meter-live-p))))
+      (etaf-ncm-meter-live-p))
+     (t nil))))
 
 (defun etaf-ncm-meter--samples ()
-  "Return the newest analysis window of pending samples as numbers in -1..1."
+  "Return the newest analysis window of samples as numbers in -1..1.
+The window comes from the decoded copy when there is one, so it is always the
+audio at the position being played; otherwise from the decoder's pipe."
   (let* ((window (* 2 etaf-ncm-meter-window))
-         (raw etaf-ncm-meter--pending)
+         (raw (or (and etaf-ncm-meter--cache-file
+                       (etaf-ncm-meter--cached-samples etaf-ncm-meter--cache-file
+                                                       etaf-ncm-meter--position))
+                  etaf-ncm-meter--pending))
          (start (max 0 (- (length raw) window)))
          (count (/ (- (length raw) start) 2))
          (samples (make-vector count 0.0)))
@@ -276,7 +365,9 @@ rather than a half; otherwise every bar reads six decibels too low."
 A bar rises immediately and falls at `etaf-ncm-meter--decay' per reading, so a
 beat reads as a hit rather than a swell.  With no live decoder every bar sits
 near silence, which lets the page keep one drawing path."
-  (let* ((samples (if (etaf-ncm-meter-live-p) (etaf-ncm-meter--samples) []))
+  (let* ((samples (if (or etaf-ncm-meter--cache-file (etaf-ncm-meter-live-p))
+                      (etaf-ncm-meter--samples)
+                    []))
          (enough (>= (length samples) 128))
          (window (and enough (etaf-ncm-meter--window samples)))
          (previous (or etaf-ncm-meter--levels (make-list bars 0.0)))
