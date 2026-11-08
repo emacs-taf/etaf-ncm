@@ -745,6 +745,16 @@ then reads as one picture instead of a black slab beside the artwork."
                 (round (* factor (logand v #x0000ff)))))
     color))
 
+(defun etaf-ncm--now-surface (accent panel-color)
+  "Return the playing page's text surface.
+On a dark host the surface is the cover's own colour, dimmed, so the page reads
+as one picture.  On a light host that same slab is a black block beside a white
+window: the surface there is the light palette's panel, which the glyphs already
+have ink for."
+  (if (eq (etaf-ncm--effective-mode) 'light)
+      (etaf-ncm-color :panel)
+    (etaf-ncm--shade (or accent panel-color) 0.34)))
+
 (defun etaf-ncm--center-text (text columns)
   "Return TEXT padded to sit centred in COLUMNS cells.
 `text-align' is not honoured inside a nested component, so the lyric centres
@@ -1574,13 +1584,7 @@ the text block (`:panel-left', `:panel-top', `:panel-columns', `:panel-rows',
          ;; it drops the lyric: the picture is the page there, and words crowded
          ;; into the middle of it read as neither.
          (poster-small (or (< rows 26) (< columns 60)))
-         (immersive-rows (max 6 (min (- rows 8) (- rows 4)
-                                     (or (plist-get (etaf-ncm-now-sections
-                                                     (- rows 4)
-                                                     (if poster-small 0 nil)
-                                                     spectrum lyric-lines)
-                                                    :rows)
-                                         6))))
+
          (art-width (if immersive (- hero-columns panel-columns 8) hero-columns))
          (art-height (if (and immersive (not wide)) panel-top hero-rows))
          ;; Whole cells, one in from every edge of the band: the cover keeps a
@@ -1597,28 +1601,31 @@ the text block (`:panel-left', `:panel-top', `:panel-columns', `:panel-rows',
     (list :mode mode
           ;; The parts are measured from the block's own height, so the two can
           ;; never disagree about how many rows exist.
-          :sections (if immersive
-                        (etaf-ncm-now-sections immersive-rows
-                                               (if poster-small 0 nil)
-                                               spectrum lyric-lines)
-                      (etaf-ncm-now-sections panel-rows nil spectrum lyric-lines))
+          ;; The parts are measured from the height the block actually paints,
+          ;; so the two can never disagree about how many rows exist.  The
+          ;; poster's block is the full height of the page now, and on a small
+          ;; window it still drops the lyric.
+          :sections (etaf-ncm-now-sections panel-rows
+                                           (if (and immersive poster-small) 0 nil)
+                                           spectrum lyric-lines)
           :floating (or immersive tiny)
           :stacked (not (or wide tiny))
           :hero-columns hero-columns :hero-rows (max 8 hero-rows)
           ;; The poster's block keeps a margin on the right: pressed against
           ;; the edge it reads as a panel bolted on rather than floating over
           ;; the picture.
-          :panel-left (cond (immersive (- columns panel-columns 7))
+          ;; The poster's block meets the right edge: a gap there read as a
+          ;; pane that had not finished drawing.
+          :panel-left (cond (immersive (- columns panel-columns))
                             (wide (- columns half))
                             (t 0))
-          ;; The poster's block floats on the right, over the faded side, and
-          ;; centres vertically: the cover keeps the left of the page whole, the
-          ;; way a poster lays its title beside the artwork instead of over it.
-          :panel-top (if immersive
-                          (max 1 (round (/ (- rows immersive-rows) 2)))
-                        panel-top)
+          ;; The poster's block keeps the right of the page from edge to edge,
+          ;; as the split design does: a floating block left a band of picture
+          ;; above and below it, and at any size that read as a gap in the pane
+          ;; rather than a design.
+          :panel-top (if immersive 0 panel-top)
           :panel-columns panel-columns
-          :panel-rows (max 1 (if immersive immersive-rows panel-rows))
+          :panel-rows (max 1 (if immersive rows panel-rows))
           :content-columns (max 16 (min etaf-ncm--now-content-max
                                         (- panel-columns 4)))
           :art-columns art-columns :art-rows art-rows
@@ -1825,7 +1832,7 @@ from `etaf-ncm-now-sections'."
                  ;; The text sits on the cover's own colour, not on the panel
                  ;; grey: the two halves then read as one picture instead of a
                  ;; black slab beside the artwork.
-                 :bgcolor (etaf-ncm--shade (or accent panel-color) 0.34)
+                 :bgcolor (etaf-ncm--now-surface accent panel-color)
              (expr column)))))
     (etaf-view
       (flex :ref 'ncm-now
@@ -1844,7 +1851,7 @@ from `etaf-ncm-now-sections'."
             ;; The page floor is the text block's colour: a row the layout
             ;; rounds off then shows the same surface instead of a dark cell in
             ;; the bottom corner.
-            :bgcolor (etaf-ncm--shade (or accent panel-color) 0.34)
+            :bgcolor (etaf-ncm--now-surface accent panel-color)
             :role 'dialog :aria-label "正在播放"
             :tab-index 0 :on-dismiss on-back
         (expr band)
