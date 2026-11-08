@@ -284,7 +284,9 @@ what the bars showed as a freeze."
               etaf-ncm-meter--position position
               etaf-ncm-meter--seen position
               etaf-ncm-meter--started-at (float-time))
-        (condition-case nil
+        ;; Name the caught condition: the handler reports it, and a `nil' var
+        ;; there makes the message read an unbound `error'.
+        (condition-case failure
             (setq etaf-ncm-meter--process
                   (make-process
                    :name "etaf-ncm-meter"
@@ -314,7 +316,7 @@ what the bars showed as a freeze."
                    :noquery t
                    :stderr (generate-new-buffer " *etaf-ncm meter*")
                    :filter #'etaf-ncm-meter--collect))
-          (error (message "etaf-ncm meter: %s" (error-message-string error)))))
+          (error (message "etaf-ncm meter: %s" (error-message-string failure)))))
       (etaf-ncm-meter-live-p))
      (t nil))))
 
