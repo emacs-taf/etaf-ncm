@@ -88,6 +88,13 @@ drift during that moment would restart it forever.")
 Opening a stream and filling the pipe costs about this long; seeking past it
 means the first samples that come out belong to the moment being heard.")
 
+(defconst etaf-ncm-meter--startup-grace 3.0
+  "Seconds a fresh decoder may take before the meter calls it stuck.
+A seek into a stream can open the pipe and then sit downloading without writing
+a sample; the process is alive, so nothing restarted it, and the bars stayed at
+silence for the rest of the song.  After this long with no samples the decoder
+counts as failed and the next tick starts it again.")
+
 (defconst etaf-ncm-meter--drift 6.0
   "Seconds the player may differ from the decoded audio before a restart.
 Starting a decoder on a stream costs a moment, and from then on it reads at
@@ -127,6 +134,11 @@ difference larger than this restarts it from where the music is now.")
                                     (- (length etaf-ncm-meter--pending) keep)))
                     chunk)))))
 
+(defun etaf-ncm-meter--stream-p (source)
+  "Return non-nil when SOURCE is a stream the meter cannot seek through."
+  (and (stringp source)
+       (string-match-p "\\`\\(https?\\|rtmp\\|rtsp\\):" source)))
+
 (defun etaf-ncm-meter-start (source position)
   "Decode SOURCE from POSITION seconds and feed the meter; return non-nil.
 SOURCE is the file or stream URL the backend is playing.  A request for what is
@@ -134,8 +146,15 @@ already decoding keeps it running, so a status tick never restarts the pipe; a
 seek restarts it from the new position, because audio the listener jumped away
 from would otherwise keep driving the bars."
   (let* ((position (float (max 0 (or position 0))))
+         ;; A live process is not a working decoder: after a seek into a stream
+         ;; the pipe can sit downloading with no samples.  Anything that has not
+         ;; written a byte within the grace period counts as failed, so the next
+         ;; tick starts it again from where the player is now.
          (live (and (etaf-ncm-meter-live-p)
-                    (equal source etaf-ncm-meter--source)))
+                    (equal source etaf-ncm-meter--source)
+                    (or etaf-ncm-meter--pending
+                        (< (- (float-time) (or etaf-ncm-meter--started-at 0))
+                           etaf-ncm-meter--startup-grace))))
          ;; Only a clock that moved can mean a seek.  A tick that repeats the
          ;; same second (a stalled poll, a paused player) must not look like
          ;; one, or the decoder would restart before it produces any samples.
@@ -166,27 +185,33 @@ from would otherwise keep driving the bars."
             (setq etaf-ncm-meter--process
                   (make-process
                    :name "etaf-ncm-meter"
-                   :command (list etaf-ncm-meter-program
-                                  "-v" "error"
-                                  ;; `-re' paces the read at playback speed;
-                                  ;; without it ffmpeg decodes the rest of the
-                                  ;; track at once and the bars freeze.
-                                  "-re"
-                                  ;; `-ss' after `-i' seeks exactly; before it
-                                  ;; ffmpeg jumps to the nearest key frame and
-                                  ;; the meter can start seconds away from what
-                                  ;; the listener hears.
-                                  "-i" source
-                                  "-ss" (format "%.2f" position)
-                                  "-vn" "-ac" "1"
-                                  "-ar" (number-to-string etaf-ncm-meter-rate)
-                                  "-f" "s16le" "-")
+                   ;; `-re' paces the read at playback speed; without it ffmpeg
+                   ;; decodes the rest of the track at once and the bars freeze.
+                   ;; A local file seeks exactly when `-ss' comes after `-i'; a
+                   ;; stream cannot, because ffmpeg would download and decode
+                   ;; everything up to the spot before writing a sample, so the
+                   ;; meter stayed silent after a seek.
+                   ;;
+                   ;; `append', not a nested `list': a list inside the argument
+                   ;; list reaches ffmpeg as a single argument, it exits without
+                   ;; a word, and the bars stay flat while the process is already
+                   ;; gone.
+                   :command (append
+                             (list etaf-ncm-meter-program "-v" "error" "-re")
+                             (if (etaf-ncm-meter--stream-p source)
+                                 (list "-ss" (format "%.2f" position)
+                                       "-i" source)
+                               (list "-i" source
+                                     "-ss" (format "%.2f" position)))
+                             (list "-vn" "-ac" "1"
+                                   "-ar" (number-to-string etaf-ncm-meter-rate)
+                                   "-f" "s16le" "-"))
                    :connection-type 'pipe
                    :coding 'no-conversion
                    :noquery t
                    :stderr (generate-new-buffer " *etaf-ncm meter*")
                    :filter #'etaf-ncm-meter--collect))
-          (error nil)))
+          (error (message "etaf-ncm meter: %s" error))))
       (etaf-ncm-meter-live-p))))
 
 (defun etaf-ncm-meter--samples ()
