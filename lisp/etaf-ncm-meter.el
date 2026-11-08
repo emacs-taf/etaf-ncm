@@ -314,7 +314,7 @@ what the bars showed as a freeze."
                    :noquery t
                    :stderr (generate-new-buffer " *etaf-ncm meter*")
                    :filter #'etaf-ncm-meter--collect))
-          (error (message "etaf-ncm meter: %s" error))))
+          (error (message "etaf-ncm meter: %s" (error-message-string error)))))
       (etaf-ncm-meter-live-p))
      (t nil))))
 
@@ -349,7 +349,7 @@ audio at the position being played; otherwise from the decoder's pipe."
 (defun etaf-ncm-meter--goertzel (samples frequency)
   "Return SAMPLES' magnitude at FREQUENCY in hertz."
   (let* ((n (length samples))
-         (omega (/ (* 2 pi frequency) etaf-ncm-meter-rate))
+         (omega (/ (* 2 float-pi frequency) etaf-ncm-meter-rate))
          (coefficient (* 2 (cos omega)))
          (s1 0.0) (s2 0.0))
     (dotimes (index n)
@@ -374,7 +374,7 @@ rather than a half; otherwise every bar reads six decibels too low."
          (amplitude (/ magnitude n 0.25)))
     (if (<= amplitude 1.0e-6)
         -120.0
-      (* 20 (log10 amplitude)))))
+      (* 20 (log amplitude 10)))))
 
 (defun etaf-ncm-meter-levels (bars)
   "Return BARS audio levels in 0..1 for the newest samples.
