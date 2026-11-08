@@ -124,16 +124,18 @@ LRC repeats a timestamp."
           :loading (plist-get lyric :loading))))
 
 (defun etaf-ncm--queue-panel (model)
-  "Return MODEL's queue entries around the playing track."
+  "Return MODEL's queue entries.
+Every entry is published, up to the canvas limit: the panel is one scrolling
+canvas, the way the library list is, so a gesture runs through the whole queue
+in one continuous movement."
   (let* ((queue (etaf-ncm--read model :queue))
          (songs (etaf-ncm--list (plist-get queue :songs)))
-         (size (etaf-ncm--read model :queue-rows))
+         (size (max 1 (min (length songs) etaf-ncm-render-limit)))
          (pos (or (plist-get queue :pos) 0))
-         (start (etaf-ncm--queue-window-start model)))
+         (start 0))
     (list :count (or (plist-get queue :count) 0)
           :pos pos
-          :entries (cl-loop for song in (seq-subseq songs start
-                                                    (min (length songs) (+ start size)))
+          :entries (cl-loop for song in (seq-take songs size)
                             for index from start
                             collect (list :index (1+ index)
                                           :name (or (plist-get song :name) "")
@@ -182,10 +184,9 @@ the player.  This geometry is independent of point and the selected window."
 
 (defun etaf-ncm--wheel (event delta)
   "Scroll the pane under EVENT by DELTA rows.
-The queue is a windowed list, so its window moves through the model.  The
-library list is one scrolling canvas, so its scroll goes through the same
-ETAF scroll the renderer uses, which keeps a gesture continuous instead of
-turning each tick into a page move."
+Both panes are scrolling canvases, so a gesture goes through the same ETAF
+scroll the renderer uses and stays continuous instead of turning each tick into
+a page move."
   (let* ((position (event-start event))
          (window (posn-window position)))
     (when (window-live-p window)
@@ -201,7 +202,14 @@ turning each tick into a page move."
                               (etaf-ncm--read model :layout) (etaf-ncm--read model :pane)
                               (etaf-ncm--read model :aside)))))
           (cond
-           (queue-p (etaf-ncm--scroll-queue model delta))
+           (queue-p
+            ;; One canvas, so a gesture moves it continuously with its
+            ;; momentum, exactly as the library list does.  Moving a window of
+            ;; rows a step at a time is what felt stiff.
+            (when-let* ((runtime (etaf-runtime-for-buffer (current-buffer)))
+                        ((etaf-runtime-mounted-p runtime)))
+              (ignore-errors
+                (etaf-scroll-by runtime 'ncm-queue-scroll delta))))
            ((etaf-ncm--list-shown-p model)
             (when-let* ((runtime (etaf-runtime-for-buffer (current-buffer)))
                         ((etaf-runtime-mounted-p runtime)))
