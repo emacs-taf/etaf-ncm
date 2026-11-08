@@ -258,13 +258,33 @@ A second app's newer entries win over this app's older snapshot."
             (setq temporary nil))
         (when (and temporary (file-exists-p temporary)) (delete-file temporary))))))
 
+(defconst etaf-ncm--translation-joiner "[_\uFF3F\u0332\u2017]+"
+  "Characters NetEase joins a multi-line translation with.
+Drawn as-is they read as stray underlines in the middle of a sentence.")
+
+(defconst etaf-ncm--blank-runs "[\u3000\u00a0]+"
+  "Blanks Ebox paints as a rule.
+A full-width or no-break space has no glyph of its own, so the renderer fills it
+with a line on the baseline: a lyric like `ある　so sweet' comes out underlined
+at the gap.  A plain space is drawn as nothing, which is what the line means.")
+
+(defun etaf-ncm--fold-joiners (text)
+  "Return TEXT with translation joiners and painterly blanks folded to spaces.
+Both ends fold: a lyric read from the cache and one parsed fresh must render the
+same, and a page that already holds parsed lines still gets clean text."
+  (if (stringp text)
+      (replace-regexp-in-string etaf-ncm--blank-runs " "
+                                (replace-regexp-in-string
+                                 etaf-ncm--translation-joiner " " text))
+    text))
+
 (defun etaf-ncm-parse-lyric (text &optional translation)
   "Parse LRC TEXT into a list of (SECONDS . LINE) ordered by SECONDS.
 Lines without a timestamp are dropped, empty ones are kept so pauses in the
 song stay visible.  TRANSLATION folds the underscores NetEase joins a
 multi-line translation with into spaces; a lyric line keeps its underscores,
 which are part of a name there (a producer, an address)."
-  (let ((joiner (if translation "[_\uFF3F\u0332\u2017]+" nil))
+  (let ((joiner (and translation etaf-ncm--translation-joiner))
         entries)
     (dolist (line (split-string (or text "") "\n"))
       (when (string-match

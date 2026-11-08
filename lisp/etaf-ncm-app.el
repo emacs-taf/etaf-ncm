@@ -102,10 +102,13 @@ LRC repeats a timestamp."
                            collect (list (car line) (cdr line) ordinal)))
          (cells (if visible
                     (cl-loop for line in visible
-                             append (append (list (list :text (nth 1 line)
+                             append (append (list (list :text (etaf-ncm--fold-joiners
+                                                                 (nth 1 line))
                                                         :current (equal (car line) (car (nth index lines)))))
                                             (when-let* ((translation (cl-assoc (car line) trans :test #'=)))
-                                              (list (list :text (cdr translation) :translation t)))))
+                                              (list (list :text (etaf-ncm--fold-joiners
+                                                                 (cdr translation))
+                                                          :translation t)))))
                   (list (list :text (if (plist-get lyric :loading) "正在取歌词..." "这首歌没有歌词")))))
          ;; Pad the window to its full budget so a short lyric sits as one
          ;; centred block: a card, a short page and a tall page all paint the
