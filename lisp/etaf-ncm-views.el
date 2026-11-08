@@ -1409,14 +1409,28 @@ would otherwise touch the progress line.")
   [?\s ?▁ ?▂ ?▃ ?▄ ?▅ ?▆ ?▇ ?█]
   "Eighth blocks the spectrum grows through, lowest first.")
 
-(defun etaf-ncm--now-bars-text (levels rows)
+(defun etaf-ncm--now-bars-text (levels rows &optional width)
   "Return LEVELS as ROWS lines of eighth-block bars, one gap column apart.
 A level is a height from nothing to ROWS whole rows: each finished row is a
 full block, and the row the level stops in shows its fraction, so silence
-paints nothing instead of a full bar."
-  (let ((cells (mapcar (lambda (level)
-                         (round (* (max 0 (min 1 level)) rows 8)))
-                       levels)))
+paints nothing instead of a full bar.
+
+WIDTH fills the band: the bars are resampled to `(width + 1) / 2' of them, so
+the meter runs from the elapsed time to the duration instead of stopping short
+and leaving the right end empty."
+  (let* ((count (if (and width (> width 1)) (max 1 (/ (1+ width) 2)) (length levels)))
+         (levels (if (and (listp levels) (> (length levels) 0))
+                     (cl-loop for index below count
+                              collect (nth (min (1- (length levels))
+                                                (floor (* index (length levels)) count))
+                                           levels))
+                   (make-list count 0)))
+         (cells (mapcar (lambda (level)
+                          ;; One eighth of a row at silence: the band keeps its
+                          ;; place on the page instead of appearing when the
+                          ;; music starts and pushing the words up.
+                          (max 1 (round (* (max 0 (min 1 level)) rows 8))))
+                        levels)))
     (mapconcat
      (lambda (row)
        (let ((from-bottom (- rows 1 row)))
@@ -1605,7 +1619,11 @@ the text block (`:panel-left', `:panel-top', `:panel-columns', `:panel-rows',
   "Return the playing page's parts for a window ROWS tall.
 MAX-LYRICS caps the lyric block; zero drops it, which is what a poster on a
 small window wants: the picture, the track and the controls, without words
-crowded into the middle.
+crowded into the middle.  LYRIC-LINES answers whether the song has words at all.
+SPECTRUM is accepted for callers that still measure with it and does not change
+the parts: the meter keeps its rows from the start, so the words are never laid
+out over its place and then pushed up.
+
 The page adds a part only at the height where it reads: a short window is the
 poster and one row of transport buttons, and each further part — the track, the
 artist, the progress line, the spectrum and the lyric — appears at its own
@@ -1627,13 +1645,11 @@ the window does not have."
          (transport-rows (if (>= rows 22) 2 1))
          ;; The bars claim rows only when there is a spectrum to draw into them;
          ;; the value stays the row count, because the block adds it up.
-         ;; Bars claim rows only when the text has a bar in it.  A meter that
-         ;; has not sampled yet still returns a full block of spaces, and
-         ;; `string-empty-p' calls that non-empty: five rows of nothing under the
-         ;; lyric, growing with the window.
-         (bars (when (and (>= rows 28) etaf-ncm-now-bar-rows
-                          (stringp spectrum)
-                          (string-match-p "[^[:space:]]" spectrum))
+         ;; The meter keeps its rows from the start.  Taking them only once the
+         ;; first sample arrived made the page lay the words out over the meter's
+         ;; place and then shove them up when the music began.
+         (_spectrum spectrum)
+         (bars (when (and (>= rows 28) etaf-ncm-now-bar-rows)
                  etaf-ncm-now-bar-rows))
          ;; One clear row above the block, then each part.  The row carrying the
          ;; way back to the player is always drawn, so it is always budgeted;
@@ -1746,7 +1762,8 @@ from `etaf-ncm-now-sections'."
              (flex :if bars :height (list 'lh bars) :width 'stretch :flex-shrink 0
                    :color accent :overflow 'hidden
                (text :ref 'ncm-now-bars
-                     (expr (or (etaf-ncm--reactive-text spectrum) " "))))
+                     (expr (etaf-ncm--now-bars-text
+                            (etaf-ncm--reactive-text spectrum) bars content))))
              (flex :if bars :height '(lh 1))
              ;; The progress line keeps a clear row above it: the bar reads as a
              ;; separate line from the words, and `etaf-ncm-now-sections' counts

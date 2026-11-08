@@ -424,10 +424,10 @@ the page keeps rendering."
       (if (etaf-ncm--playing-p app)
           (etaf-ncm-meter-start source (etaf-ncm--clock app))
         (etaf-ncm-meter-stop))
+      ;; The levels travel to the page, not a string: the page decides how many
+      ;; bars fit the band it has.
       (etaf-ncm--write app :spectrum
-                       (etaf-ncm--now-bars-text
-                        (etaf-ncm-meter-levels etaf-ncm-now-bars)
-                        etaf-ncm-now-bar-rows)))))
+                       (append (etaf-ncm-meter-levels etaf-ncm-now-bars) nil)))))
 
 (defun etaf-ncm--start-visual (app)
   "Start APP's page frames: twelve spectrum samples a second."
