@@ -83,12 +83,12 @@ Bars drop smoothly and rise at once, which is how a level meter reads." )
 A decoder that has just started has produced no samples yet, and judging its
 drift during that moment would restart it forever.")
 
-(defconst etaf-ncm-meter--lead 1.1
+(defconst etaf-ncm-meter--lead 0.2
   "Seconds a fresh decoder starts past the music.
 Opening a stream and filling the pipe costs about this long; seeking past it
 means the first samples that come out belong to the moment being heard.")
 
-(defconst etaf-ncm-meter--drift 3.0
+(defconst etaf-ncm-meter--drift 6.0
   "Seconds the player may differ from the decoded audio before a restart.
 Starting a decoder on a stream costs a moment, and from then on it reads at
 playback speed, so the bars would trail the music by that moment forever.  A
@@ -172,8 +172,12 @@ from would otherwise keep driving the bars."
                                   ;; without it ffmpeg decodes the rest of the
                                   ;; track at once and the bars freeze.
                                   "-re"
-                                  "-ss" (format "%.2f" position)
+                                  ;; `-ss' after `-i' seeks exactly; before it
+                                  ;; ffmpeg jumps to the nearest key frame and
+                                  ;; the meter can start seconds away from what
+                                  ;; the listener hears.
                                   "-i" source
+                                  "-ss" (format "%.2f" position)
                                   "-vn" "-ac" "1"
                                   "-ar" (number-to-string etaf-ncm-meter-rate)
                                   "-f" "s16le" "-")
