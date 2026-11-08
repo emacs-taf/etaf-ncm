@@ -777,11 +777,11 @@ ALIGN centres the line in a small-size card and keeps it left in the panel."
                 (etaf-ncm-color (cond ((plist-get row :current) :accent)
                                       ((plist-get row :translation) :dim) (t :muted))))
        :font-weight (if (plist-get (etaf-value cell) :current) 'bold 'normal)
+    ;; A translation is told apart by its colour, not by a smaller face: Ebox
+    ;; does not scale text, so a `:height' face on the line drew a stray rule
+    ;; through it that read as an underline.
     (text (expr (let* ((row (etaf-value cell))
-                       (text (or (plist-get row :text) ""))
-                       (text (if (plist-get row :translation)
-                                 (propertize text 'face '(:height 0.85))
-                               text)))
+                       (text (or (plist-get row :text) "")))
                   (if (eq align 'center)
                       (etaf-ncm--center-text text columns)
                     text))))))
