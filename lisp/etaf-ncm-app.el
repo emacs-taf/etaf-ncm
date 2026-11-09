@@ -1281,19 +1281,27 @@ a session driven headlessly) applies the geometry at once."
             (etaf-set-value (cdr targets) (cdr lines)))
         (etaf-ncm--apply-list-highlights app lines)))))
 
-(defun etaf-ncm--fit-mode-line (buffer)
+(defun etaf-ncm--fit-mode-line (buffer window)
   "Paint BUFFER's mode line with the page's own colours.
 The mode line is a row of the same window, so a surface of its own drew a seam
 across the bottom of the player: the page ended in one colour and the mode line
-began in another."
-  (when (buffer-live-p buffer)
-    (with-current-buffer buffer
-      (let ((theme (etaf-ncm--read (etaf-app-state buffer) :theme)))
-        (ignore-errors
-          (face-remap-add-relative 'mode-line
-                                   :background (or (plist-get theme :ui-bg) "unspecified")
-                                   :foreground (or (plist-get theme :ui-fg) "unspecified")
-                                   :box nil))))))
+began in another.
+
+The face is set on the window's frame rather than remapped in the buffer: the
+renderer answers a buffer-local remap with a shade of its own, and the row still
+came out a different colour than the page above it."
+  (when (and (buffer-live-p buffer) (window-live-p window))
+    (let ((theme (with-current-buffer buffer
+                   (etaf-ncm--read (etaf-app-state buffer) :theme)))
+          (frame (window-frame window)))
+      (ignore-errors
+        ;; Both faces: an unfocused frame draws `mode-line-inactive', and a
+        ;; player in a panel is almost never the focused frame.
+        (dolist (face '(mode-line mode-line-inactive))
+          (set-face-attribute face frame
+                              :background (or (plist-get theme :ui-bg) "unspecified")
+                              :foreground (or (plist-get theme :ui-fg) "unspecified")
+                              :box nil))))))
 
 (defun etaf-ncm--fit-fringe (window)
   "Take up the pixels Ebox leaves unpainted in WINDOW with its right fringe.
@@ -1345,7 +1353,7 @@ the backend.  A caller-provided MODEL keeps its library, queue and selection."
                   :on-fit (lambda (window)
                             (plist-put model :buffer (current-buffer))
                             (etaf-ncm--fit-fringe window)
-                            (etaf-ncm--fit-mode-line (current-buffer))))))
+                            (etaf-ncm--fit-mode-line (current-buffer) window)))))
     ;; The canvas paints whole character cells, so a window whose pixel width is
     ;; not a multiple of the cell keeps a one-pixel column Ebox never covers and
     ;; the frame background shows through: a dark square in the bottom corner on
@@ -1354,7 +1362,7 @@ the backend.  A caller-provided MODEL keeps its library, queue and selection."
     ;; configuration hook re-enters it and leaves the page and the pointer on
     ;; different coordinates.
     (etaf-ncm--fit-fringe (get-buffer-window buffer))
-    (etaf-ncm--fit-mode-line buffer)
+    (etaf-ncm--fit-mode-line buffer (get-buffer-window buffer))
     (etaf-runtime-flush (etaf-runtime-for-buffer buffer))
     (etaf-ncm--apply-list-highlights model (etaf-ncm--list-highlights model))
     buffer))
