@@ -1281,6 +1281,20 @@ a session driven headlessly) applies the geometry at once."
             (etaf-set-value (cdr targets) (cdr lines)))
         (etaf-ncm--apply-list-highlights app lines)))))
 
+(defun etaf-ncm--fit-mode-line (buffer)
+  "Paint BUFFER's mode line with the page's own colours.
+The mode line is a row of the same window, so a surface of its own drew a seam
+across the bottom of the player: the page ended in one colour and the mode line
+began in another."
+  (when (buffer-live-p buffer)
+    (with-current-buffer buffer
+      (let ((theme (etaf-ncm--read (etaf-app-state buffer) :theme)))
+        (ignore-errors
+          (face-remap-add-relative 'mode-line
+                                   :background (or (plist-get theme :ui-bg) "unspecified")
+                                   :foreground (or (plist-get theme :ui-fg) "unspecified")
+                                   :box nil))))))
+
 (defun etaf-ncm--fit-fringe (window)
   "Take up the pixels Ebox leaves unpainted in WINDOW with its right fringe.
 The canvas paints whole character cells and keeps a little of the window to
@@ -1330,7 +1344,8 @@ the backend.  A caller-provided MODEL keeps its library, queue and selection."
                   ;; Mount-time focus and highlight work reads the buffer.
                   :on-fit (lambda (window)
                             (plist-put model :buffer (current-buffer))
-                            (etaf-ncm--fit-fringe window)))))
+                            (etaf-ncm--fit-fringe window)
+                            (etaf-ncm--fit-mode-line (current-buffer))))))
     ;; The canvas paints whole character cells, so a window whose pixel width is
     ;; not a multiple of the cell keeps a one-pixel column Ebox never covers and
     ;; the frame background shows through: a dark square in the bottom corner on
@@ -1339,6 +1354,7 @@ the backend.  A caller-provided MODEL keeps its library, queue and selection."
     ;; configuration hook re-enters it and leaves the page and the pointer on
     ;; different coordinates.
     (etaf-ncm--fit-fringe (get-buffer-window buffer))
+    (etaf-ncm--fit-mode-line buffer)
     (etaf-runtime-flush (etaf-runtime-for-buffer buffer))
     (etaf-ncm--apply-list-highlights model (etaf-ncm--list-highlights model))
     buffer))
