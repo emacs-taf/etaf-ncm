@@ -1296,6 +1296,10 @@ the backend.  A caller-provided MODEL keeps its library, queue and selection."
          (buffer (etaf-app-open
                   etaf-ncm-buffer-name (etaf-ncm-view model)
                   :state model
+                  ;; The mode line stays: it is where a reader looks for the
+                  ;; buffer's name, and hiding it made the player feel like a
+                  ;; separate application rather than a buffer in this session.
+                  :mode-line t
                   :background (lambda () (plist-get (etaf-ncm--read model :theme) :ui-bg))
                   ;; Mount-time focus and highlight work reads the buffer.
                   ;; Mount-time focus and highlight work reads the buffer.

@@ -57,7 +57,7 @@ A cached picture is only reused while the cover file behind it is unchanged."
     (format "%s-%s" (file-attribute-size attributes)
             (file-attribute-modification-time attributes))))
 
-(defconst etaf-ncm-hero--version 9
+(defconst etaf-ncm-hero--version 11
   "Version of the picture this module draws.
 Part of every cache key, so changing the recipe never serves an old backdrop.")
 
@@ -106,6 +106,19 @@ a move of the artwork reuses the other picture."
                            cutoff)
           (delete-file file))))))
 
+(defun etaf-ncm-hero--luma (hex)
+  "Return HEX's perceived lightness in 0..1, or nil when it is not a colour.
+HEX is `#RRGGBB'; the filter receives the colour without its `#', which is why
+the leading hash is optional here — reading only the hash form made every panel
+look dark and the light host kept the dim slab."
+  (when (and (stringp hex)
+             (string-match-p "\\`#?[[:xdigit:]]\\{6\\}\\'" hex))
+    (let ((v (string-to-number (substring hex (if (eq (aref hex 0) ?#) 1 0)) 16)))
+      (/ (+ (* 0.299 (ash (logand v #xff0000) -16))
+            (* 0.587 (ash (logand v #x00ff00) -8))
+            (* 0.114 (logand v #x0000ff)))
+         255.0))))
+
 (defun etaf-ncm-hero--strips (width height start panel direction)
   "Return ffmpeg `drawbox' filters fading a WIDTH by HEIGHT picture into PANEL.
 START is where the fade begins in pixels; DIRECTION is `right' for a panel
@@ -139,6 +152,15 @@ side so the blurred copy still reads as the same artwork behind it."
           (+ ay (round (/ (- ah edge) 2)))
           edge edge)))
 
+(defun etaf-ncm-hero--grade (panel)
+  "Return the ffmpeg filter that tints the backdrop for PANEL.
+A dark host dims the cover so the words sit on it; a light host brightens and
+desaturates it, because the same dim slab beside a white pane is a black band
+the page cannot recover from."
+  (if (> (or (etaf-ncm-hero--luma panel) 0) 0.5)
+      "eq=brightness=0.42:saturation=0.35"
+    "eq=brightness=-0.26:saturation=1.10"))
+
 (defun etaf-ncm-hero--filter (width height panel direction area accent)
   "Return the ffmpeg filter graph for a WIDTH by HEIGHT backdrop in PANEL.
 The background is the cover scaled to cover the page and blurred hard, the way
@@ -166,7 +188,7 @@ text begins."
                       ;; instead of cutting the artwork away.
                       "[bg]scale=%d:%d:force_original_aspect_ratio=decrease,"
                       "pad=%d:%d:(ow-iw)/2:(oh-ih)/2:color=0x%s,"
-                      "gblur=sigma=54,eq=brightness=-0.26:saturation=1.10[blur];"
+                      "gblur=sigma=54," (etaf-ncm-hero--grade panel) "[blur];"
                       ;; The sharp copy is square, like the cover itself:
                       ;; scale up and crop to the square instead of fitting and
                       ;; padding, because `pad' refuses a canvas one pixel

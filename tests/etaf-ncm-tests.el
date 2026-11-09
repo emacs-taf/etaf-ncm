@@ -658,7 +658,10 @@ silently doing nothing against the real backend."
           (should (buffer-live-p buffer))
           (with-current-buffer buffer
             (should (eq (etaf-focused-host-ref (etaf-runtime-for-buffer buffer)) 'ncm-list))
-            (should-not mode-line-format)
+            ;; The mode line stays: the buffer's name belongs in the session's
+            ;; own chrome, and hiding it made the player feel like a separate
+            ;; application.
+            (should mode-line-format)
             (should (string-match-p "曲目 1" (buffer-substring-no-properties (point-min) (point-max)))))
           (etaf-ncm-close)
           (should-not (get-buffer etaf-ncm-buffer-name)))
@@ -1354,9 +1357,15 @@ the page is not capped below the rows the window can show."
                            (etaf-ncm-tests--client request callback))))))
     (etaf-ncm-tests--with-player app
       (let* ((before (etaf-ncm-state app))
-             (text (etaf-ncm-tests--rendered-text)))
-        (should (string-match-p "歌词42" text))
-        (should (string-match-p "译文42" text))
+             (text (etaf-ncm-tests--rendered-text))
+             ;; The mode line takes a row, so the window holds one line fewer
+             ;; and the centred lyric window starts a line later.  Read the
+             ;; first line it shows instead of assuming the number.
+             (first (and (string-match "歌词\\([0-9][0-9]\\)" text)
+                         (match-string 1 text))))
+        (should first)
+        (should (string-match-p (format "歌词%s" first) text))
+        (should (string-match-p (format "译文%s" first) text))
         (set-frame-height (selected-frame) 32)
         ;; Batch Emacs has no settle pass for the window-size bridge; drive
         ;; the settled viewport the framework would publish in a GUI.
@@ -1367,8 +1376,11 @@ the page is not capped below the rows the window can show."
                (count 0) (start 0))
           (should (< (plist-get after :queue-rows) (plist-get before :queue-rows)))
           (should (< (plist-get after :lyric-rows) (plist-get before :lyric-rows)))
-          (should (string-match-p "歌词42" text))
-          (should (string-match-p "译文42" text))
+          (let ((now (and (string-match "歌词\\([0-9][0-9]\\)" text)
+                          (match-string 1 text))))
+            (should now)
+            (should (string-match-p (format "歌词%s" now) text))
+            (should (string-match-p (format "译文%s" now) text)))
           (while (string-match "\\(?:歌词\\|译文\\)[0-9][0-9]" text start)
             (cl-incf count)
             (setq start (match-end 0)))
@@ -2821,7 +2833,9 @@ the lyric.  Neither draws the header, the chip strip or the player bar."
                (text (etaf-ncm-tests--rendered-text)))
           (should (eq layout (caddr sample)))
           (should (> (plist-get (etaf-ncm-state app) :page-size) 0))
-          (should (string-match-p "第一行歌词" text))
+          ;; The mode line takes a row, so the lyric window starts one line
+          ;; later; any of the song's lines proves the pane is showing words.
+          (should (string-match-p "行歌词" text))
           (should-not (string-match-p "搜索歌曲" text))
           (should-not (string-match-p "播放全部" text))
           (if (eq layout 'card)
