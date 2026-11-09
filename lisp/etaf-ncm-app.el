@@ -1282,26 +1282,31 @@ a session driven headlessly) applies the geometry at once."
         (etaf-ncm--apply-list-highlights app lines)))))
 
 (defun etaf-ncm--fit-mode-line (buffer window)
-  "Paint BUFFER's mode line with the page's own colours.
-The mode line is a row of the same window, so a surface of its own drew a seam
-across the bottom of the player: the page ended in one colour and the mode line
-began in another.
+  "Paint BUFFER's mode line with the transport's surface in WINDOW.
+The mode line is a row of the same window, so its own surface draws a seam
+under the player: the transport ends in one colour, the row in another.
 
-The face is set on the window's frame rather than remapped in the buffer: the
-renderer answers a buffer-local remap with a shade of its own, and the row still
-came out a different colour than the page above it."
+The faces carry it, not the text: `format-mode-line' returns characters that
+already name a face, and a face given to the returned string is overridden by
+them.  Emacs 29 draws a focused window with `mode-line-active' and an
+unfocused one with `mode-line-inactive', and a player in a panel is usually
+the latter, so all three are set."
   (when (and (buffer-live-p buffer) (window-live-p window))
-    (let ((theme (with-current-buffer buffer
-                   (etaf-ncm--read (etaf-app-state buffer) :theme)))
-          (frame (window-frame window)))
-      (ignore-errors
-        ;; Both faces: an unfocused frame draws `mode-line-inactive', and a
-        ;; player in a panel is almost never the focused frame.
-        (dolist (face '(mode-line mode-line-inactive))
-          (set-face-attribute face frame
-                              :background (or (plist-get theme :ui-bg) "unspecified")
-                              :foreground (or (plist-get theme :ui-fg) "unspecified")
-                              :box nil))))))
+    (let* ((theme (with-current-buffer buffer
+                    (etaf-ncm--read (etaf-app-state buffer) :theme)))
+           (frame (window-frame window))
+           ;; `:ui-shell-bg' is the transport bar's own token; reading a name
+           ;; that does not exist in this plist answered nil and left the faces
+           ;; untouched, which is why earlier attempts changed nothing.
+           (background (or (plist-get theme :ui-shell-bg) "unspecified"))
+           (foreground (or (plist-get theme :ui-fg) "unspecified")))
+      (dolist (face '(mode-line mode-line-active mode-line-inactive))
+        (when (facep face)
+          (ignore-errors
+            (set-face-attribute face frame
+                                :background background
+                                :foreground foreground
+                                :box nil)))))))
 
 (defun etaf-ncm--fit-fringe (window)
   "Take up the pixels Ebox leaves unpainted in WINDOW with its right fringe.
