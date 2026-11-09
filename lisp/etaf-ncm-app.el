@@ -1047,7 +1047,11 @@ releases the polling timer and the session's pending backend requests."
         ;; The shell paints no margin of its own: one clear line at the top is
         ;; the panels' own top padding and one under the player belongs to the
         ;; player bar, so the surface stays one background at every size.
-        :color (etaf-ncm-color :ink) :bgcolor (etaf-ncm-color :bg)
+        ;; The root's own colour is what Ebox paints the window's partial last
+        ;; row with (`ebox--sync-canvas'), and that strip sits under the
+        ;; transport.  Every region above it paints its own background, so only
+        ;; the strip shows this colour, and it is the bar's surface.
+        :color (etaf-ncm-color :ink) :bgcolor (etaf-ncm-color :panel)
         :keys keys :aria-label "网易云音乐"
         :help '("音乐由独立的 mpv 后端播放；查看帮助不会暂停播放或改变队列。"
                 "关闭窗口后音乐继续，退出客户端才会停止播放。登录过期时可重新登录并刷新曲库。")
@@ -1282,29 +1286,29 @@ a session driven headlessly) applies the geometry at once."
         (etaf-ncm--apply-list-highlights app lines)))))
 
 (defun etaf-ncm--fit-fringe (window)
-  "Take up the pixels Ebox leaves unpainted in WINDOW with its right fringe.
-The canvas paints whole character cells and keeps a little of the window to
-itself, so a strip of frame background shows along the right edge.  The Runtime
-reports the width it actually paints; whatever the window has beyond that is the
-strip, and a fringe of exactly that width covers it with the page's own colours.
+  "Give WINDOW the right fringe its character cells do not cover.
+The canvas paints whole cells, so a window whose width is not a multiple of the
+cell leaves a strip no row reaches.  Ebox reads that strip as fringe: with a
+right fringe it lays the tree out across the whole window, and without one it
+keeps a cell back for the truncation glyph.  A fringe as wide as the remainder
+therefore both covers the strip and lets the tree use the rest.
 
-Set once, from `on-fit', never from a window-configuration hook: changing a
-window from inside that hook re-enters it and leaves the canvas and the pointer
-on different coordinates."
+Measured from the window, not from the body: the body already leaves the current
+fringe out, so using it feeds each result into the next and widens the fringe
+until it eats a row of cells."
   (when (and window (window-live-p window) (display-graphic-p))
     (let* ((buffer (window-buffer window))
-           (runtime (and (buffer-live-p buffer)
-                         (with-current-buffer buffer
-                           (ignore-errors (etaf-runtime-for-buffer buffer)))))
-           (painted (and runtime
-                         (ignore-errors (car (etaf-runtime-viewport runtime)))))
            (left (car (window-fringes window)))
-           (right (cadr (window-fringes window)))
-           (body (window-body-width window t))
-           (rest (and painted (> painted 0)
-                      (- body left right painted))))
+           (cell (frame-char-width (window-frame window)))
+           (width (- (window-pixel-width window) left))
+           (rest (and (> cell 0) (mod width cell))))
       (ignore-errors
-        (set-window-fringes window 0 (max 1 (round (or rest 1))) nil t)))))
+        (set-window-fringes window left rest nil t))
+      ;; The fringe is page, not decoration: it continues the row beside it,
+      ;; so it takes the page's own background instead of the theme's.
+      (when (buffer-live-p buffer)
+        (with-current-buffer buffer
+          (face-remap-set-base 'fringe :background (etaf-ncm-color :bg)))))))
 
 (defun etaf-ncm-open (&optional model)
   "Open the NetEase Cloud Music player and return its buffer.
@@ -1327,25 +1331,9 @@ the backend.  A caller-provided MODEL keeps its library, queue and selection."
                   :mode-line t
                   :background (lambda () (plist-get (etaf-ncm--read model :theme) :ui-bg))
                   ;; Mount-time focus and highlight work reads the buffer.
-                  ;; Mount-time focus and highlight work reads the buffer.
                   :on-fit (lambda (window)
                             (plist-put model :buffer (current-buffer))
                             (etaf-ncm--fit-fringe window)))))
-    ;; The canvas paints whole character cells, so a window whose pixel width is
-    ;; not a multiple of the cell keeps a one-pixel column Ebox never covers and
-    ;; the frame background shows through: a dark square in the bottom corner on
-    ;; a dark theme.  A one-pixel right fringe takes that column instead.  Set
-    ;; once here, not from a window hook: changing a window from inside a
-    ;; configuration hook re-enters it and leaves the page and the pointer on
-    ;; different coordinates.
-    (etaf-ncm--fit-fringe (get-buffer-window buffer))
-    ;; A window is a whole number of rows high plus a remainder, and Ebox paints
-    ;; whole rows, so the last few pixels of the window keep the frame's own
-    ;; background: a strip of the page colour under the transport, between it
-    ;; and the mode line.  The transport's own surface takes that strip, so the
-    ;; bar and the row below it read as one block.
-    (with-current-buffer buffer
-      (face-remap-add-relative 'default :background (etaf-ncm-color :panel)))
     (etaf-runtime-flush (etaf-runtime-for-buffer buffer))
     (etaf-ncm--apply-list-highlights model (etaf-ncm--list-highlights model))
     buffer))
