@@ -1281,6 +1281,31 @@ a session driven headlessly) applies the geometry at once."
             (etaf-set-value (cdr targets) (cdr lines)))
         (etaf-ncm--apply-list-highlights app lines)))))
 
+(defun etaf-ncm--fit-fringe (window)
+  "Take up the pixels Ebox leaves unpainted in WINDOW with its right fringe.
+The canvas paints whole character cells and keeps a little of the window to
+itself, so a strip of frame background shows along the right edge.  The Runtime
+reports the width it actually paints; whatever the window has beyond that is the
+strip, and a fringe of exactly that width covers it with the page's own colours.
+
+Set once, from `on-fit', never from a window-configuration hook: changing a
+window from inside that hook re-enters it and leaves the canvas and the pointer
+on different coordinates."
+  (when (and window (window-live-p window) (display-graphic-p))
+    (let* ((buffer (window-buffer window))
+           (runtime (and (buffer-live-p buffer)
+                         (with-current-buffer buffer
+                           (ignore-errors (etaf-runtime-for-buffer buffer)))))
+           (painted (and runtime
+                         (ignore-errors (car (etaf-runtime-viewport runtime)))))
+           (left (car (window-fringes window)))
+           (right (cadr (window-fringes window)))
+           (body (window-body-width window t))
+           (rest (and painted (> painted 0)
+                      (- body left right painted))))
+      (ignore-errors
+        (set-window-fringes window 0 (max 1 (round (or rest 1))) nil t)))))
+
 (defun etaf-ncm-open (&optional model)
   "Open the NetEase Cloud Music player and return its buffer.
 MODEL defaults to a session from `etaf-ncm-create', so the player opens on the
@@ -1303,7 +1328,9 @@ the backend.  A caller-provided MODEL keeps its library, queue and selection."
                   :background (lambda () (plist-get (etaf-ncm--read model :theme) :ui-bg))
                   ;; Mount-time focus and highlight work reads the buffer.
                   ;; Mount-time focus and highlight work reads the buffer.
-                  :on-fit (lambda (_window) (plist-put model :buffer (current-buffer))))))
+                  :on-fit (lambda (window)
+                            (plist-put model :buffer (current-buffer))
+                            (etaf-ncm--fit-fringe window)))))
     ;; The canvas paints whole character cells, so a window whose pixel width is
     ;; not a multiple of the cell keeps a one-pixel column Ebox never covers and
     ;; the frame background shows through: a dark square in the bottom corner on
@@ -1311,9 +1338,7 @@ the backend.  A caller-provided MODEL keeps its library, queue and selection."
     ;; once here, not from a window hook: changing a window from inside a
     ;; configuration hook re-enters it and leaves the page and the pointer on
     ;; different coordinates.
-    (when (display-graphic-p)
-      (ignore-errors
-        (set-window-fringes (get-buffer-window buffer) 0 1 nil t)))
+    (etaf-ncm--fit-fringe (get-buffer-window buffer))
     (etaf-runtime-flush (etaf-runtime-for-buffer buffer))
     (etaf-ncm--apply-list-highlights model (etaf-ncm--list-highlights model))
     buffer))
