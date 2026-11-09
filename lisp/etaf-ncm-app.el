@@ -1281,33 +1281,6 @@ a session driven headlessly) applies the geometry at once."
             (etaf-set-value (cdr targets) (cdr lines)))
         (etaf-ncm--apply-list-highlights app lines)))))
 
-(defun etaf-ncm--fit-mode-line (buffer window)
-  "Paint BUFFER's mode line with the transport's surface in WINDOW.
-The mode line is a row of the same window, so its own surface draws a seam
-under the player: the transport ends in one colour, the row in another.
-
-The faces carry it, not the text: `format-mode-line' returns characters that
-already name a face, and a face given to the returned string is overridden by
-them.  Emacs 29 draws a focused window with `mode-line-active' and an
-unfocused one with `mode-line-inactive', and a player in a panel is usually
-the latter, so all three are set."
-  (when (and (buffer-live-p buffer) (window-live-p window))
-    (let* ((theme (with-current-buffer buffer
-                    (etaf-ncm--read (etaf-app-state buffer) :theme)))
-           (frame (window-frame window))
-           ;; `:ui-shell-bg' is the transport bar's own token; reading a name
-           ;; that does not exist in this plist answered nil and left the faces
-           ;; untouched, which is why earlier attempts changed nothing.
-           (background (or (plist-get theme :ui-shell-bg) "unspecified"))
-           (foreground (or (plist-get theme :ui-fg) "unspecified")))
-      (dolist (face '(mode-line mode-line-active mode-line-inactive))
-        (when (facep face)
-          (ignore-errors
-            (set-face-attribute face frame
-                                :background background
-                                :foreground foreground
-                                :box nil)))))))
-
 (defun etaf-ncm--fit-fringe (window)
   "Take up the pixels Ebox leaves unpainted in WINDOW with its right fringe.
 The canvas paints whole character cells and keeps a little of the window to
@@ -1357,8 +1330,7 @@ the backend.  A caller-provided MODEL keeps its library, queue and selection."
                   ;; Mount-time focus and highlight work reads the buffer.
                   :on-fit (lambda (window)
                             (plist-put model :buffer (current-buffer))
-                            (etaf-ncm--fit-fringe window)
-                            (etaf-ncm--fit-mode-line (current-buffer) window)))))
+                            (etaf-ncm--fit-fringe window)))))
     ;; The canvas paints whole character cells, so a window whose pixel width is
     ;; not a multiple of the cell keeps a one-pixel column Ebox never covers and
     ;; the frame background shows through: a dark square in the bottom corner on
@@ -1367,7 +1339,13 @@ the backend.  A caller-provided MODEL keeps its library, queue and selection."
     ;; configuration hook re-enters it and leaves the page and the pointer on
     ;; different coordinates.
     (etaf-ncm--fit-fringe (get-buffer-window buffer))
-    (etaf-ncm--fit-mode-line buffer (get-buffer-window buffer))
+    ;; A window is a whole number of rows high plus a remainder, and Ebox paints
+    ;; whole rows, so the last few pixels of the window keep the frame's own
+    ;; background: a strip of the page colour under the transport, between it
+    ;; and the mode line.  The transport's own surface takes that strip, so the
+    ;; bar and the row below it read as one block.
+    (with-current-buffer buffer
+      (face-remap-add-relative 'default :background (etaf-ncm-color :panel)))
     (etaf-runtime-flush (etaf-runtime-for-buffer buffer))
     (etaf-ncm--apply-list-highlights model (etaf-ncm--list-highlights model))
     buffer))
