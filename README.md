@@ -114,6 +114,11 @@ bash "$BACKEND/scripts/netease-music.sh" login --sms <phone> --sms-code <code>
 bash "$BACKEND/scripts/netease-music.sh" login
 ```
 
+NetEase sometimes answers a code it accepted with `8860`
+「请确认是否本人账号」: that is the account-confirmation step, not a wrong code.
+The command then shows a QR code, and scanning it with the same account's app
+finishes the sign-in.
+
 The login, queue and saved queues live in the backend's state directory,
 `${XDG_STATE_HOME:-~/.local/state}/netease-music`.  The player passes
 `etaf-ncm-state-directory` to the backend, so both always read the same files.

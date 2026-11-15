@@ -1304,8 +1304,9 @@ The backend stores the cookie and the account and libraries reload; DONE is
 called with (:ok DATA) or (:error MESSAGE) at the end."
   (let ((phone (etaf-ncm--login-phone phone))
         (code (etaf-ncm--login-code code)))
+    (etaf-ncm--note app "正在登录…（网易云要求安全验证时会弹出二维码，用手机 App 扫一下）")
     (etaf-ncm--call
-     app (list :op :login-sms-code :phone phone :code code)
+     app (list :op :login-sms-code :phone phone :code code :timeout 240)
      :on-ok (lambda (data)
               (etaf-ncm--note app (format "登录成功：%s"
                                           (or (etaf-ncm--string (plist-get data :nick))

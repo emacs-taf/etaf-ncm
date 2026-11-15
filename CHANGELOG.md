@@ -30,6 +30,16 @@ All notable user-visible changes to ETAF NCM.
 
 ### Fixed
 
+- Signing in with an SMS code finishes even when NetEase answers with its own
+  verification step.  A code the service accepts can come back as `8860`
+  「请确认是否本人账号」 instead of a session: that is a request to confirm the
+  account, not a wrong code.  The backend now keeps one cookie session for the
+  whole sign-in, acknowledges a recycled phone number, and, when the service
+  asks for a security check, shows the QR code it returns so the same account's
+  phone app can confirm it.  The login request keeps waiting for that
+  confirmation instead of failing at once, and a refusal reports the service's
+  own reason.
+
 - A text terminal draws the player transport as words (`上一首`, `播放` /
   `暂停` in the accent colour, `下一首`) instead of the artwork icons and the
   accent pill.  Terminal fonts render the transport glyphs at uneven sizes, and

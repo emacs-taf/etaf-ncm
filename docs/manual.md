@@ -129,7 +129,11 @@ normal backend resolution order (environment, then the stored cookie).
 
 The same sign-in is available in a shell (`netease-music login --sms <phone>`,
 then `login --sms-code <code>`; see the README for the bundled command), and
-QR sign-in (`login`) remains available there. When a backend reply says the login expired, the player's
+QR sign-in (`login`) remains available there.  A code NetEase accepts can still
+come back as `8860`「请确认是否本人账号」: that is the service asking for the
+account to be confirmed, not a wrong code.  The command then shows the QR code
+that step returns; scanning it with the same account's app completes the
+sign-in without a second code.  When a backend reply says the login expired, the player's
 banner says so and names `L`; no shell detour is needed.
 
 A failure the backend explains stays on display in the red banner above the
@@ -505,6 +509,7 @@ selected.
 | The message line shows `Netease backend script is missing: ...` | `etaf-ncm-backend-directory` does not point at a backend; reinstall etaf-ncm or set it to a valid copy. |
 | The message line shows the backend error | Login, Node.js or mpv is the usual cause. Run `netease-music status` in a shell, then press `g`. |
 | The banner says `登录已过期：按 L 用短信验证码重新登录` | Press `L` (or `M-x etaf-ncm-login`), confirm the phone number, then enter the code from the SMS. |
+| The sign-in stops at `code=8860`「请确认是否本人账号」 | NetEase wants the account confirmed, not another code: a QR image opens, and scanning it with the same account's app finishes the sign-in. A recycled phone number is acknowledged automatically. |
 | Every library is empty | The backend replied with an error; check `:error` in `etaf-ncm-state`. |
 | The progress bar jumps instead of moving | Only `:elapsed` is interpolated locally; the backend is the truth, so a slow backend shows its own pace. |
 | The window shows fewer rows after a resize | Press `g`; the page count is re-fitted on refresh. |

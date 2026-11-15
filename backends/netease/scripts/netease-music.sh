@@ -239,15 +239,35 @@ need_deps() {
 api() { # api <命令> [参数]；stdout=JSON，stderr=错误 JSON
   NETEASE_COOKIE="$COOKIE" node "$API" "$@" --offset "$OFFSET"
 }
+api_field() { # api_field <stderr-file> <field> <fallback>：取最后一行错误 JSON
+  python3 - "$1" "$2" "$3" <<'PY'
+import json, sys
+path, field, fallback = sys.argv[1:4]
+for line in reversed(open(path, encoding="utf-8", errors="replace").read().splitlines()):
+    line = line.strip()
+    if not line.startswith("{"):
+        continue
+    try:
+        data = json.loads(line)
+    except Exception:
+        continue
+    print(data.get(field) or "")
+    break
+else:
+    print(fallback)
+PY
+}
 api_or_die() {
   local out err rc
   err="$(mktemp)"; out="$(api "$@" 2>"$err")"; rc=$?
   if [ $rc -ne 0 ]; then
     local code hint
-    code="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("error","external"))' "$err" 2>/dev/null || echo external)"
-    hint="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("hint",""))' "$err" 2>/dev/null || echo "接口调用失败")"
+    # stderr 也会带进度行（安全验证是一边等手机确认一边输出），
+    # 所以按最后一行 JSON 取错误，不能把整份 stderr 当 JSON 解析
+    code="$(api_field "$err" error external)"
+    hint="$(api_field "$err" hint "接口调用失败")"
     rm -f "$err"
-    die "$code" "$hint" "$rc"
+    die "${code:-external}" "${hint:-接口调用失败}" "$rc"
   fi
   rm -f "$err"
   printf '%s' "$out"

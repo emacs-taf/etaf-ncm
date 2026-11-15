@@ -119,6 +119,9 @@ REQUEST is a plist whose `:op' selects one backend operation:
                 download the song's cover art to PATH and reply with the
                 saved :file; only requested for songs with a cover URL
 
+`:timeout SECONDS' on any request replaces the client's own request timeout;
+signing in needs it because a NetEase security check waits for a phone.
+
 CALLBACK receives exactly one of (:ok DATA), where DATA is the decoded JSON
 plist, or (:error MESSAGE :hint HINT) when the command failed, timed out or
 returned a backend error.  Requests run in the background, so CALLBACK may run
@@ -336,7 +339,8 @@ Keys are the keyword kinds used by play targets, exactly as in
                          (funcall callback
                                   (if (eq (car result) :ok)
                                       (list :ok (funcall transform (cadr result)))
-                                    result)))))))
+                                    result)))
+                       (plist-get request :timeout)))))
 
 (defun etaf-ncm--client-command (client request)
   "Return the command line for REQUEST as (PROGRAM . ARGUMENTS).
@@ -528,12 +532,13 @@ the rest are the arguments.  Signal `etaf-ncm-error' for an unknown request."
 ;;; Child processes
 ;;; ---------------------------------------------------------------------------
 
-(cl-defun etaf-ncm--spawn (client program arguments callback)
-  "Run PROGRAM with ARGUMENTS for CLIENT; deliver its decoded JSON to CALLBACK."
+(cl-defun etaf-ncm--spawn (client program arguments callback &optional request-timeout)
+  "Run PROGRAM with ARGUMENTS for CLIENT; deliver its decoded JSON to CALLBACK.
+REQUEST-TIMEOUT, when given, replaces CLIENT's own request timeout."
   (let* ((stdout (generate-new-buffer " *etaf-ncm-stdout*"))
          (stderr (generate-new-buffer " *etaf-ncm-stderr*"))
          (pending (etaf-ncm--pending-create :stdout stdout :stderr stderr))
-         (timeout (etaf-ncm--client-timeout client)))
+         (timeout (or request-timeout (etaf-ncm--client-timeout client))))
     (condition-case error
         (progn
           (setf (etaf-ncm--pending-process pending)

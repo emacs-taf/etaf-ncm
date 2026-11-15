@@ -38,7 +38,9 @@
 //   qr-start                            生成扫码登录的二维码内容与 key
 //   qr-poll <key> [--timeout 120]       轮询扫码结果，成功时输出 cookie
 import crypto from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import { writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 
 const NONCE = '0CoJUm6Qyw8W8jud';
@@ -49,6 +51,9 @@ const MODULUS =
 const UA =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36';
 const COOKIE = process.env.NETEASE_COOKIE || '';
+// 同一次进程里的请求共用一份 cookie。登录、二次放号确认和安全验证都要求
+// 同一个会话：服务端把挑战绑在本次请求下发的 cookie 上，换一份就认不出来。
+let jar = COOKIE;
 
 function aesEncrypt(text, key) {
   const c = crypto.createCipheriv('aes-128-cbc', Buffer.from(key), Buffer.from(IV));
@@ -71,7 +76,7 @@ function rsaEncrypt(text) {
     .padStart(256, '0');
 }
 function cookieValue(name) {
-  const m = (COOKIE || '').match(new RegExp('(?:^|;\\s*)' + name + '=([^;]*)'));
+  const m = (jar || '').match(new RegExp('(?:^|;\\s*)' + name + '=([^;]*)'));
   return m ? m[1] : '';
 }
 
@@ -104,7 +109,7 @@ async function plainPost(path, data) {
         'Content-Type': 'application/x-www-form-urlencoded',
         Referer: 'https://music.163.com/',
         'User-Agent': UA,
-        ...(COOKIE ? { Cookie: COOKIE } : {}),
+        ...(jar ? { Cookie: jar } : {}),
       },
       body: new URLSearchParams(data).toString(),
     });
@@ -112,6 +117,7 @@ async function plainPost(path, data) {
     throw new ApiError('external', '连不上 music.163.com：' + e.message);
   }
   lastSetCookie = res.headers.getSetCookie ? res.headers.getSetCookie() : [];
+  absorbCookies(lastSetCookie);
   const text = await res.text();
   if (!text) throw new ApiError('external', `接口返回空（HTTP ${res.status}）`);
   return JSON.parse(text);
@@ -119,10 +125,18 @@ async function plainPost(path, data) {
 
 let lastSetCookie = [];
 
+// 把响应里的 cookie 并进会话：同名的取新的，其余保留
+function absorbCookies(setCookies) {
+  if (!setCookies || !setCookies.length) return;
+  if (setCookies.some((c) => c.startsWith('MUSIC_U='))) loggedIn = true;
+  const kept = jar ? jar.split('; ').filter(Boolean) : [];
+  jar = jarToCookie([...kept, ...setCookies]);
+}
+
 // 登录会分多步下发 Set-Cookie，同名会有多条；按名字去重（取最后一条），避免服务端看到重复 cookie
-function jarToCookie(jar) {
+function jarToCookie(cookies) {
   const map = new Map();
-  for (const c of jar) {
+  for (const c of cookies) {
     const kv = c.split(';')[0];
     const i = kv.indexOf('=');
     if (i > 0) map.set(kv.slice(0, i).trim(), kv.slice(i + 1));
@@ -139,7 +153,7 @@ async function weapiPost(path, data = {}) {
         'Content-Type': 'application/x-www-form-urlencoded',
         Referer: 'https://music.163.com/',
         'User-Agent': UA,
-        ...(COOKIE ? { Cookie: COOKIE } : {}),
+        ...(jar ? { Cookie: jar } : {}),
       },
       body,
     });
@@ -147,6 +161,7 @@ async function weapiPost(path, data = {}) {
     throw new ApiError('external', '连不上 music.163.com：' + e.message);
   }
   lastSetCookie = res.headers.getSetCookie ? res.headers.getSetCookie() : [];
+  absorbCookies(lastSetCookie);
   const text = await res.text();
   let json;
   try {
@@ -647,15 +662,100 @@ async function cmdDislike(args) {
   return { id, disliked: true, code: j.code };
 }
 async function cmdSmsSend(phone) {
-  const j = await weapiPost('sms/captcha/sent', { cellphone: String(phone), ctcode: '86' });
+  const j = await weapiPost('sms/captcha/sent', { cellphone: String(phone), ctcode: '86', secrete: 'music_user_login', source: 'webMainStation' });
   if (j.code !== 200) throw new ApiError('external', `发验证码没成功（code=${j.code}）：${j.message || JSON.stringify(j).slice(0, 120)}`);
   return { sent: true };
 }
+
+// 网易云把额外确认/风控挑战用这几个码下发：参数在响应的 data 里
+const RISK_CODES = new Set([8860, -462, 8821]);
+// 只认这次请求下发的 MUSIC_U：进来的 cookie 里本来就有登录态时，
+// 失败响应也会让「jar 里有 MUSIC_U」成立。
+let loggedIn = false;
+const hasLogin = () => loggedIn;
+
+// 安全验证要用户拿手机确认：有 qrencode 就把码画成图并打开，否则把链接交出去
+function showVerifyQr(url) {
+  console.error('网易云要求安全验证：用本账号的网易云 App 扫下面这张码确认。');
+  console.error('验证链接：' + url);
+  try {
+    const png = resolve(tmpdir(), 'netease-verify.png');
+    execFileSync('qrencode', ['-o', png, '-s', '8', '-m', '2', url], { stdio: 'ignore' });
+    const opener = process.platform === 'darwin' ? 'open' : 'xdg-open';
+    execFileSync(opener, [png], { stdio: 'ignore' });
+    console.error('二维码图片：' + png);
+  } catch {
+    // 没装 qrencode 或打不开看图程序：上面的链接照样可以手动打开
+  }
+}
+
+// 8860/-462/8821 带 verify 参数时是网易云的风控二次验证：生成验证二维码，
+// 等用户拿手机确认；确认后登录态落在同一个会话的 cookie 里，不用再登一次。
+async function verifyRisk(j) {
+  const data = j.data || {};
+  let extra = data.params;
+  if (typeof extra === 'string') {
+    try {
+      extra = JSON.parse(extra);
+    } catch {
+      extra = null;
+    }
+  }
+  if (!data.verifyId || !data.verifyType || !data.verifyToken || !extra || !extra.event_id || !extra.sign) return false;
+  const params = JSON.stringify({ event_id: extra.event_id, sign: extra.sign });
+  const made = await weapiPost('frontrisk/verify/getqrcode', {
+    verifyConfigId: data.verifyId,
+    verifyType: data.verifyType,
+    token: data.verifyToken,
+    params,
+    size: 150,
+  });
+  const qrCode = made.data && made.data.qrCode;
+  if (!qrCode) throw new ApiError('external', '安全验证二维码没生成：' + JSON.stringify(made).slice(0, 200));
+  const query = new URLSearchParams({
+    qrCode,
+    verifyToken: data.verifyToken,
+    verifyId: String(data.verifyId),
+    verifyType: String(data.verifyType),
+    params,
+  });
+  const url = 'https://st.music.163.com/encrypt-pages?' + query.toString();
+  showVerifyQr(url);
+  const deadline = Date.now() + 120000;
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 2000));
+    const s = await weapiPost('frontrisk/verify/qrcodestatus', { qrCode });
+    const status = (s.data && s.data.qrCodeStatus) ?? s.qrCodeStatus;
+    const reason = (s.data && s.data.detailReason) ?? s.detailReason;
+    if (status === 20 && !reason) return true;
+    if (status === 21) throw new ApiError('auth', '安全验证的二维码过期了：重新发一次验证码再来');
+    if (reason === 303) throw new ApiError('auth', '扫码用的是别的账号：换成本账号的网易云 App 再扫');
+  }
+  throw new ApiError('auth', '安全验证没等到手机确认：用网易云 App 扫那张码，或者手动打开 ' + url);
+}
+
 async function cmdSmsLogin(phone, code) {
-  const j = await weapiPost('login/cellphone', { phone: String(phone), countrycode: '86', captcha: String(code), rememberLogin: true });
-  const cookie = jarToCookie(lastSetCookie);
-  if (!/MUSIC_U=/.test(cookie)) throw new ApiError('auth', `登录没成（code=${j.code}）：${j.message || JSON.stringify(j).slice(0, 120)}`);
-  return { state: 'ok', cookie };
+  const payload = { phone: String(phone), countrycode: '86', captcha: String(code), rememberLogin: true };
+  let j = await weapiPost('login/cellphone', payload);
+  if (!hasLogin() && RISK_CODES.has(Number(j.code))) {
+    if (await verifyRisk(j)) {
+      if (!hasLogin()) throw new ApiError('auth', '安全验证过了但没拿到登录态：重新发一次验证码再试');
+      return { state: 'ok', cookie: jar };
+    }
+    // 没有验证参数时是「手机号被回收」的确认：同一会话里认下来再登一次
+    const confirmed = await weapiPost('login/cellphone/twice/used/confirm', {});
+    if (!hasLogin()) j = await weapiPost('login/cellphone', payload);
+    if (!hasLogin()) {
+      const why = j.message || j.msg || confirmed.message || '服务端仍要求额外确认';
+      const hint = Number(j.code) === 503 ? '（验证码已被上一次请求用掉了，重新发一次）' : '';
+      throw new ApiError('auth', `登录没成（code=${j.code}）：${why}${hint}`);
+    }
+    return { state: 'ok', cookie: jar };
+  }
+  if (!hasLogin()) {
+    throw new ApiError('auth', `登录没成（code=${j.code}）：${j.message || JSON.stringify(j).slice(0, 200)}`);
+  }
+  return { state: 'ok', cookie: jar };
 }
 async function cmdQrStart() {
   const j = await weapiPost('login/qrcode/unikey', { type: 1, header: {} });
@@ -673,9 +773,12 @@ async function cmdQrPoll(key, o) {
       console.error('已扫到，等你在手机上点「确认登录」…');
     }
     if (j.code === 803) {
-      const cookie = jarToCookie(lastSetCookie);
-      if (!/MUSIC_U=/.test(cookie)) throw new ApiError('external', '登录成功了但没拿到 MUSIC_U：' + cookie.slice(0, 120));
-      return { state: 'ok', cookie };
+      if (!hasLogin()) throw new ApiError('external', '登录成功了但没拿到 MUSIC_U：' + jar.slice(0, 120));
+      return { state: 'ok', cookie: jar };
+    }
+    if (RISK_CODES.has(Number(j.code)) && (await verifyRisk(j))) {
+      if (!hasLogin()) throw new ApiError('external', '安全验证过了但没拿到 MUSIC_U：' + jar.slice(0, 120));
+      return { state: 'ok', cookie: jar };
     }
     await new Promise((r) => setTimeout(r, 2000));
   }
