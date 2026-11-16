@@ -44,12 +44,12 @@
 
 ;;; Type scale
 
-(defconst etaf-ncm-font-meta 15
-  "Face size, in Ebox reference pixels, of secondary text.
+(defconst etaf-ncm-font-meta 0.94
+  "Size of secondary text, as a multiple of the body size.
 Subtitles, counters, hints and credits use this size; everything a reader
 acts on uses the frame's default size.  Emphasis uses weight, not size, so a
-row's height never follows its wording.  Fifteen reference pixels is about
-11.25 pt on a 14 pt frame: clearly smaller, still readable.")
+row's height never follows its wording.  A ratio keeps the scale when the
+reader changes the default font on another platform.")
 
 ;;; Fixed cells
 
