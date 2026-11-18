@@ -1732,12 +1732,32 @@ second for the same second."
 ;;; Keyboard navigation and panels
 ;;; ---------------------------------------------------------------------------
 
-(defun etaf-ncm--viewport-columns (pixels)
-  "Return the library column budget for a region PIXELS wide.
-The frame's character width turns the region's pixel width into text columns;
-a host that gives the player its own content font keeps the frame metric for
-the breakpoints."
-  (max 1 (floor pixels (max 1 (frame-char-width)))))
+(defun etaf-ncm--display-metrics (&optional buffer)
+  "Return the cell Ebox paints with in BUFFER, as a metrics plist.
+BUFFER defaults to the current one.  One source for every budget, cover grid
+and backdrop build: `etaf-display-metrics' measures the box the renderer
+actually draws into, while the frame's own face is a different cell whenever
+the canvas font, a text scale or the selected frame differs from it.  `ch' and
+`lh' lengths resolve against the canvas, so a budget turned from pixels with
+the frame's face draws a page narrower than the region it measured and leaves
+the right side empty."
+  (let* ((buffer (or buffer (current-buffer)))
+         (runtime (and (buffer-live-p buffer)
+                       (etaf-runtime-for-buffer buffer)))
+         (metrics (and runtime (ignore-errors (etaf-display-metrics runtime)))))
+    (or metrics
+        (list :char-width (frame-char-width) :line-height (frame-char-height)))))
+
+(defun etaf-ncm--viewport-columns (pixels &optional app)
+  "Return the library column budget for a region PIXELS wide on APP's canvas.
+The canvas's own cell width turns the region's pixel width into text columns,
+so the budget and the boxes drawn from it agree.  APP supplies that canvas;
+without it the selected frame's face stands in."
+  (let ((char-width (or (plist-get (etaf-ncm--display-metrics
+                                    (and app (plist-get app :buffer)))
+                                   :char-width)
+                        (frame-char-width))))
+    (max 1 (floor pixels (max 1 char-width)))))
 
 (defun etaf-ncm--layout-for (columns &optional window-rows)
   "Return the layout COLUMNS by WINDOW-ROWS of text can hold.
@@ -1751,7 +1771,7 @@ VIEWPORT is the `(PIXELS . ROWS)' region the player is mounted into (see
 `etaf-viewport'): the buffer window when it stands alone, or the host window,
 pane or tab that embeds it.  One region drives every budget, so an embedded
 and a standalone player lay out by the same rule."
-  (let* ((columns (etaf-ncm--viewport-columns (car viewport)))
+  (let* ((columns (etaf-ncm--viewport-columns (car viewport) app))
          ;; The panels own their one clear line at the top and the player bar
          ;; owns the one under it, so the region's rows are the row budget.
          (height (max 1 (cdr viewport)))

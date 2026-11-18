@@ -388,19 +388,6 @@ lands, so a resize never waits for ffmpeg."
     (when hero (etaf-ncm--write app :hero hero))
     (etaf-ncm--write app :hero-accent (and cover (etaf-ncm-hero-accent cover)))))
 
-(defun etaf-ncm--display-metrics (app)
-  "Return the cell Ebox paints with in APP's buffer.
-One source for every backdrop build: `etaf-display-metrics' measures the box the
-renderer actually draws into, while window pixels over the column count carried
-the line spacing into the cell and made the picture a different shape than the
-box it filled."
-  (let ((buffer (plist-get app :buffer)))
-    (or (and (buffer-live-p buffer)
-             (with-current-buffer buffer
-               (ignore-errors (etaf-display-metrics))))
-        (list :char-width (frame-char-width (selected-frame))
-              :line-height (frame-char-height (selected-frame))))))
-
 (defun etaf-ncm--ensure-now-art (app)
   "Build APP's page backdrop for the page's current cell geometry.
 The page frame already runs while the page is open, so the backdrop is built
@@ -412,7 +399,7 @@ picture."
          (mode (etaf-ncm--read app :now-mode))
          (cover (etaf-ncm--read app :cover-file))
          (panel (plist-get (etaf-ncm--read app :theme) :ui-bg))
-         (metrics (etaf-ncm--display-metrics app))
+         (metrics (etaf-ncm--display-metrics (plist-get app :buffer)))
          ;; The cell is part of the key: a window that keeps its column count but
          ;; changes its pixel size (a font change, a scroll bar appearing) would
          ;; otherwise keep a picture built for the old shape.  It is a whole
@@ -991,7 +978,7 @@ releases the polling timer and the session's pending backend requests."
                (mode (etaf-value (etaf-ncm--ref session :now-mode)))
                ;; One place decides the cell, so a build started from here and
                ;; one started from a resize cannot disagree about the picture.
-               (metrics (etaf-ncm--display-metrics session)))
+               (metrics (etaf-ncm--display-metrics (plist-get session :buffer))))
            (etaf-next-tick
             (lambda ()
               (etaf-ncm--sync-now-art session cover columns rows panel metrics
@@ -1299,7 +1286,11 @@ until it eats a row of cells."
   (when (and window (window-live-p window) (display-graphic-p))
     (let* ((buffer (window-buffer window))
            (left (car (window-fringes window)))
-           (cell (frame-char-width (window-frame window)))
+           ;; The remainder is measured in the cells the canvas draws with, so
+           ;; the fringe absorbs exactly the strip the text cannot fill.
+           (cell (or (and (etaf-runtime-for-buffer buffer)
+                          (plist-get (etaf-ncm--display-metrics buffer) :char-width))
+                     (frame-char-width (window-frame window))))
            (width (- (window-pixel-width window) left))
            (rest (and (> cell 0) (mod width cell))))
       (ignore-errors

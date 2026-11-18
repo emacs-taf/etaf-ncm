@@ -238,10 +238,13 @@ TEXT may be a retained reactive source, so the note updates as prepared text."
 The grid keeps FILE's aspect ratio; Ebox scales the raster to it, so both
 dimensions stay cell-aligned and every row is fully covered."
   (let* ((size (etaf-ncm--cover-size file))
-         (cell-w (max 1 (frame-char-width)))
+         (metrics (etaf-ncm--display-metrics))
+         (cell-w (max 1 (plist-get metrics :char-width)))
          ;; A terminal cell is about twice as tall as it is wide, and the text
          ;; image adapter draws two vertical pixels per row with half blocks.
-         (cell-h (max 1 (if (display-graphic-p) (frame-char-height) 2)))
+         (cell-h (max 1 (if (display-graphic-p)
+                            (plist-get metrics :line-height)
+                          2)))
          (image-w (max 1 (or (car-safe size) 1)))
          (image-h (max 1 (or (cdr-safe size) 1)))
          (cols (max 1 (round (/ (* (float lines) cell-h image-w)
@@ -267,8 +270,10 @@ downloading does not change the panel height when it arrives."
                             file)))
          (grid (and (stringp value) (file-readable-p value)
                     (etaf-ncm--cover-grid value chars lines)))
-         (square-rows (max 1 (round (/ (* chars (frame-char-width))
-                                       (max 1 (frame-char-height))))))
+         (square-rows (max 1 (round (/ (* chars (plist-get (etaf-ncm--display-metrics)
+                                                          :char-width))
+                                       (max 1 (plist-get (etaf-ncm--display-metrics)
+                                                         :line-height))))))
          (box-width (if grid (list 'ch (car grid)) size))
          (box-height (cond (grid (list 'lh (cdr grid)))
                            (height height)

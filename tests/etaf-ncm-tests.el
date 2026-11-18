@@ -1604,6 +1604,22 @@ locate the entry by its help text instead of a character offset."
         (should (= width (car (etaf-runtime-viewport runtime))))
         (should (= width (plist-get (etaf-ncm-state app) :viewport-width)))))))
 
+(ert-deftest etaf-ncm-tests-viewport-columns-follow-the-canvas-cell ()
+  "The column budget divides by the cell the canvas draws with.
+A canvas font, a text scale or a selected frame that is not the player's
+leaves the frame's default face apart from that cell; budgeting with the frame
+made the page draw narrower than the region it measured and left the right
+side of a wide window empty."
+  (let ((app (etaf-ncm-tests--session)))
+    (etaf-ncm-tests--with-player app
+      (cl-letf (((symbol-function 'etaf-display-metrics)
+                 (lambda (&optional _runtime)
+                   (list :char-width 8 :line-height 16)))
+                ((symbol-function 'frame-char-width)
+                 (lambda (&optional _frame) 10)))
+        ;; 800 pixels are 100 canvas cells, not the 80 the frame face gives.
+        (should (= (etaf-ncm--viewport-columns 800 app) 100))))))
+
 
 (ert-deftest etaf-ncm-tests-sidebar-entry-click-switches-library ()
   "Sidebar text and spacer clicks switch libraries, as does TAB/RET."
