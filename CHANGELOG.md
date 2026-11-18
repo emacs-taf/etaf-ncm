@@ -30,6 +30,19 @@ All notable user-visible changes to ETAF NCM.
 
 ### Fixed
 
+- Playing works on Windows.  `play`, the transport keys, volume, seek, queue,
+  cover and like all ran through `netease-music.sh`, and Windows has no native
+  `bash`.  They are now commands of `scripts/netease-cli.mjs`, so one Node
+  implementation serves every system, and the mpv bridge opens a named pipe
+  on Windows instead of a Unix socket.  Queue snapshots and downloads still
+  live in the shell entry, which is POSIX only by design.
+
+- Playback addresses come back.  `song/enhance/player/url/v1` started
+  answering `code: 404` with a `null` url for every song, which the player
+  reported as 「可能要 VIP 或没有版权」 even for songs the account owns; the
+  request now carries the `immerseType` the endpoint expects, and the same
+  songs resolve to a signed URL again.
+
 - Signing in works on Windows.  The sign-in ran through `netease-music.sh`,
   and Windows has no native `bash`: the `bash.exe` in `C:/Windows/System32`
   launches WSL, which reads the script's Windows path as a relative name and

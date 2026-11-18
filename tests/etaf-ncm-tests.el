@@ -576,13 +576,52 @@ still has to act on."
     (should (equal seen '((:ok (:op t)) (:op :status))))
     (etaf-ncm-cancel (lambda (_request _callback) nil))))
 
-(ert-deftest etaf-ncm-tests-default-client-runs-the-backend-command ()
-  "The default client calls the backend script with the arguments of the request.
-A stub backend records the command line, so a request that translates into the
+(ert-deftest etaf-ncm-tests-player-requests-run-the-node-entry ()
+  "Every request a playing session makes runs netease-cli.mjs, not a shell.
+A stub entry records the command line, so a request that translates into the
 wrong argument (a keyword instead of the song id, say) fails here instead of
 silently doing nothing against the real backend."
-  (skip-unless etaf-ncm-tests--shell-entry-p)
+  (skip-unless (executable-find etaf-ncm-node-program))
   (let* ((directory (make-temp-file "etaf-ncm-backend" t))
+         (scripts (expand-file-name "scripts" directory))
+         (cli (expand-file-name "netease-cli.mjs" scripts))
+         (log (expand-file-name "calls.log" directory))
+         reply)
+    (unwind-protect
+        (progn
+          (make-directory scripts t)
+          (with-temp-file cli
+            (insert "import { appendFileSync } from 'node:fs';\n"
+                    (format "appendFileSync(%s, process.argv.slice(2).join(' ') + '\\n');\n"
+                            (prin1-to-string log))
+                    "console.log(JSON.stringify({ ok: true, state: 'playing' }));\n"))
+          (let ((client (etaf-ncm-make-client :backend-directory directory :timeout 15)))
+            (dolist (case '(((:op :play :target (:kind :song :id 4242))
+                             "play 4242 --json")
+                            ((:op :play :target (:kind :fm) :ids (7 2 7) :start 3)
+                             "play-ids 7,2,7 --start 3 --json")
+                            ((:op :jump :index 3) "jump 3 --json")
+                            ((:op :volume :value 60) "volume 60 --json")
+                            ((:op :seek :seconds -10) "seek -10 --json")
+                            ((:op :shuffle :on t) "shuffle on --json")
+                            ((:op :cover :id 42 :file "art.png")
+                             "cover 42 --download art.png --force --json")))
+              (setq reply nil)
+              (etaf-ncm-client-call client (car case) (lambda (result) (setq reply result)))
+              (let ((deadline (+ (float-time) 15)))
+                (while (and (null reply) (< (float-time) deadline))
+                  (accept-process-output nil 0.05)))
+              (should (eq (car-safe reply) :ok))
+              (should (with-temp-buffer
+                        (insert-file-contents log)
+                        (string-match-p (concat (regexp-quote (cadr case)) "$")
+                                        (buffer-string)))))))
+      (delete-directory directory t))))
+
+(ert-deftest etaf-ncm-tests-shell-entry-keeps-the-queue-snapshots ()
+  "Queue snapshots still run the POSIX shell entry, with its own arguments."
+  (skip-unless etaf-ncm-tests--shell-entry-p)
+  (let* ((directory (make-temp-file "etaf-ncm-shell" t))
          (scripts (expand-file-name "scripts" directory))
          (script (expand-file-name "netease-music.sh" scripts))
          (log (expand-file-name "calls.log" directory))
@@ -593,21 +632,18 @@ silently doing nothing against the real backend."
           (with-temp-file script
             (insert "#!/bin/sh\n"
                     (format "printf '%%s\\n' \"$*\" >> %s\n" (shell-quote-argument log))
-                    "printf '{\"ok\": true, \"state\": \"playing\"}\\n'\n"))
+                    "printf '{\"ok\": true}\\n'\n"))
           (set-file-modes script #o755)
-          (let ((client (etaf-ncm-make-client :backend-directory directory :timeout 10)))
-            (dolist (case '(((:op :play :target (:kind :song :id 4242)) "play 4242")
-                            ((:op :play :target (:kind :fm) :ids (7 2 7) :start 3)
-                             "play-ids 7,2,7 --start 3")))
-              (setq reply nil)
-              (let ((deadline (+ (float-time) 10)))
-                (etaf-ncm-client-call client (car case) (lambda (result) (setq reply result)))
-                (while (and (null reply) (< (float-time) deadline))
-                  (accept-process-output nil 0.05)))
-              (should (eq (car-safe reply) :ok))
-              (should (with-temp-buffer
-                        (insert-file-contents log)
-                        (string-match-p (regexp-quote (cadr case)) (buffer-string)))))))
+          (let ((client (etaf-ncm-make-client :backend-directory directory :timeout 15)))
+            (etaf-ncm-client-call client (list :op :queue-save :name "晚上")
+                                  (lambda (result) (setq reply result)))
+            (let ((deadline (+ (float-time) 15)))
+              (while (and (null reply) (< (float-time) deadline))
+                (accept-process-output nil 0.05)))
+            (should (eq (car-safe reply) :ok))
+            (should (with-temp-buffer
+                      (insert-file-contents log)
+                      (string-match-p "queue-save 晚上 --json --quiet" (buffer-string))))))
       (delete-directory directory t))))
 
 (ert-deftest etaf-ncm-tests-login-runs-the-node-entry-not-a-shell ()

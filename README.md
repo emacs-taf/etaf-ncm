@@ -121,6 +121,11 @@ Node and needs no shell, so the same sign-in works on Windows:
 node "$BACKEND/scripts/netease-cli.mjs" login --sms <phone> --sms-code <code>
 ```
 
+That Node entry is also what plays: `play`, the transport keys, volume, seek,
+queue and cover are all its commands, and it drives mpv through a Unix socket
+on macOS and Linux and a named pipe on Windows.  The shell entry stays as the
+POSIX command line (downloads, queue snapshots, `check`, `watch`).
+
 NetEase sometimes answers a code it accepted with `8860`
 「请确认是否本人账号」: that is the account-confirmation step, not a wrong code.
 The command then shows a QR code, and scanning it with the same account's app

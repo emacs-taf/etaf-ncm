@@ -292,6 +292,9 @@ async function cmdUrl(ids, o) {
     ids: JSON.stringify(ids.map(Number)),
     level,
     encodeType: ['standard', 'higher'].includes(level) ? 'aac' : 'flac',
+    // 2026-11-18 实测：不带 immerseType 时这个接口对每首歌都回 code=404、url=null，
+    // 看起来像「全部没版权」；带上 c51 就能拿到正常直链。
+    immerseType: 'c51',
   });
   return {
     level: j.data && j.data[0] && j.data[0].level,

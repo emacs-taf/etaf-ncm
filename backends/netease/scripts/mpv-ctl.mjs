@@ -18,11 +18,19 @@ import net from 'node:net';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
 
 const DIR = process.env.NETEASE_MPV_DIR || process.env.NETEASE_MUSIC_STATE_DIR
   || path.join(process.env.XDG_STATE_HOME || path.join(os.homedir(), '.local', 'state'), 'netease-music');
-const SOCK = path.join(DIR, 'mpv.sock');
+// mpv 在 Windows 上只能开命名管道（没有 unix socket）。管道名跟着状态目录走，
+// 同一个状态目录永远控制同一个播放器；Linux/macOS 仍是目录里的 socket 文件。
+// 名字要先归一化：Emacs 传来的是 `c:/…`、CLI 自己算的是 `C:\…`，同一目录的两种
+// 写法哈希出两个管道名，就会各起一个 mpv，播放和状态分别落在两个进程上。
+const CANONICAL = process.platform === 'win32' ? path.resolve(DIR).toLowerCase() : path.resolve(DIR);
+const SOCK = process.platform === 'win32'
+  ? `\\\\.\\pipe\\netease-ncm-${createHash('sha1').update(CANONICAL).digest('hex').slice(0, 12)}`
+  : path.join(DIR, 'mpv.sock');
 const START_LOCK = path.join(DIR, 'mpv.start.lock');
 const LOG = path.join(DIR, 'mpv.log');
 fs.mkdirSync(DIR, { recursive: true });
@@ -127,7 +135,7 @@ async function ensureMpv() {
   } finally {
     fs.rmSync(START_LOCK, { recursive: true, force: true });
   }
-  die('deps', `mpv 没起来（日志 ${LOG}）：确认 brew install mpv 成功`, 3);
+  die('deps', `mpv 没起来（日志 ${LOG}）：确认 mpv 已安装并在 PATH 上`, 3);
 }
 
 function sleep(ms) {

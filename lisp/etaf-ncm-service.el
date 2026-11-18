@@ -356,16 +356,15 @@ the rest are the arguments.  Signal `etaf-ncm-error' for an unknown request."
       ((or :browse :search :lyric :session :liked-ids)
        (cons (etaf-ncm--program node api)
              (cons api (etaf-ncm--api-arguments request))))
-      ;; Signing in goes through the Node entry on every system: it is one
-      ;; implementation for all of them, and it needs no shell.
-      ((or :login-sms :login-sms-code)
+      ;; Signing in and everything a playing session does go through the Node
+      ;; entry: one implementation for every system, and it needs no shell.
+      ((or :login-sms :login-sms-code :status :queue :play :add :jump
+           :volume :seek :pause :resume :toggle :next :previous :stop
+           :like :unlike :shuffle :repeat :cover)
        (cons (etaf-ncm--program node cli)
-             (cons cli (etaf-ncm--login-arguments request))))
-      (:status
-       (cons (etaf-ncm--script music) (list music "status" "--json" "--quiet")))
-      ((or :queue :play :add :jump :volume :seek :pause :resume :toggle
-           :next :previous :stop :like :unlike :shuffle :repeat
-           :queue-save :queue-load :download :downloads :cover)
+             (cons cli (etaf-ncm--cli-arguments request))))
+      ;; Queue snapshots and downloads still live in the POSIX shell entry.
+      ((or :queue-save :queue-load :download :downloads)
        (cons (etaf-ncm--script music)
              (append (list music) (etaf-ncm--script-arguments request)
                      (list "--json" "--quiet"))))
@@ -444,82 +443,104 @@ backend.  Windows is served by `netease-cli.mjs', which needs no shell."
     (_ (signal 'etaf-ncm-error (list (format "Unknown request: %S" request))))))
 
 (defun etaf-ncm--login-arguments (request)
-  "Return the netease-cli.mjs arguments for REQUEST."
+  "Return the netease-cli.mjs arguments for signing REQUEST in."
   (append (list "login" "--sms" (etaf-ncm--login-phone-argument request))
           (pcase (plist-get request :op)
             (:login-sms-code (list "--sms-code" (etaf-ncm--login-code-argument request)))
             (_ nil))
           (list "--json")))
 
+(defun etaf-ncm--play-arguments (request)
+  "Return the netease-cli.mjs arguments that start playing REQUEST.
+IDS plays that order from scratch; otherwise the target's kind selects the
+list to build the queue from, the way the shell entry used to."
+  (let* ((target (plist-get request :target))
+         (ids (plist-get request :ids))
+         (kind (plist-get target :kind))
+         (command (if ids "play-ids" (cdr (assq kind etaf-ncm--play-commands)))))
+    (unless command
+      (signal 'etaf-ncm-error (list (format "Cannot play: %S" target))))
+    (let ((argument (plist-get target :id))
+          (start (plist-get request :start)))
+      (when (and start (not (and ids (integerp start) (> start 0)
+                                 (<= start (length ids)))))
+        (signal 'etaf-ncm-error (list (format "Invalid start: %S" start))))
+      (when (and ids (not (and (proper-list-p ids)
+                               (cl-every (lambda (id) (and (integerp id) (> id 0))) ids))))
+        (signal 'etaf-ncm-error '("Play ids must be positive integers")))
+      (when (memq kind '(:song :query :playlist :album :artist :chart :podcast :episode))
+        (unless (and argument (not (string-empty-p (format "%s" argument))))
+          (signal 'etaf-ncm-error (list (format "Cannot play: %S" target)))))
+      (append (list command)
+              (if ids
+                  (list (mapconcat #'number-to-string ids ","))
+                (when (memq kind '(:song :query :playlist :album :artist :chart :podcast :episode))
+                  (list (etaf-ncm--id argument))))
+              (when start (list "--start" (number-to-string start)))
+              (when (and (not ids) (plist-get request :shuffle)) (list "--shuffle"))
+              (when (and (not ids) (plist-get request :limit))
+                (list "--limit" (number-to-string (plist-get request :limit))))))))
+
+(defun etaf-ncm--cli-arguments (request)
+  "Return the netease-cli.mjs arguments for REQUEST.
+The Node entry answers the same requests on every system, so these arguments
+do not depend on a shell being present."
+  (append
+   (pcase (plist-get request :op)
+     (:status '("status"))
+     (:queue (list "queue" "--limit"
+                   (number-to-string (etaf-ncm--limit request 200))))
+     (:login-sms (etaf-ncm--login-arguments request))
+     (:login-sms-code (etaf-ncm--login-arguments request))
+     (:play (etaf-ncm--play-arguments request))
+     (:add
+      (let ((id (plist-get request :id)))
+        (unless id (signal 'etaf-ncm-error '("Add needs a song id")))
+        (list "add" (etaf-ncm--id id))))
+     (:jump
+      (let ((index (plist-get request :index)))
+        (unless (and (integerp index) (> index 0))
+          (signal 'etaf-ncm-error (list (format "Invalid queue index: %S" index))))
+        (list "jump" (number-to-string index))))
+     (:volume
+      (if-let* ((value (plist-get request :value)))
+          (progn
+            (unless (and (numberp value) (<= 0 value 130))
+              (signal 'etaf-ncm-error (list (format "Invalid volume: %S" value))))
+            (list "volume" (number-to-string (round value))))
+        (list "volume")))
+     (:seek
+      (let ((seconds (plist-get request :seconds)))
+        (unless (numberp seconds)
+          (signal 'etaf-ncm-error (list (format "Invalid seek: %S" seconds))))
+        (list "seek" (if (>= seconds 0)
+                         (number-to-string (round seconds))
+                       (format "-%d" (abs (round seconds)))))))
+     (:shuffle (list "shuffle" (if (plist-get request :on) "on" "off")))
+     (:repeat (list "repeat" (if (plist-get request :on) "on" "off")))
+     (:pause '("pause"))
+     (:resume '("resume"))
+     (:toggle '("toggle"))
+     (:next '("next"))
+     (:previous '("prev"))
+     (:stop '("stop"))
+     (:like '("like"))
+     (:unlike '("unlike"))
+     (:cover
+      (let ((id (plist-get request :id))
+            (file (plist-get request :file)))
+        (unless (and (integerp id) (> id 0))
+          (signal 'etaf-ncm-error (list (format "Cover needs a song id: %S" id))))
+        (unless (and (stringp file) (not (string-empty-p file)))
+          (signal 'etaf-ncm-error (list (format "Cover needs a destination file: %S" file))))
+        (list "cover" (etaf-ncm--id id) "--download" file "--force")))
+     (_ (signal 'etaf-ncm-error (list (format "Unknown request: %S" request)))))
+   (list "--json")))
+
 (defun etaf-ncm--script-arguments (request)
-  "Return the netease-music.sh arguments for REQUEST."
+  "Return the netease-music.sh arguments for REQUEST.
+Only the requests that still live in the POSIX shell entry are left here."
   (pcase (plist-get request :op)
-    (:queue (list "queue" "--limit" (number-to-string (etaf-ncm--limit request 200))))
-    (:cover
-     (let ((id (plist-get request :id))
-           (file (plist-get request :file)))
-       (unless (and (integerp id) (> id 0))
-         (signal 'etaf-ncm-error (list (format "Cover needs a song id: %S" id))))
-       (unless (and (stringp file) (not (string-empty-p file)))
-         (signal 'etaf-ncm-error (list (format "Cover needs a destination file: %S" file))))
-       (list "cover" (etaf-ncm--id id) "--download" file "--force")))
-    (:play
-     (let* ((target (plist-get request :target))
-            (ids (plist-get request :ids))
-            (kind (plist-get target :kind))
-            (command (if ids "play-ids" (cdr (assq kind etaf-ncm--play-commands)))))
-       (unless command
-         (signal 'etaf-ncm-error (list (format "Cannot play: %S" target))))
-       (let ((argument (plist-get target :id))
-             (start (plist-get request :start)))
-         (when (and start (not (and ids (integerp start) (> start 0)
-                                    (<= start (length ids)))))
-           (signal 'etaf-ncm-error (list (format "Invalid start: %S" start))))
-         (when (and ids (not (and (proper-list-p ids)
-                                  (cl-every (lambda (id) (and (integerp id) (> id 0))) ids))))
-           (signal 'etaf-ncm-error '("Play ids must be positive integers")))
-         (when (memq kind '(:song :query :playlist :album :artist :chart :podcast :episode))
-           (unless (and argument (not (string-empty-p (format "%s" argument))))
-             (signal 'etaf-ncm-error (list (format "Cannot play: %S" target)))))
-         (append (list command)
-                 (if ids
-                     (list (mapconcat #'number-to-string ids ","))
-                   (when (memq kind '(:song :query :playlist :album :artist :chart :podcast :episode))
-                     (list (etaf-ncm--id argument))))
-                 (when start (list "--start" (number-to-string start)))))))
-    (:add
-     (let ((id (plist-get request :id)))
-       (unless id (signal 'etaf-ncm-error '("Add needs a song id")))
-       (list "add" (etaf-ncm--id id))))
-    (:jump
-     (let ((index (plist-get request :index)))
-       (unless (and (integerp index) (> index 0))
-         (signal 'etaf-ncm-error (list (format "Invalid queue index: %S" index))))
-       (list "jump" (number-to-string index))))
-    (:volume
-     (if-let* ((value (plist-get request :value)))
-         (progn
-           (unless (and (numberp value) (<= 0 value 130))
-             (signal 'etaf-ncm-error (list (format "Invalid volume: %S" value))))
-           (list "volume" (number-to-string (round value))))
-       (list "volume")))
-    (:seek
-     (let ((seconds (plist-get request :seconds)))
-       (unless (numberp seconds)
-         (signal 'etaf-ncm-error (list (format "Invalid seek: %S" seconds))))
-       (list "seek" (if (>= seconds 0)
-                        (number-to-string (round seconds))
-                      (format "-%d" (abs (round seconds)))))))
-    (:shuffle (list "shuffle" (if (plist-get request :on) "on" "off")))
-    (:repeat (list "repeat" (if (plist-get request :on) "on" "off")))
-    (:pause '("pause"))
-    (:resume '("resume"))
-    (:toggle '("toggle"))
-    (:next '("next"))
-    (:previous '("prev"))
-    (:stop '("stop"))
-    (:like '("like"))
-    (:unlike '("unlike"))
     (:queue-save
      (append (list "queue-save") (when-let* ((name (plist-get request :name)))
                                    (list (format "%s" name)))))
