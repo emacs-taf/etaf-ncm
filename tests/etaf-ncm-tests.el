@@ -25,6 +25,13 @@
   (file-name-directory (or load-file-name buffer-file-name))
   "Directory holding this test file and its fixtures.")
 
+(defconst etaf-ncm-tests--shell-entry-p
+  (not (eq system-type 'windows-nt))
+  "Whether this system runs the backend's shell entry.
+Windows does not: its `bash.exe' launches WSL, which reads the Windows path
+the script is called with as a relative name.  The requests Windows needs
+are served by `netease-cli.mjs', which is plain Node.")
+
 (defvar etaf-ncm-tests--requests nil
   "Requests received by the scripted client, newest first.")
 
@@ -407,6 +414,7 @@ The netease-music scripts exit non-zero with a report on stderr: the shell
 entry writes `error=' and `hint=' lines, the mpv bridge writes a JSON object.
 Both must reach the caller as the message, and a crash without a report keeps
 the exit status as the message."
+  (skip-unless etaf-ncm-tests--shell-entry-p)
   (let* ((directory (make-temp-file "etaf-ncm-refusal-backend" t))
          (scripts (expand-file-name "scripts" directory))
          (script (expand-file-name "netease-music.sh" scripts)))
@@ -573,6 +581,7 @@ still has to act on."
 A stub backend records the command line, so a request that translates into the
 wrong argument (a keyword instead of the song id, say) fails here instead of
 silently doing nothing against the real backend."
+  (skip-unless etaf-ncm-tests--shell-entry-p)
   (let* ((directory (make-temp-file "etaf-ncm-backend" t))
          (scripts (expand-file-name "scripts" directory))
          (script (expand-file-name "netease-music.sh" scripts))
@@ -589,14 +598,47 @@ silently doing nothing against the real backend."
           (let ((client (etaf-ncm-make-client :backend-directory directory :timeout 10)))
             (dolist (case '(((:op :play :target (:kind :song :id 4242)) "play 4242")
                             ((:op :play :target (:kind :fm) :ids (7 2 7) :start 3)
-                             "play-ids 7,2,7 --start 3")
-                            ((:op :login-sms :phone "13800000000")
-                             "login --sms 13800000000")
-                            ((:op :login-sms-code :phone "13800000000" :code "123456")
-                             "login --sms 13800000000 --sms-code 123456")))
+                             "play-ids 7,2,7 --start 3")))
               (setq reply nil)
               (let ((deadline (+ (float-time) 10)))
                 (etaf-ncm-client-call client (car case) (lambda (result) (setq reply result)))
+                (while (and (null reply) (< (float-time) deadline))
+                  (accept-process-output nil 0.05)))
+              (should (eq (car-safe reply) :ok))
+              (should (with-temp-buffer
+                        (insert-file-contents log)
+                        (string-match-p (regexp-quote (cadr case)) (buffer-string)))))))
+      (delete-directory directory t))))
+
+(ert-deftest etaf-ncm-tests-login-runs-the-node-entry-not-a-shell ()
+  "A sign-in is one Node program on every system, never a shell script.
+The stub backend ships only `netease-cli.mjs', so a request that went through
+`netease-music.sh' could not answer at all.  Windows has no native `bash',
+and the `bash.exe' it does have launches WSL, which cannot read the Windows
+path the script is called with: that is how a sign-in ended at exit 127 with
+no SMS sent and no code asked for."
+  (skip-unless (executable-find etaf-ncm-node-program))
+  (let* ((directory (make-temp-file "etaf-ncm-login" t))
+         (scripts (expand-file-name "scripts" directory))
+         (cli (expand-file-name "netease-cli.mjs" scripts))
+         (log (expand-file-name "calls.log" directory))
+         reply)
+    (unwind-protect
+        (progn
+          (make-directory scripts t)
+          (with-temp-file cli
+            (insert "import { appendFileSync } from 'node:fs';\n"
+                    (format "appendFileSync(%s, process.argv.slice(2).join(' ') + '\\n');\n"
+                            (prin1-to-string log))
+                    "console.log(JSON.stringify({ ok: true, conclusion: 'sent' }));\n"))
+          (let ((client (etaf-ncm-make-client :backend-directory directory :timeout 15)))
+            (dolist (case '(((:op :login-sms :phone "13800000000")
+                             "login --sms 13800000000 --json")
+                            ((:op :login-sms-code :phone "13800000000" :code "123456")
+                             "login --sms 13800000000 --sms-code 123456 --json")))
+              (setq reply nil)
+              (etaf-ncm-client-call client (car case) (lambda (result) (setq reply result)))
+              (let ((deadline (+ (float-time) 15)))
                 (while (and (null reply) (< (float-time) deadline))
                   (accept-process-output nil 0.05)))
               (should (eq (car-safe reply) :ok))
@@ -2390,6 +2432,7 @@ precedence over it, so the real command loop finds the player command."
   "The backend child runs with a UTF-8 locale even when the parent has none.
 The backend prints and parses Chinese text, so a missing or non-UTF-8 locale
 breaks it; a stub backend records the environment it was spawned with."
+  (skip-unless etaf-ncm-tests--shell-entry-p)
   (let* ((directory (make-temp-file "etaf-ncm-locale" t))
          (scripts (expand-file-name "scripts" directory))
          (script (expand-file-name "netease-music.sh" scripts))
@@ -2493,6 +2536,7 @@ directory drives the queue track list."
 
 (ert-deftest etaf-ncm-tests-cover-request-downloads-through-the-backend-entry ()
   "The cover request records the backend command and reports the saved file."
+  (skip-unless etaf-ncm-tests--shell-entry-p)
   (let* ((directory (make-temp-file "ncm-cover-backend" t))
          (target (expand-file-name "art.img" directory))
          reply)
@@ -2518,6 +2562,7 @@ directory drives the queue track list."
 
 (ert-deftest etaf-ncm-tests-queue-tracks-keep-the-cover-url ()
   "Queue tracks normalized from the backend state carry the cover URL."
+  (skip-unless etaf-ncm-tests--shell-entry-p)
   (let* ((directory (make-temp-file "ncm-cover-queue" t))
          reply)
     (unwind-protect

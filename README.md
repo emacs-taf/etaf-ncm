@@ -114,6 +114,13 @@ bash "$BACKEND/scripts/netease-music.sh" login --sms <phone> --sms-code <code>
 bash "$BACKEND/scripts/netease-music.sh" login
 ```
 
+The player itself signs in through `scripts/netease-cli.mjs`, which is plain
+Node and needs no shell, so the same sign-in works on Windows:
+
+```sh
+node "$BACKEND/scripts/netease-cli.mjs" login --sms <phone> --sms-code <code>
+```
+
 NetEase sometimes answers a code it accepted with `8860`
 「请确认是否本人账号」: that is the account-confirmation step, not a wrong code.
 The command then shows a QR code, and scanning it with the same account's app

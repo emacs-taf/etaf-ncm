@@ -348,6 +348,7 @@ The result is ready for `make-process': its first element is the program and
 the rest are the arguments.  Signal `etaf-ncm-error' for an unknown request."
   (let* ((backend (etaf-ncm--client-backend-directory client))
          (api (expand-file-name "scripts/netease-api.mjs" backend))
+         (cli (expand-file-name "scripts/netease-cli.mjs" backend))
          (music (expand-file-name "scripts/netease-music.sh" backend))
          (node (etaf-ncm--client-node-program client))
          (op (plist-get request :op)))
@@ -355,12 +356,16 @@ the rest are the arguments.  Signal `etaf-ncm-error' for an unknown request."
       ((or :browse :search :lyric :session :liked-ids)
        (cons (etaf-ncm--program node api)
              (cons api (etaf-ncm--api-arguments request))))
+      ;; Signing in goes through the Node entry on every system: it is one
+      ;; implementation for all of them, and it needs no shell.
+      ((or :login-sms :login-sms-code)
+       (cons (etaf-ncm--program node cli)
+             (cons cli (etaf-ncm--login-arguments request))))
       (:status
        (cons (etaf-ncm--script music) (list music "status" "--json" "--quiet")))
       ((or :queue :play :add :jump :volume :seek :pause :resume :toggle
            :next :previous :stop :like :unlike :shuffle :repeat
-           :queue-save :queue-load :download :downloads :cover
-           :login-sms :login-sms-code)
+           :queue-save :queue-load :download :downloads :cover)
        (cons (etaf-ncm--script music)
              (append (list music) (etaf-ncm--script-arguments request)
                      (list "--json" "--quiet"))))
@@ -375,11 +380,18 @@ the rest are the arguments.  Signal `etaf-ncm-error' for an unknown request."
       (signal 'etaf-ncm-error (list (format "Executable is missing: %s" program)))))
 
 (defun etaf-ncm--script (script)
-  "Return the shell program used to run SCRIPT."
+  "Return the shell program used to run SCRIPT.
+Only POSIX systems run the shell entry.  Windows has no native `bash', and
+the `bash.exe' it does have launches WSL, which cannot read the Windows path
+SCRIPT is called with, so a request would exit 127 before reaching the
+backend.  Windows is served by `netease-cli.mjs', which needs no shell."
   (unless (file-readable-p script)
     (signal 'etaf-ncm-error
             (list (format "Netease backend script is missing: %s" script))))
-  (or (executable-find "bash") "/bin/bash"))
+  (if (eq system-type 'windows-nt)
+      (signal 'etaf-ncm-error
+              '("Windows has no shell backend: this request needs a native implementation"))
+    (or (executable-find "bash") "/bin/bash")))
 
 (defun etaf-ncm--login-phone-argument (request)
   "Return REQUEST's digits-only phone number, or signal `etaf-ncm-error'."
@@ -431,14 +443,17 @@ the rest are the arguments.  Signal `etaf-ncm-error' for an unknown request."
     (:liked-ids (list "liked-ids"))
     (_ (signal 'etaf-ncm-error (list (format "Unknown request: %S" request))))))
 
+(defun etaf-ncm--login-arguments (request)
+  "Return the netease-cli.mjs arguments for REQUEST."
+  (append (list "login" "--sms" (etaf-ncm--login-phone-argument request))
+          (pcase (plist-get request :op)
+            (:login-sms-code (list "--sms-code" (etaf-ncm--login-code-argument request)))
+            (_ nil))
+          (list "--json")))
+
 (defun etaf-ncm--script-arguments (request)
   "Return the netease-music.sh arguments for REQUEST."
   (pcase (plist-get request :op)
-    (:login-sms
-     (list "login" "--sms" (etaf-ncm--login-phone-argument request)))
-    (:login-sms-code
-     (list "login" "--sms" (etaf-ncm--login-phone-argument request)
-           "--sms-code" (etaf-ncm--login-code-argument request)))
     (:queue (list "queue" "--limit" (number-to-string (etaf-ncm--limit request 200))))
     (:cover
      (let ((id (plist-get request :id))

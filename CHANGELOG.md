@@ -30,6 +30,15 @@ All notable user-visible changes to ETAF NCM.
 
 ### Fixed
 
+- Signing in works on Windows.  The sign-in ran through `netease-music.sh`,
+  and Windows has no native `bash`: the `bash.exe` in `C:/Windows/System32`
+  launches WSL, which reads the script's Windows path as a relative name and
+  exits 127.  The request never reached the backend, so no SMS went out and
+  the player never asked for the code.  The SMS sign-in now runs as
+  `scripts/netease-cli.mjs`, one Node implementation for every system, which
+  needs no shell; a request that still needs the shell entry is refused on
+  Windows with a message instead of failing as exit 127.
+
 - Signing in with an SMS code finishes even when NetEase answers with its own
   verification step.  A code the service accepts can come back as `8860`
   「请确认是否本人账号」 instead of a session: that is a request to confirm the

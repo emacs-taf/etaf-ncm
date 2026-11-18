@@ -100,6 +100,13 @@ class ApiError extends Error {
 // 登录态失效的统一提示：消费者（app、巡检）会原样透出这行，所以写成人能直接照做的命令。
 const AUTH_HINT = '登录已过期或未登录：跑 netease-music.sh login --sms <手机号> 重新登录（收短信验证码，比扫码稳；也可 login 扫码）';
 
+// `fetch failed` 本身不含原因：node 把底层错误放在 cause 里（read ECONNRESET 之类），
+// 不带上它，用户只能看到「连不上」，分不清是网络被重置、DNS 挂了还是代理没开。
+function networkReason(e) {
+  const cause = e.cause && (e.cause.message || e.cause.code);
+  return e.message + (cause && !e.message.includes(cause) ? `（${cause}）` : '');
+}
+
 async function plainPost(path, data) {
   let res;
   try {
@@ -114,7 +121,7 @@ async function plainPost(path, data) {
       body: new URLSearchParams(data).toString(),
     });
   } catch (e) {
-    throw new ApiError('external', '连不上 music.163.com：' + e.message);
+    throw new ApiError('external', '连不上 music.163.com：' + networkReason(e));
   }
   lastSetCookie = res.headers.getSetCookie ? res.headers.getSetCookie() : [];
   absorbCookies(lastSetCookie);
@@ -158,7 +165,7 @@ async function weapiPost(path, data = {}) {
       body,
     });
   } catch (e) {
-    throw new ApiError('external', '连不上 music.163.com：' + e.message);
+    throw new ApiError('external', '连不上 music.163.com：' + networkReason(e));
   }
   lastSetCookie = res.headers.getSetCookie ? res.headers.getSetCookie() : [];
   absorbCookies(lastSetCookie);
