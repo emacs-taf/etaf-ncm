@@ -35,7 +35,10 @@ function run(script, args, { cookie } = {}) {
   const env = { ...process.env };
   if (cookie) env.NETEASE_COOKIE = cookie;
   return new Promise((resolve, reject) => {
-    execFile(process.execPath, [script, ...args], { env, timeout: 60_000, maxBuffer: 8 << 20 },
+    // windowsHide：本进程由 netease-cli.mjs 以 detached 起，自己没有 console；
+    // 不加这一项，每次 spawn 的 node 子进程都会新开一个黑色 console 窗口闪一下。
+    execFile(process.execPath, [script, ...args],
+      { env, timeout: 60_000, maxBuffer: 8 << 20, windowsHide: true },
       (error, stdout, stderr) => {
         if (error) {
           const line = String(stderr).trim().split('\n').pop();

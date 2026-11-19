@@ -52,7 +52,8 @@ function nodeRun(script, args, { cookie } = {}) {
   const env = { ...process.env };
   if (cookie) env.NETEASE_COOKIE = cookie;
   return new Promise((resolve, reject) => {
-    execFile(process.execPath, [script, ...args], { env, timeout: API_TIMEOUT, maxBuffer: 8 << 20 },
+    execFile(process.execPath, [script, ...args],
+      { env, timeout: API_TIMEOUT, maxBuffer: 8 << 20, windowsHide: true },
       (error, stdout, stderr) => {
         if (error) {
           const report = lastJson(stderr);
@@ -161,7 +162,7 @@ function probeUrls(urls) {
   return new Promise((resolve) => {
     const child = spawn(process.execPath,
       [CDN, '--sample', '1', '--concurrency', '16', '--timeout', '2000'],
-      { stdio: ['pipe', 'pipe', 'ignore'] });
+      { stdio: ['pipe', 'pipe', 'ignore'], windowsHide: true });
     let out = '';
     const timer = setTimeout(() => {
       child.kill();
